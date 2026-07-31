@@ -1,0 +1,8 @@
+all:
+  children:
+    home_servers:
+      hosts:
+        homeserver:
+          ansible_host: 192.168.178.100
+          ansible_user: julian
+          ansible_python_interpreter: /usr/bin/python3 # TODO
