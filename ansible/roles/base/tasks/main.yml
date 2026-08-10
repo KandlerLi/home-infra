@@ -1,0 +1,21 @@
+---
+- name: Check effective user
+  ansible.builtin.command:
+    cmd: id -un
+  register: effective_user
+  changed_when: false
+  check_mode: false
+
+- name: Verify root privileges
+  ansible.builtin.assert:
+    that:
+      - effective_user.stdout == "root"
+    fail_msg: "Ansible does not have root privileges."
+    success_msg: "Ansible is running with root privileges."
+
+- name: Install tree package
+  ansible.builtin.apt:
+    name: tree
+    state: present
+    update_cache: true
+    cache_valid_time: 86400

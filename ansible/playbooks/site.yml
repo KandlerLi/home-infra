@@ -1,0 +1,8 @@
+---
+- name: Configure home servers
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - base
