@@ -13,9 +13,16 @@
     fail_msg: "Ansible does not have root privileges."
     success_msg: "Ansible is running with root privileges."
 
-- name: Install tree package
+- name: Install base packages
   ansible.builtin.apt:
-    name: tree
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - htop
+      - tree
+      - unzip
+      - vim
     state: present
     update_cache: true
     cache_valid_time: 86400
