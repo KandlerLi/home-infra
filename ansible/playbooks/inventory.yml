@@ -1,0 +1,69 @@
+---
+- name: Inspect home server
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Display operating system
+      ansible.builtin.debug:
+        msg:
+          - "Hostname: {{ ansible_facts['hostname'] }}"
+          - "Distribution: {{ ansible_facts['distribution'] }}"
+          - "Version: {{ ansible_facts['distribution_version'] }}"
+          - "Kernel: {{ ansible_facts['kernel'] }}"
+          - "Architecture: {{ ansible_facts['architecture'] }}"
+          - "CPU cores: {{ ansible_facts['processor_vcpus'] }}"
+          - "Memory: {{ ansible_facts['memtotal_mb'] }} MB"
+
+    - name: Display block devices
+      ansible.builtin.command:
+        cmd: lsblk -o NAME,SIZE,FSTYPE,UUID,MOUNTPOINTS
+      register: block_devices
+      changed_when: false
+
+    - name: Display block devices result
+      ansible.builtin.debug:
+        var: block_devices.stdout_lines
+
+    - name: Display mounted filesystems
+      ansible.builtin.command:
+        cmd: findmnt --real
+      register: mounted_filesystems
+      changed_when: false
+
+    - name: Display mounted filesystems result
+      ansible.builtin.debug:
+        var: mounted_filesystems.stdout_lines
+
+    - name: Display disk usage
+      ansible.builtin.command:
+        cmd: df -hT
+      register: disk_usage
+      changed_when: false
+
+    - name: Display disk usage result
+      ansible.builtin.debug:
+        var: disk_usage.stdout_lines
+
+    - name: Check Docker installation
+      ansible.builtin.command:
+        cmd: docker --version
+      register: docker_version
+      changed_when: false
+      failed_when: false
+
+    - name: Display Docker version
+      ansible.builtin.debug:
+        var: docker_version.stdout
+
+    - name: Check Docker containers
+      ansible.builtin.command:
+        cmd: docker ps
+      register: docker_containers
+      changed_when: false
+      failed_when: false
+
+    - name: Display Docker containers
+      ansible.builtin.debug:
+        var: docker_containers.stdout_lines

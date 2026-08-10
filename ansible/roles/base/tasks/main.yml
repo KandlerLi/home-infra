@@ -26,3 +26,15 @@
     state: present
     update_cache: true
     cache_valid_time: 86400
+
+- name: Ensure www-data group exists
+  ansible.builtin.group:
+    name: www-data
+    state: present
+
+- name: Add administrator to www-data group
+  ansible.builtin.user:
+    name: "{{ admin_user }}"
+    groups:
+      - www-data
+    append: true

@@ -1,0 +1,9 @@
+---
+black_hdd_device_uuid: "17580dad-fb3c-417d-bfb2-38bfc18b5ff6"
+black_hdd_mount_point: "/mnt/black-hdd"
+black_hdd_filesystem: "ext4"
+black_hdd_mount_options: "defaults"
+
+black_hdd_owner: "www-data"
+black_hdd_group: "www-data"
+black_hdd_mode: "02770"

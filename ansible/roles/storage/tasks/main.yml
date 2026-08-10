@@ -1,0 +1,18 @@
+---
+- name: Ensure black HDD mount point exists
+  ansible.builtin.file:
+    path: "{{ black_hdd_mount_point }}"
+    state: directory
+    owner: "{{ black_hdd_owner }}"
+    group: "{{ black_hdd_group }}"
+    mode: "{{ black_hdd_mode }}"
+
+- name: Mount black HDD
+  ansible.posix.mount:
+    path: "{{ black_hdd_mount_point }}"
+    src: "UUID={{ black_hdd_device_uuid }}"
+    fstype: "{{ black_hdd_filesystem }}"
+    opts: "{{ black_hdd_mount_options }}"
+    dump: "0"
+    passno: "2"
+    state: mounted
