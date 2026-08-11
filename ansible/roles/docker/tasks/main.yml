@@ -1,0 +1,56 @@
+---
+- name: Ensure APT keyring directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download Docker repository signing key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install Docker repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+    state: present
+    update_cache: true
+
+- name: Remove legacy Docker repository configuration
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/docker.list
+    state: absent
+
+- name: Configure Docker repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: deb
+    uris:
+      - "{{ docker_apt_repository }}"
+    suites:
+      - "{{ docker_apt_distribution }}"
+    components:
+      - "{{ docker_apt_channel }}"
+    architectures:
+      - amd64
+    signed_by: /etc/apt/keyrings/docker.asc
+    state: present
+
+
+- name: Install Docker packages
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: latest
+    update_cache: true
+
+- name: Ensure Docker service is enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ docker_service_name }}"
+    enabled: true
+    state: started
