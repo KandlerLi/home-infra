@@ -1,0 +1,9 @@
+- name: Ensure AIO configuration volume exists
+  community.docker.docker_volume:
+    name: "{{ nextcloud_aio_config_volume }}"
+    state: present
+
+- name: Ensure Nextcloud AIO master container is running
+  community.docker.docker_container:
+    name: "{{ nextcloud_aio_container_name }}"
+    state: started

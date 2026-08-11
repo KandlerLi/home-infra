@@ -1,0 +1,14 @@
+---
+nextcloud_aio_image: ghcr.io/nextcloud-releases/all-in-one:latest
+nextcloud_aio_container_name: nextcloud-aio-mastercontainer
+
+nextcloud_aio_config_volume: nextcloud_aio_mastercontainer
+
+nextcloud_aio_data_dir: /mnt/black-hdd
+
+nextcloud_aio_restart_policy: always
+
+nextcloud_aio_ports:
+  - "80:80"
+  - "8080:8080"
+  - "8443:8443"

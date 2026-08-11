@@ -46,7 +46,7 @@
 - name: Install Docker packages
   ansible.builtin.apt:
     name: "{{ docker_packages }}"
-    state: latest
+    state: present
     update_cache: true
 
 - name: Ensure Docker service is enabled and running
