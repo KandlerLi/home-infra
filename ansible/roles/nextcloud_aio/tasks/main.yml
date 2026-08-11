@@ -6,4 +6,14 @@
 - name: Ensure Nextcloud AIO master container is running
   community.docker.docker_container:
     name: "{{ nextcloud_aio_container_name }}"
+    image: "{{ nextcloud_aio_image }}"
     state: started
+    restart_policy: "{{ nextcloud_aio_restart_policy }}"
+    init: true
+    network_mode: bridge
+    published_ports: "{{ nextcloud_aio_ports }}"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "{{ nextcloud_aio_config_volume }}:/mnt/docker-aio-config"
+    env:
+      NEXTCLOUD_DATADIR: "{{ nextcloud_aio_data_dir }}"
