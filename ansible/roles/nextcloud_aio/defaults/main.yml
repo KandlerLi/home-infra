@@ -4,7 +4,7 @@ nextcloud_aio_container_name: nextcloud-aio-mastercontainer
 
 nextcloud_aio_config_volume: nextcloud_aio_mastercontainer
 
-nextcloud_aio_data_dir: /mnt/black-hdd
+nextcloud_aio_data_dir: /mnt/black-hdd/nextcloud
 
 nextcloud_aio_restart_policy: always
 
