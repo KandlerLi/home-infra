@@ -1,0 +1,5 @@
+- name: Configure virtualization
+  ansible.builtin.import_tasks: virtualization.yml
+
+- name: Configure GitHub Actions runner VM
+  ansible.builtin.import_tasks: vm.yml

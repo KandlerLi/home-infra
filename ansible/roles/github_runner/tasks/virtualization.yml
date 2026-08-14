@@ -1,0 +1,53 @@
+- name: Install libvirt Python dependencies
+  ansible.builtin.apt:
+    name: "{{ github_runner_libvirt_python_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Install virtualization packages
+  ansible.builtin.apt:
+    name: "{{ virtualization_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Install ACL package
+  ansible.builtin.apt:
+    name: acl
+    state: present
+
+- name: Grant libvirt access to GitHub Runner storage
+  ansible.posix.acl:
+    path: "{{ github_runner_vm_storage_path }}"
+    entity: "{{ github_runner_libvirt_user }}"
+    etype: user
+    permissions: rwx
+    state: present
+
+- name: Ensure libvirt service is enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ virtualization_service }}"
+    enabled: true
+    state: started
+
+- name: Grant libvirt traversal access to storage mount
+  ansible.posix.acl:
+    path: /mnt/black-hdd
+    entity: "{{ github_runner_libvirt_user }}"
+    etype: user
+    permissions: x
+    state: present
+    
+- name: Install virtualization packages
+  ansible.builtin.apt:
+    name: "{{ virtualization_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Ensure libvirt service is enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ virtualization_service }}"
+    enabled: true
+    state: started

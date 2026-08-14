@@ -9,3 +9,4 @@
     - storage
     - docker
     - nextcloud_aio
+    - github_runner

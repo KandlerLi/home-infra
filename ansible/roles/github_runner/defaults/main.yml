@@ -1,0 +1,25 @@
+virtualization_packages:
+  - qemu-system-x86
+  - libvirt-daemon-system
+  - libvirt-clients
+  - virtinst
+
+virtualization_service: libvirtd
+
+github_runner_libvirt_user: libvirt-qemu
+github_runner_libvirt_python_packages:
+  - python3-lxml
+  - python3-libvirt
+
+github_runner_vm_name: github-runner
+github_runner_vm_memory_mb: 2048
+github_runner_vm_vcpus: 2
+
+github_runner_vm_storage_path: /mnt/black-hdd/github-runner
+github_runner_vm_disk_path: /mnt/black-hdd/github-runner/github-runner.qcow2
+github_runner_vm_disk_size_gb: 30
+
+github_runner_vm_network: default
+
+github_runner_vm_iso_path: /mnt/black-hdd/github-runner/debian-13.6.0-amd64-netinst.iso
+github_runner_vm_iso_url: https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.6.0-amd64-netinst.iso

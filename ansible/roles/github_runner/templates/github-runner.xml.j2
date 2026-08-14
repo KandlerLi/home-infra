@@ -1,0 +1,55 @@
+<domain type='kvm'>
+  <name>{{ github_runner_vm_name }}</name>
+
+  <memory unit='MiB'>{{ github_runner_vm_memory_mb }}</memory>
+  <currentMemory unit='MiB'>{{ github_runner_vm_memory_mb }}</currentMemory>
+
+  <vcpu placement='static'>{{ github_runner_vm_vcpus }}</vcpu>
+
+  <os>
+    <type arch='x86_64' machine='pc'>hvm</type>
+  <boot dev='cdrom'/>
+  <boot dev='hd'/>
+  </os>
+
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+
+  <cpu mode='host-model'/>
+
+  <clock offset='utc'/>
+
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+
+  <devices>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ github_runner_vm_iso_path }}'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    
+    <disk type='file' device='disk'>
+        <driver name='qemu' type='qcow2'/>
+        <source file='{{ github_runner_vm_disk_path }}'/>
+        <target dev='vda' bus='virtio'/>
+    </disk>
+
+    <interface type='network'>
+        <source network='{{ github_runner_vm_network }}'/>
+        <model type='virtio'/>
+    </interface>
+
+    <console type='pty'>
+        <target type='serial' port='0'/>
+    </console>
+
+    <serial type='pty'>
+        <target port='0'/>
+    </serial>
+  </devices>
+</domain>
