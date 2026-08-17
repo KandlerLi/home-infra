@@ -10,7 +10,6 @@
 - name: Install GitHub runner operating system packages
   ansible.builtin.apt:
     name:
-      - acl
       - ca-certificates
       - curl
       - git

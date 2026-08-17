@@ -1,7 +1,6 @@
 ---
 - name: Set runner identity for {{ github_runner_repository_config.repository }}
   ansible.builtin.set_fact:
-    github_runner_repository_id: "{{ github_runner_repository_config.id }}"
     github_runner_repository: "{{ github_runner_repository_config.repository }}"
     github_runner_repository_url: >-
       https://github.com/{{ github_runner_github_owner }}/{{ github_runner_repository_config.repository }}
@@ -359,11 +358,3 @@
   when: >-
     not ansible_check_mode
     or github_runner_systemd_unit_file.stat.exists
-
-- name: Display status for {{ github_runner_repository }}
-  ansible.builtin.debug:
-    msg: >-
-      GitHub Actions runner {{ github_runner_repository_runner_name }}
-      {{ 'would be installed' if ansible_check_mode else 'is installed and running' }}
-      for
-      {{ github_runner_github_owner }}/{{ github_runner_repository }}.

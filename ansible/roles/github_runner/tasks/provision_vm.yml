@@ -149,14 +149,10 @@
     state: present
     xml: "{{ lookup('template', 'libvirt-network.xml.j2') }}"
 
-- name: Start GitHub runner libvirt network
+- name: Activate and enable GitHub runner libvirt network
   community.libvirt.virt_net:
     name: "{{ github_runner_network_name }}"
     state: active
-
-- name: Enable GitHub runner network autostart
-  community.libvirt.virt_net:
-    name: "{{ github_runner_network_name }}"
     autostart: true
 
 - name: Check Ansible controller SSH public key
@@ -191,32 +187,23 @@
       {{ ansible_host | default(inventory_hostname) }}
     github_runner_hypervisor_ssh_user: "{{ ansible_user }}"
 
-- name: Render GitHub runner cloud-init user data
+- name: Render GitHub runner cloud-init configuration
   ansible.builtin.template:
-    src: cloud-init-user-data.yml.j2
-    dest: "{{ github_runner_cloud_init_dir }}/user-data"
+    src: "{{ item.src }}"
+    dest: "{{ github_runner_cloud_init_dir }}/{{ item.dest }}"
     owner: root
     group: root
     mode: "0644"
-  register: github_runner_cloud_init_user_data
-
-- name: Render GitHub runner cloud-init metadata
-  ansible.builtin.template:
-    src: cloud-init-meta-data.yml.j2
-    dest: "{{ github_runner_cloud_init_dir }}/meta-data"
-    owner: root
-    group: root
-    mode: "0644"
-  register: github_runner_cloud_init_meta_data
-
-- name: Render GitHub runner cloud-init network configuration
-  ansible.builtin.template:
-    src: cloud-init-network-config.yml.j2
-    dest: "{{ github_runner_cloud_init_dir }}/network-config"
-    owner: root
-    group: root
-    mode: "0644"
-  register: github_runner_cloud_init_network_config
+  loop:
+    - src: cloud-init-user-data.yml.j2
+      dest: user-data
+    - src: cloud-init-meta-data.yml.j2
+      dest: meta-data
+    - src: cloud-init-network-config.yml.j2
+      dest: network-config
+  loop_control:
+    label: "{{ item.dest }}"
+  register: github_runner_cloud_init_files
 
 - name: Check GitHub runner cloud-init seed image
   ansible.builtin.stat:
@@ -241,9 +228,7 @@
       - "{{ github_runner_cloud_init_dir }}/network-config"
   when: >-
     not github_runner_cloud_init_iso.stat.exists
-    or github_runner_cloud_init_user_data.changed
-    or github_runner_cloud_init_meta_data.changed
-    or github_runner_cloud_init_network_config.changed
+    or github_runner_cloud_init_files.changed
 
 - name: Set GitHub runner cloud-init seed image permissions
   ansible.builtin.file:
@@ -306,18 +291,11 @@
   register: github_runner_vm_result
   when: github_runner_vm_name not in github_runner_defined_vms.list_vms
 
-- name: Enable GitHub runner virtual machine autostart
-  community.libvirt.virt:
-    name: "{{ github_runner_vm_name }}"
-    autostart: true
-  when: >-
-    not ansible_check_mode
-    or github_runner_vm_name in github_runner_defined_vms.list_vms
-
-- name: Ensure GitHub runner virtual machine is running
+- name: Start and enable GitHub runner virtual machine
   community.libvirt.virt:
     name: "{{ github_runner_vm_name }}"
     state: running
+    autostart: true
   when: >-
     not ansible_check_mode
     or github_runner_vm_name in github_runner_defined_vms.list_vms
