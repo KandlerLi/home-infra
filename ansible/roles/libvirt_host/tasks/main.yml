@@ -1,0 +1,64 @@
+---
+- name: Install KVM and libvirt packages
+  ansible.builtin.apt:
+    name: "{{ libvirt_host_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Ensure libvirt is enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ libvirt_host_service }}"
+    enabled: true
+    state: started
+
+- name: Check whether KVM is available
+  ansible.builtin.stat:
+    path: /dev/kvm
+  register: kvm_device
+
+- name: Fail when KVM is unavailable
+  ansible.builtin.assert:
+    that:
+      - kvm_device.stat.exists
+    fail_msg: >-
+      /dev/kvm does not exist. Hardware virtualization may be disabled
+      in the BIOS/UEFI or unsupported by the CPU.
+
+- name: Check libvirt QEMU runtime user
+  ansible.builtin.command:
+    argv:
+      - getent
+      - passwd
+      - "{{ libvirt_host_qemu_user }}"
+  register: libvirt_host_qemu_user_result
+  changed_when: false
+  check_mode: false
+
+- name: Check libvirt QEMU runtime group
+  ansible.builtin.command:
+    argv:
+      - getent
+      - group
+      - "{{ libvirt_host_qemu_group }}"
+  register: libvirt_host_qemu_group_result
+  changed_when: false
+  check_mode: false
+
+- name: Verify libvirt QEMU runtime identity
+  ansible.builtin.assert:
+    that:
+      - libvirt_host_qemu_user_result.rc == 0
+      - libvirt_host_qemu_group_result.rc == 0
+    fail_msg: >-
+      The configured libvirt QEMU user or group does not exist.
+      Verify libvirt_host_qemu_user and libvirt_host_qemu_group
+      against the host's libvirt configuration.
+
+- name: Create cloud image cache directory
+  ansible.builtin.file:
+    path: "{{ libvirt_host_image_cache_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"

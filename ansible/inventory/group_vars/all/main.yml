@@ -1,0 +1,19 @@
+---
+github_runner_github_owner: "KandlerLi"
+github_runner_github_repositories:
+  - id: "dyndns"
+    repository: "dyndns"
+
+github_runner_vm_memory_mb: 2048
+github_runner_vm_vcpus: 2
+github_runner_vm_disk_size_gb: 40
+
+github_runner_vm_disk_path: "/mnt/black-hdd/github-runner/github-runner.qcow2"
+
+github_runner_admin_ssh_public_key_path: >-
+  {{ lookup('env', 'HOME') }}/.ssh/id_ed25519.pub
+
+github_runner_labels:
+  - "home"
+  - "debian"
+  - "x64"

@@ -1,0 +1,19 @@
+---
+- name: Provision GitHub runner virtual machine
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: libvirt_host
+    - role: github_runner
+      github_runner_role_mode: provision_vm
+
+- name: Configure GitHub Actions runner virtual machine
+  hosts: github_runner_vms
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: github_runner
+      github_runner_role_mode: configure_guest

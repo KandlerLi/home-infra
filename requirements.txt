@@ -1,1 +1,1 @@
-ansible
+ansible==14.3.0

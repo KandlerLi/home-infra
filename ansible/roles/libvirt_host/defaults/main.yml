@@ -1,0 +1,16 @@
+---
+libvirt_host_packages:
+  - acl
+  - libvirt-clients
+  - libvirt-daemon-system
+  - python3-libvirt
+  - python3-lxml
+  - qemu-system-x86
+  - qemu-utils
+  - virtinst
+  - xorriso
+
+libvirt_host_service: libvirtd
+libvirt_host_qemu_user: libvirt-qemu
+libvirt_host_qemu_group: kvm
+libvirt_host_image_cache_dir: /var/lib/libvirt/cloud-images

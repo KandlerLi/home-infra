@@ -1,0 +1,29 @@
+<network>
+  <name>{{ github_runner_network_name }}</name>
+
+  <forward mode="nat"/>
+
+  <bridge
+    name="{{ github_runner_network_bridge }}"
+    stp="on"
+    delay="0"
+  />
+
+  <ip
+    address="{{ github_runner_network_address }}"
+    netmask="{{ github_runner_network_netmask }}"
+  >
+    <dhcp>
+      <range
+        start="{{ github_runner_network_dhcp_start }}"
+        end="{{ github_runner_network_dhcp_end }}"
+      />
+
+      <host
+        mac="{{ github_runner_vm_mac }}"
+        name="{{ github_runner_vm_name }}"
+        ip="{{ github_runner_vm_ip }}"
+      />
+    </dhcp>
+  </ip>
+</network>

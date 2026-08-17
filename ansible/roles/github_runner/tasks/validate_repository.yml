@@ -1,0 +1,28 @@
+---
+- name: Validate GitHub runner repository entry structure
+  ansible.builtin.assert:
+    that:
+      - github_runner_repository_config is mapping
+      - "'id' in github_runner_repository_config"
+      - "'repository' in github_runner_repository_config"
+    fail_msg: >-
+      Every github_runner_github_repositories item must be a mapping with
+      id and repository fields.
+
+- name: Validate GitHub runner repository entry values
+  ansible.builtin.assert:
+    that:
+      - >-
+        github_runner_repository_config.id
+        is match('^[a-z0-9][a-z0-9-]{0,23}$')
+      - >-
+        github_runner_repository_config.repository
+        is match('^[A-Za-z0-9_.-]+$')
+      - >-
+        github_runner_repository_config.runner_name
+        | default(github_runner_vm_name ~ '-' ~ github_runner_repository_config.id)
+        is match('^[A-Za-z0-9_.-]{1,64}$')
+    fail_msg: >-
+      Repository ids must be lowercase letters, digits, or hyphens and at
+      most 24 characters. Repository and runner names may contain only
+      letters, digits, underscores, periods, and hyphens.

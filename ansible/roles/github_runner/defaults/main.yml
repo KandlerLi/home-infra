@@ -1,25 +1,55 @@
-virtualization_packages:
-  - qemu-system-x86
-  - libvirt-daemon-system
-  - libvirt-clients
-  - virtinst
+---
+github_runner_role_mode: provision_vm
 
-virtualization_service: libvirtd
-
-github_runner_libvirt_user: libvirt-qemu
-github_runner_libvirt_python_packages:
-  - python3-lxml
-  - python3-libvirt
+github_runner_github_owner: CHANGE_ME
+github_runner_github_repositories: []
+github_runner_github_token: ""
+github_runner_github_api_version: "2026-03-10"
 
 github_runner_vm_name: github-runner
 github_runner_vm_memory_mb: 2048
 github_runner_vm_vcpus: 2
+github_runner_vm_disk_size_gb: 40
 
-github_runner_vm_storage_path: /mnt/black-hdd/github-runner
+github_runner_storage_mount: /mnt/black-hdd
+github_runner_vm_storage_dir: /mnt/black-hdd/github-runner
 github_runner_vm_disk_path: /mnt/black-hdd/github-runner/github-runner.qcow2
-github_runner_vm_disk_size_gb: 30
 
-github_runner_vm_network: default
+github_runner_image_cache_dir: /var/lib/libvirt/cloud-images
+github_runner_debian_image_path: >-
+  {{ github_runner_image_cache_dir }}/debian-13-genericcloud-amd64.qcow2
+github_runner_debian_image_url: >-
+  https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2
+github_runner_debian_image_checksum: >-
+  sha512:https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS
 
-github_runner_vm_iso_path: /mnt/black-hdd/github-runner/debian-13.6.0-amd64-netinst.iso
-github_runner_vm_iso_url: https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.6.0-amd64-netinst.iso
+github_runner_cloud_init_dir: >-
+  /var/lib/libvirt/cloud-init/{{ github_runner_vm_name }}
+github_runner_cloud_init_iso_path: >-
+  {{ github_runner_vm_storage_dir }}/{{ github_runner_vm_name }}-cloud-init.iso
+
+github_runner_network_name: github_runner_network
+github_runner_network_bridge: virbr10
+github_runner_network_address: 192.168.100.1
+github_runner_network_netmask: 255.255.255.0
+github_runner_network_dhcp_start: 192.168.100.100
+github_runner_network_dhcp_end: 192.168.100.200
+github_runner_vm_ip: 192.168.100.10
+github_runner_vm_mac: "52:54:00:00:00:10"
+
+github_runner_libvirt_user: libvirt-qemu
+github_runner_libvirt_group: kvm
+
+github_runner_admin_user: ansible
+github_runner_admin_ssh_public_key_path: >-
+  {{ lookup('env', 'HOME') }}/.ssh/id_ed25519.pub
+github_runner_ssh_host_key_alias: github-runner-vm-via-homeserver
+
+github_runner_install_dir: /opt/actions-runner
+github_runner_service_user_prefix: ghr
+github_runner_systemd_unit_prefix: github-actions-runner
+github_runner_work_dir: _work
+github_runner_labels:
+  - home
+  - debian
+  - x64

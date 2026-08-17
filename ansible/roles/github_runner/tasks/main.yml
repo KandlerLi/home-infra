@@ -1,5 +1,16 @@
-- name: Configure virtualization
-  ansible.builtin.import_tasks: virtualization.yml
+---
+- name: Validate GitHub runner role mode
+  ansible.builtin.assert:
+    that:
+      - github_runner_role_mode in ["provision_vm", "configure_guest"]
+    fail_msg: >-
+      github_runner_role_mode must be either provision_vm
+      or configure_guest.
 
-- name: Configure GitHub Actions runner VM
-  ansible.builtin.import_tasks: vm.yml
+- name: Provision GitHub runner virtual machine
+  ansible.builtin.import_tasks: provision_vm.yml
+  when: github_runner_role_mode == "provision_vm"
+
+- name: Configure GitHub Actions runner
+  ansible.builtin.import_tasks: configure_guest.yml
+  when: github_runner_role_mode == "configure_guest"

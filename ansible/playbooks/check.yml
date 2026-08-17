@@ -1,15 +1,15 @@
 ---
-- name: Home Server überprüfen
+- name: Check home server
   hosts: home_servers
   gather_facts: true
 
   tasks:
-    - name: Systeminformationen anzeigen
+    - name: Display system information
       ansible.builtin.debug:
         msg:
           - "Hostname: {{ ansible_facts['hostname'] }}"
-          - "Betriebssystem: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+          - "Operating system: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
           - "Kernel: {{ ansible_facts['kernel'] }}"
-          - "Architektur: {{ ansible_facts['architecture'] }}"
-          - "CPU-Kerne: {{ ansible_facts['processor_vcpus'] }}"
-          - "Arbeitsspeicher: {{ ansible_facts['memtotal_mb'] }} MB"
+          - "Architecture: {{ ansible_facts['architecture'] }}"
+          - "CPU cores: {{ ansible_facts['processor_vcpus'] }}"
+          - "Memory: {{ ansible_facts['memtotal_mb'] }} MB"
