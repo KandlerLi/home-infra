@@ -9,6 +9,7 @@
     - storage
     - docker
     - nextcloud_aio
+    - home_agent
 
 - name: Configure GitHub Actions runner
   ansible.builtin.import_playbook: github-runner.yml

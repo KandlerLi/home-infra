@@ -1,0 +1,40 @@
+[Unit]
+Description=Restricted read-only homeserver information service
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User={{ home_agent_tools_service_user }}
+Group={{ home_agent_tools_client_group }}
+SupplementaryGroups=docker
+RuntimeDirectory={{ home_agent_tools_socket_dir | basename }}
+RuntimeDirectoryMode=0750
+UMask=0007
+Environment=HOME_TOOLS_SOCKET={{ home_agent_tools_socket_path }}
+Environment=HOME_TOOLS_DOCKER_SOCKET={{ home_agent_tools_docker_socket_path }}
+Environment=HOME_TOOLS_FILESYSTEMS={{ home_agent_tools_filesystems | join(',') }}
+ExecStart=/usr/bin/python3 {{ home_agent_tools_install_dir }}/home_tools_service.py
+Restart=on-failure
+RestartSec=5s
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+---
+- name: Configure private homeserver agent
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: home_agent
+      home_agent_enabled: true

@@ -1,0 +1,217 @@
+---
+- name: Configure home agent
+  when: home_agent_enabled | bool
+  block:
+    - name: Validate home agent configuration
+      ansible.builtin.assert:
+        that:
+          - home_agent_openai_api_key | trim | length >= 20
+          - home_agent_openai_api_key | trim != "CHANGE_ME"
+          - home_agent_bind_address == "127.0.0.1"
+          - home_agent_port | int >= 1024
+          - home_agent_port | int <= 65535
+          - home_agent_tools_filesystems is sequence
+          - home_agent_tools_filesystems is not string
+          - home_agent_tools_filesystems | length > 0
+          - >-
+            home_agent_tools_socket_path | dirname
+            == home_agent_tools_socket_dir
+        fail_msg: >-
+          Configure home_agent_openai_api_key through SOPS and keep the
+          initial API bound to a loopback address.
+      no_log: true
+
+    - name: Check Docker group
+      ansible.builtin.getent:
+        database: group
+        key: docker
+
+    - name: Create home tools client group
+      ansible.builtin.group:
+        name: "{{ home_agent_tools_client_group }}"
+        system: true
+        state: present
+
+    - name: Create home tools service account
+      ansible.builtin.user:
+        name: "{{ home_agent_tools_service_user }}"
+        group: "{{ home_agent_tools_client_group }}"
+        groups:
+          - docker
+        append: true
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Create home agent container account
+      ansible.builtin.user:
+        name: "{{ home_agent_tools_container_user }}"
+        group: "{{ home_agent_tools_client_group }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Read home agent container account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ home_agent_tools_container_user }}"
+
+    - name: Read home tools client group
+      ansible.builtin.getent:
+        database: group
+        key: "{{ home_agent_tools_client_group }}"
+
+    - name: Record home agent runtime identity
+      ansible.builtin.set_fact:
+        home_agent_container_uid: >-
+          {{ ansible_facts.getent_passwd[home_agent_tools_container_user][1] }}
+        home_agent_container_gid: >-
+          {{ ansible_facts.getent_group[home_agent_tools_client_group][1] }}
+
+    - name: Create home tools installation directory
+      ansible.builtin.file:
+        path: "{{ home_agent_tools_install_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install restricted home tools service
+      ansible.builtin.copy:
+        src: home_tools_service.py
+        dest: "{{ home_agent_tools_install_dir }}/home_tools_service.py"
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart home tools
+
+    - name: Install home tools systemd unit
+      ansible.builtin.template:
+        src: home-tools.service.j2
+        dest: /etc/systemd/system/home-tools.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart home tools
+
+    - name: Apply home tools service changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Ensure home tools is enabled and running
+      ansible.builtin.systemd_service:
+        name: home-tools.service
+        enabled: true
+        state: started
+
+    - name: Wait for restricted home tools socket
+      ansible.builtin.wait_for:
+        path: "{{ home_agent_tools_socket_path }}"
+        state: present
+        timeout: 10
+
+    - name: Create home agent directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - path: "{{ home_agent_build_dir }}"
+          mode: "0755"
+        - path: "{{ home_agent_config_dir }}"
+          mode: "0750"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Install home agent build context
+      ansible.builtin.copy:
+        src: agent/
+        dest: "{{ home_agent_build_dir }}/"
+        owner: root
+        group: root
+        directory_mode: "0755"
+        mode: preserve
+      register: home_agent_application_files
+
+    - name: Install OpenAI API key file
+      ansible.builtin.copy:
+        content: "{{ home_agent_openai_api_key | trim }}\n"
+        dest: "{{ home_agent_openai_api_key_path }}"
+        owner: "{{ home_agent_tools_container_user }}"
+        group: root
+        mode: "0400"
+      no_log: true
+      register: home_agent_api_key_file
+
+    - name: Build home agent image
+      community.docker.docker_image:
+        name: "{{ home_agent_image_name }}"
+        tag: "{{ home_agent_image_tag }}"
+        source: build
+        force_source: "{{ home_agent_application_files.changed }}"
+        build:
+          path: "{{ home_agent_build_dir }}"
+          pull: true
+        state: present
+      register: home_agent_image
+
+    - name: Ensure home agent container is running
+      community.docker.docker_container:
+        name: "{{ home_agent_container_name }}"
+        image: "{{ home_agent_image_name }}:{{ home_agent_image_tag }}"
+        state: started
+        recreate: >-
+          {{ home_agent_image.changed or home_agent_api_key_file.changed }}
+        restart_policy: "{{ home_agent_restart_policy }}"
+        user: "{{ home_agent_container_uid }}:{{ home_agent_container_gid }}"
+        read_only: true
+        cap_drop:
+          - ALL
+        security_opts:
+          - no-new-privileges:true
+        memory: "{{ home_agent_memory_limit }}"
+        cpus: "{{ home_agent_cpu_limit }}"
+        pids_limit: "{{ home_agent_pids_limit }}"
+        published_ports:
+          - "{{ home_agent_bind_address }}:{{ home_agent_port }}:8000"
+        volumes:
+          - >-
+            {{ home_agent_tools_socket_dir }}:/run/home-tools:ro
+          - "{{ home_agent_openai_api_key_path }}:/run/secrets/openai_api_key:ro"
+        tmpfs:
+          - /tmp:rw,noexec,nosuid,nodev,size=16m
+        env:
+          HOME_AGENT_MODEL: "{{ home_agent_model }}"
+          HOME_TOOLS_SOCKET: /run/home-tools/home-tools.sock
+          OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+          PYTHONDONTWRITEBYTECODE: "1"
+        healthcheck:
+          test:
+            - CMD
+            - python
+            - -c
+            - >-
+              import urllib.request;
+              urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).read()
+          interval: 30s
+          timeout: 5s
+          retries: 3
+          start_period: 10s
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+
+    - name: Verify home agent API is ready
+      ansible.builtin.uri:
+        url: >-
+          http://{{ home_agent_bind_address }}:{{ home_agent_port }}/healthz
+        method: GET
+        return_content: false
+        status_code: 200
+      register: home_agent_health
+      retries: 10
+      delay: 2
+      until: home_agent_health.status == 200
+      when: not ansible_check_mode

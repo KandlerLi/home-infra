@@ -8,6 +8,7 @@ and an isolated GitHub Actions runner VM.
 - Base operating system packages
 - `/mnt/black-hdd` storage mount
 - Docker and Nextcloud AIO
+- Opt-in private homeserver health agent
 - KVM/QEMU and libvirt
 - Debian 13 GitHub Actions runner VM on a private NAT network
 
@@ -96,6 +97,58 @@ Edit the encrypted secret with the existing GPG key:
 
 ```bash
 sops ansible/inventory/group_vars/all/secrets.sops.yml
+```
+
+## Private homeserver agent
+
+The opt-in `home_agent` role installs two deliberately separate components:
+
+- `home-tools`, a hardened host systemd service that exposes only fixed,
+  read-only JSON checks over `/run/home-tools/home-tools.sock`
+- `home-agent`, an unprivileged Docker container that uses the OpenAI Responses
+  API and can call only those checks
+
+The model-facing container does not receive the Docker socket, shell access,
+root privileges, host environment variables, or write tools. Docker data is
+sanitized by `home-tools` to container name, image, state, and status. The
+agent API is published only on `127.0.0.1:8090`; do not expose it through a
+reverse proxy until authentication and HTTPS have been designed.
+
+Add the API key to the encrypted SOPS file:
+
+```yaml
+home_agent_openai_api_key: "sk-..."
+```
+
+Then deploy only the agent stack:
+
+```bash
+.venv/bin/ansible-playbook ansible/playbooks/home-agent.yml \
+  --ask-become-pass
+```
+
+The main `site.yml` includes the role but leaves it disabled by default, so
+existing infrastructure runs are unchanged until the dedicated playbook is
+used. The model defaults to `gpt-5.4-mini` and can be changed with
+`home_agent_model`.
+
+After deployment, make a local request from the homeserver:
+
+```bash
+curl --fail-with-body \
+  --header 'Content-Type: application/json' \
+  --data '{"message":"Check my homeserver."}' \
+  http://127.0.0.1:8090/v1/chat
+```
+
+Host data selected by the tools, including container names and health metrics,
+is sent to the configured cloud model when needed. No Nextcloud documents are
+indexed or sent by this milestone.
+
+Run the local unit tests with:
+
+```bash
+python3 -m unittest discover -s tests -v
 ```
 
 If the qcow2 disk and libvirt domain get out of sync, the runner role stops
