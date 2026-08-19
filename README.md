@@ -163,8 +163,9 @@ model. The existing `/healthz` and `/v1/chat` endpoints remain available.
 The opt-in `open_webui` role provides the prepared chat window for
 `ai.jkandler.de`. It is not enabled by ordinary `site.yml` runs. Open WebUI
 connects only to the restricted `home-agent` compatibility API over an
-isolated internal Docker network; it receives neither the real OpenAI key nor
-host access. The container publishes only `127.0.0.1:8091`.
+isolated, non-masqueraded Docker bridge; it receives neither the real OpenAI
+key nor host access. The bridge blocks external egress while still allowing
+the container to publish only `127.0.0.1:8091`.
 
 The role pins Open WebUI by version and image digest, drops all Linux
 capabilities, uses a non-login host identity, and disables uploads, workspace
@@ -173,7 +174,8 @@ community sharing. Chat and account state persists under
 `/var/lib/open-webui`. The image root filesystem must remain writable because
 the upstream startup script rewrites bundled static assets; this is a known
 residual risk, mitigated by the other container restrictions and isolated
-network.
+network. Offline and RAG-bypass settings prevent startup from attempting to
+download local embedding models.
 
 Deploy the private frontend without changing the public route:
 

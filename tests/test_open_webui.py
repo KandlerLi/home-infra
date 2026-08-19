@@ -32,6 +32,20 @@ class OpenWebUITests(unittest.TestCase):
         self.assertIn("home-agent-internal", (ROLE_ROOT / "defaults/main.yml").read_text())
         self.assertIn("home-agent-frontend", tasks)
 
+    def test_frontend_network_allows_loopback_publish_without_external_egress(self) -> None:
+        home_agent_tasks = (
+            PROJECT_ROOT / "ansible/roles/home_agent/tasks/main.yml"
+        ).read_text(encoding="utf-8")
+        open_webui_tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("internal: false", home_agent_tasks)
+        self.assertIn(
+            'com.docker.network.bridge.enable_ip_masquerade: "false"',
+            home_agent_tasks,
+        )
+        self.assertIn("home_agent_frontend_network_current.exists", home_agent_tasks)
+        self.assertIn("not open_webui_frontend_network.network.Internal", open_webui_tasks)
+
     def test_unneeded_execution_and_upload_features_are_disabled(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
@@ -46,6 +60,8 @@ class OpenWebUITests(unittest.TestCase):
             "USER_PERMISSIONS_CHAT_FILE_UPLOAD",
             "USER_PERMISSIONS_CHAT_WEB_UPLOAD",
             "USER_PERMISSIONS_CHAT_SYSTEM_PROMPT",
+            "RAG_EMBEDDING_MODEL_AUTO_UPDATE",
+            "RAG_RERANKING_MODEL_AUTO_UPDATE",
         ]
         for setting in disabled_settings:
             self.assertIn(f'{setting}: "False"', tasks)

@@ -157,12 +157,35 @@
         state: present
       register: home_agent_image
 
-    - name: Create isolated home agent frontend network
+    - name: Inspect home agent frontend network
+      community.docker.docker_network_info:
+        name: "{{ home_agent_frontend_network_name }}"
+      register: home_agent_frontend_network_current
+      when: home_agent_frontend_network_enabled | bool
+
+    - name: Create non-masqueraded home agent frontend network
       community.docker.docker_network:
         name: "{{ home_agent_frontend_network_name }}"
         driver: bridge
-        internal: true
+        internal: false
         enable_ipv6: false
+        driver_options:
+          com.docker.network.bridge.enable_ip_masquerade: "false"
+        force: >-
+          {{
+            home_agent_frontend_network_current.exists
+            and (
+              home_agent_frontend_network_current.network.Internal
+              | default(false)
+              or (
+                home_agent_frontend_network_current.network.Options
+                | default({})
+              ).get(
+                'com.docker.network.bridge.enable_ip_masquerade',
+                'true'
+              ) != 'false'
+            )
+          }}
         state: present
       when: home_agent_frontend_network_enabled | bool
 

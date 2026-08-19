@@ -20,18 +20,23 @@
           Keep Open WebUI pinned, loopback-only, and connected only to the
           restricted home-agent compatibility API.
 
-    - name: Inspect isolated home agent frontend network
+    - name: Inspect non-masqueraded home agent frontend network
       community.docker.docker_network_info:
         name: "{{ open_webui_frontend_network_name }}"
       register: open_webui_frontend_network
 
-    - name: Require isolated home agent frontend network
+    - name: Require non-masqueraded home agent frontend network
       ansible.builtin.assert:
         that:
           - open_webui_frontend_network.exists
-          - open_webui_frontend_network.network.Internal
+          - not open_webui_frontend_network.network.Internal
+          - >-
+            open_webui_frontend_network.network.Options[
+              'com.docker.network.bridge.enable_ip_masquerade'
+            ] == 'false'
         fail_msg: >-
-          Deploy home-agent with its frontend network enabled before Open WebUI.
+          Deploy home-agent with its non-masqueraded frontend network enabled
+          before Open WebUI.
 
     - name: Create Open WebUI container account
       ansible.builtin.user:
@@ -113,6 +118,14 @@
           ENABLE_OPENAI_API: "True"
           OPENAI_API_BASE_URL: "{{ open_webui_provider_base_url }}"
           OPENAI_API_KEY: "{{ open_webui_provider_placeholder_key }}"
+          OFFLINE_MODE: "True"
+          ENABLE_VERSION_UPDATE_CHECK: "False"
+          RAG_EMBEDDING_ENGINE: openai
+          RAG_OPENAI_API_BASE_URL: "{{ open_webui_provider_base_url }}"
+          RAG_OPENAI_API_KEY: "{{ open_webui_provider_placeholder_key }}"
+          BYPASS_EMBEDDING_AND_RETRIEVAL: "True"
+          RAG_EMBEDDING_MODEL_AUTO_UPDATE: "False"
+          RAG_RERANKING_MODEL_AUTO_UPDATE: "False"
           DEFAULT_MODELS: "{{ open_webui_provider_model }}"
           DEFAULT_PINNED_MODELS: "{{ open_webui_provider_model }}"
           ENABLE_TITLE_GENERATION: "False"
@@ -168,7 +181,7 @@
         return_content: true
         status_code: 200
       register: open_webui_health
-      retries: 30
+      retries: 90
       delay: 2
       until:
         - open_webui_health.status == 200
