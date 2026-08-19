@@ -9,6 +9,7 @@ and an isolated GitHub Actions runner VM.
 - `/mnt/black-hdd` storage mount
 - Docker and Nextcloud AIO
 - Opt-in private homeserver health agent
+- Opt-in Open WebUI chat frontend for the restricted agent
 - Opt-in shared Traefik ingress for Nextcloud and the agent
 - KVM/QEMU and libvirt
 - Debian 13 GitHub Actions runner VM on a private NAT network
@@ -151,6 +152,44 @@ curl --fail-with-body \
 Host data selected by the tools, including container names and health metrics,
 is sent to the configured cloud model when needed. No Nextcloud documents are
 indexed or sent by this milestone.
+
+The agent also exposes an OpenAI-compatible API on its container port. This
+compatibility layer accepts bounded conversation history, ignores caller
+system/developer messages, and advertises only the synthetic `home-agent`
+model. The existing `/healthz` and `/v1/chat` endpoints remain available.
+
+## Open WebUI frontend
+
+The opt-in `open_webui` role provides the prepared chat window for
+`ai.jkandler.de`. It is not enabled by ordinary `site.yml` runs. Open WebUI
+connects only to the restricted `home-agent` compatibility API over an
+isolated internal Docker network; it receives neither the real OpenAI key nor
+host access. The container publishes only `127.0.0.1:8091`.
+
+The role pins Open WebUI by version and image digest, drops all Linux
+capabilities, uses a non-login host identity, and disables uploads, workspace
+tools, plugins, code execution, web search, image generation, API keys, and
+community sharing. Chat and account state persists under
+`/var/lib/open-webui`. The image root filesystem must remain writable because
+the upstream startup script rewrites bundled static assets; this is a known
+residual risk, mitigated by the other container restrictions and isolated
+network.
+
+Deploy the private frontend without changing the public route:
+
+```bash
+.venv/bin/ansible-playbook ansible/playbooks/open-webui.yml \
+  --ask-become-pass
+```
+
+Create the first Open WebUI administrator through an SSH tunnel, validate a
+chat, and only then run the separately guarded publication playbook. It
+requires the exact confirmation `PUBLISH_OPEN_WEBUI`. The rollback playbook
+requires `ROLL_BACK_OPEN_WEBUI` and restores the existing direct agent API
+route. Follow the documentation repository's Open WebUI runbook before either
+operation. The UI route uses Open WebUI authentication because its Bearer
+token and HTTP Basic Auth cannot share one `Authorization` header. The retained
+direct `/healthz` and `/v1/chat` routes continue to require Basic Auth.
 
 ## Shared HTTPS ingress
 

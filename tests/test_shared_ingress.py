@@ -40,6 +40,30 @@ class SharedIngressTests(unittest.TestCase):
         self.assertIn("agent-security-headers", dynamic)
         self.assertIn("certResolver: letsencrypt", dynamic)
 
+    def test_open_webui_route_preserves_the_bounded_legacy_api(self) -> None:
+        dynamic = (ROLE_ROOT / "templates/dynamic.yml.j2").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("home-agent-api:", dynamic)
+        self.assertIn("Path(`/healthz`)", dynamic)
+        self.assertIn("Path(`/v1/chat`)", dynamic)
+        self.assertIn("open-webui:", dynamic)
+        self.assertIn("priority: 100", dynamic)
+        self.assertIn("open-webui-chain", dynamic)
+        self.assertIn("open-webui-request-limit", dynamic)
+        open_webui_chain = dynamic.split("open-webui-chain:", 1)[1]
+        self.assertNotIn("agent-auth", open_webui_chain)
+
+    def test_initial_open_webui_publication_requires_confirmation(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        publish_playbook = (
+            PROJECT_ROOT / "ansible/playbooks/publish-open-webui.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("PUBLISH_OPEN_WEBUI", tasks)
+        self.assertIn("open_webui_publish_confirmation", publish_playbook)
+
     def test_cutover_has_a_human_confirmation_sentinel(self) -> None:
         nextcloud_tasks = (
             PROJECT_ROOT / "ansible/roles/nextcloud_aio/tasks/main.yml"

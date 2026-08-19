@@ -67,8 +67,11 @@ class OpenAIResponsesProvider:
         self.max_tool_rounds = max_tool_rounds
         self.max_tool_calls = max_tool_calls
 
-    def respond(self, message: str) -> str:
-        input_items: list[Any] = [{"role": "user", "content": message}]
+    def respond(self, messages: str | list[dict[str, str]]) -> str:
+        if isinstance(messages, str):
+            input_items: list[Any] = [{"role": "user", "content": messages}]
+        else:
+            input_items = [dict(message) for message in messages]
         tool_call_count = 0
 
         for round_number in range(self.max_tool_rounds + 1):

@@ -10,6 +10,30 @@ http:
       tls:
         certResolver: letsencrypt
 {% if shared_ingress_agent_enabled | bool %}
+{% if shared_ingress_open_webui_enabled | bool %}
+    home-agent-api:
+      rule: >-
+        Host(`{{ shared_ingress_agent_domain }}`)
+        && (Path(`/healthz`) || Path(`/v1/chat`))
+      priority: 100
+      entryPoints:
+        - websecure
+      service: home-agent
+      middlewares:
+        - agent-chain
+      tls:
+        certResolver: letsencrypt
+    open-webui:
+      rule: "Host(`{{ shared_ingress_agent_domain }}`)"
+      priority: 10
+      entryPoints:
+        - websecure
+      service: open-webui
+      middlewares:
+        - open-webui-chain
+      tls:
+        certResolver: letsencrypt
+{% else %}
     home-agent:
       rule: "Host(`{{ shared_ingress_agent_domain }}`)"
       entryPoints:
@@ -19,6 +43,7 @@ http:
         - agent-chain
       tls:
         certResolver: letsencrypt
+{% endif %}
 {% endif %}
 
   services:
@@ -33,6 +58,13 @@ http:
         passHostHeader: true
         servers:
           - url: "{{ shared_ingress_agent_upstream }}"
+{% if shared_ingress_open_webui_enabled | bool %}
+    open-webui:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "{{ shared_ingress_open_webui_upstream }}"
+{% endif %}
 {% endif %}
 
   middlewares:
@@ -77,4 +109,21 @@ http:
           - agent-rate-limit
           - agent-request-limit
           - agent-security-headers
+{% if shared_ingress_open_webui_enabled | bool %}
+    open-webui-rate-limit:
+      rateLimit:
+        average: {{ shared_ingress_open_webui_rate_average }}
+        period: {{ shared_ingress_open_webui_rate_period }}
+        burst: {{ shared_ingress_open_webui_rate_burst }}
+    open-webui-request-limit:
+      buffering:
+        maxRequestBodyBytes: {{ shared_ingress_open_webui_max_request_body_bytes }}
+        memRequestBodyBytes: {{ shared_ingress_open_webui_max_request_body_bytes }}
+    open-webui-chain:
+      chain:
+        middlewares:
+          - open-webui-rate-limit
+          - open-webui-request-limit
+          - agent-security-headers
+{% endif %}
 {% endif %}

@@ -16,6 +16,15 @@
           - shared_ingress_agent_rate_average | int > 0
           - shared_ingress_agent_rate_burst | int > 0
           - >-
+            not shared_ingress_open_webui_enabled | bool
+            or shared_ingress_agent_enabled | bool
+          - >-
+            shared_ingress_open_webui_upstream == "http://127.0.0.1:8091"
+          - shared_ingress_open_webui_rate_average | int > 0
+          - shared_ingress_open_webui_rate_burst | int > 0
+          - >-
+            shared_ingress_open_webui_max_request_body_bytes | int <= 1048576
+          - >-
             not shared_ingress_agent_enabled | bool
             or shared_ingress_agent_auth_username | length > 0
           - >-
@@ -25,6 +34,45 @@
           Configure the ACME and agent authentication values before enabling
           public agent routing. Keep both upstreams bound to host loopback.
       no_log: true
+
+    - name: Inspect current shared ingress routes
+      ansible.builtin.slurp:
+        path: "{{ shared_ingress_config_dir }}/dynamic/routes.yml"
+      register: shared_ingress_current_routes
+      failed_when: false
+      changed_when: false
+      when: shared_ingress_open_webui_enabled | bool
+
+    - name: Require confirmation for initial Open WebUI publication
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              shared_ingress_current_routes.content | default('')
+              | b64decode
+            ) is search('service: open-webui')
+            or shared_ingress_open_webui_publish_confirmation
+               == "PUBLISH_OPEN_WEBUI"
+        fail_msg: >-
+          Pass open_webui_publish_confirmation=PUBLISH_OPEN_WEBUI only after
+          the loopback UI, admin login, and home-agent chat have been tested.
+      when: shared_ingress_open_webui_enabled | bool
+
+    - name: Verify Open WebUI before publishing it
+      ansible.builtin.uri:
+        url: "{{ shared_ingress_open_webui_upstream }}/health"
+        method: GET
+        return_content: true
+        status_code: 200
+      register: shared_ingress_open_webui_health
+      retries: 10
+      delay: 2
+      until:
+        - shared_ingress_open_webui_health.status == 200
+        - shared_ingress_open_webui_health.json.status | default(false) | bool
+      when:
+        - shared_ingress_open_webui_enabled | bool
+        - not ansible_check_mode
 
     - name: Create shared ingress directories
       ansible.builtin.file:

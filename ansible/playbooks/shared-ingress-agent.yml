@@ -9,5 +9,6 @@
       shared_ingress_enabled: true
       shared_ingress_start: true
       shared_ingress_agent_enabled: true
+      shared_ingress_open_webui_enabled: false
       shared_ingress_cutover_confirmation: >-
         {{ ingress_cutover_confirmation | default('') }}

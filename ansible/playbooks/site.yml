@@ -10,6 +10,7 @@
     - docker
     - nextcloud_aio
     - home_agent
+    - open_webui
     - shared_ingress
 
 - name: Configure GitHub Actions runner

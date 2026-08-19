@@ -1,0 +1,14 @@
+---
+- name: Publish Open WebUI through existing shared ingress
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: shared_ingress
+      shared_ingress_enabled: true
+      shared_ingress_start: true
+      shared_ingress_agent_enabled: true
+      shared_ingress_open_webui_enabled: true
+      shared_ingress_open_webui_publish_confirmation: >-
+        {{ open_webui_publish_confirmation | default('') }}
