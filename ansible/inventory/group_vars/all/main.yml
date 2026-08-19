@@ -5,3 +5,6 @@ github_runner_github_repositories:
     repository: "dyndns"
 
 shared_ingress_acme_email: "julian.kandler@outlook.com"
+nextcloud_aio_reverse_proxy_enabled: true
+shared_ingress_enabled: true
+shared_ingress_start: true
