@@ -9,6 +9,7 @@ and an isolated GitHub Actions runner VM.
 - `/mnt/black-hdd` storage mount
 - Docker and Nextcloud AIO
 - Opt-in private homeserver health agent
+- Opt-in shared Traefik ingress for Nextcloud and the agent
 - KVM/QEMU and libvirt
 - Debian 13 GitHub Actions runner VM on a private NAT network
 
@@ -111,8 +112,8 @@ The opt-in `home_agent` role installs two deliberately separate components:
 The model-facing container does not receive the Docker socket, shell access,
 root privileges, host environment variables, or write tools. Docker data is
 sanitized by `home-tools` to container name, image, state, and status. The
-agent API is published only on `127.0.0.1:8090`; do not expose it through a
-reverse proxy until authentication and HTTPS have been designed.
+agent API is published only on `127.0.0.1:8090` unless the guarded shared
+ingress migration is deliberately completed.
 
 Add the API key to the encrypted SOPS file:
 
@@ -144,6 +145,39 @@ curl --fail-with-body \
 Host data selected by the tools, including container names and health metrics,
 is sent to the configured cloud model when needed. No Nextcloud documents are
 indexed or sent by this milestone.
+
+## Shared HTTPS ingress
+
+The opt-in `shared_ingress` role prepares a pinned Traefik container using
+file-based routing. It receives no Docker socket and provides automatic TLS,
+Basic Auth, rate limiting, request-size limits, and security headers for
+`ai.jkandler.de`. Nextcloud remains unauthenticated by Traefik and is routed by
+its existing hostname, `nextcloud.jkandler.de`.
+
+Preparation does not start Traefik or change production ports:
+
+```bash
+.venv/bin/ansible-playbook \
+  ansible/playbooks/shared-ingress-prepare.yml \
+  --ask-become-pass
+```
+
+The cutover is intentionally guarded. It refuses to run while
+`nextcloud-aio-apache` is active and requires the exact extra-variable
+confirmation `MIGRATE_NEXTCLOUD_INGRESS`. Follow the dedicated documentation
+runbook before invoking `ansible/playbooks/shared-ingress.yml`; the migration
+moves Nextcloud Apache to `127.0.0.1:11000` and transfers public ports 80/443
+to Traefik.
+
+The main `site.yml` keeps `shared_ingress` disabled by default. Do not create
+the `ai.jkandler.de` DNS record or run the cutover until authentication,
+ACME email, backups, and rollback steps have been verified.
+
+After a successful Nextcloud cutover, persist the reverse-proxy and shared
+ingress enable flags in group variables before the next normal `site.yml` run.
+Use `shared-ingress-agent.yml` only after the agent DNS record resolves, and
+use the separately guarded `shared-ingress-rollback.yml` if Nextcloud
+validation fails.
 
 Run the local unit tests with:
 

@@ -1,3 +1,81 @@
+---
+- name: Read Nextcloud AIO master container state
+  community.docker.docker_container_info:
+    name: "{{ nextcloud_aio_container_name }}"
+  register: nextcloud_aio_master_info
+
+- name: Record current Nextcloud AIO ingress mode
+  ansible.builtin.set_fact:
+    nextcloud_aio_current_reverse_proxy: >-
+      {{ nextcloud_aio_master_info.exists
+         and 'APACHE_PORT=' ~ (nextcloud_aio_apache_port | string)
+             in nextcloud_aio_master_info.container.Config.Env
+         and 'APACHE_IP_BINDING=' ~ nextcloud_aio_apache_ip_binding
+             in nextcloud_aio_master_info.container.Config.Env }}
+
+- name: Prevent an implicit reverse proxy rollback
+  ansible.builtin.assert:
+    that:
+      - >-
+        not nextcloud_aio_current_reverse_proxy
+        or nextcloud_aio_reverse_proxy_enabled | bool
+        or nextcloud_aio_reverse_proxy_rollback | bool
+    fail_msg: >-
+      The live AIO master is in reverse-proxy mode, but the desired state is
+      direct ingress. Persist nextcloud_aio_reverse_proxy_enabled=true after a
+      successful cutover, or use the guarded rollback playbook.
+
+- name: Validate reverse proxy transition prerequisites
+  when: >-
+    (nextcloud_aio_reverse_proxy_enabled | bool
+     and not nextcloud_aio_current_reverse_proxy)
+    or (nextcloud_aio_reverse_proxy_rollback | bool
+        and nextcloud_aio_current_reverse_proxy)
+  block:
+    - name: Require explicit ingress cutover confirmation
+      ansible.builtin.assert:
+        that:
+          - >-
+            nextcloud_aio_ingress_cutover_confirmation
+            == (
+              nextcloud_aio_reverse_proxy_enabled
+              | ternary(
+                  "MIGRATE_NEXTCLOUD_INGRESS",
+                  "ROLLBACK_NEXTCLOUD_INGRESS"
+                )
+            )
+          - >-
+            not (
+              nextcloud_aio_reverse_proxy_enabled | bool
+              and nextcloud_aio_reverse_proxy_rollback | bool
+            )
+          - >-
+            not nextcloud_aio_reverse_proxy_enabled | bool
+            or nextcloud_aio_apache_port | int == 11000
+          - >-
+            not nextcloud_aio_reverse_proxy_enabled | bool
+            or nextcloud_aio_apache_ip_binding == "127.0.0.1"
+          - not nextcloud_aio_skip_domain_validation | bool
+        fail_msg: >-
+          Stop the AIO application containers through the AIO interface and
+          pass the documented migration or rollback confirmation only during
+          the reviewed maintenance window.
+
+    - name: Read Nextcloud AIO Apache container state
+      community.docker.docker_container_info:
+        name: nextcloud-aio-apache
+      register: nextcloud_aio_apache_info
+
+    - name: Require AIO Apache to be stopped before changing ingress
+      ansible.builtin.assert:
+        that:
+          - >-
+            not nextcloud_aio_apache_info.exists
+            or not nextcloud_aio_apache_info.container.State.Running
+        fail_msg: >-
+          nextcloud-aio-apache is still running. Stop all application
+          containers through the AIO interface before the cutover.
+
 - name: Ensure AIO configuration volume exists
   community.docker.docker_volume:
     name: "{{ nextcloud_aio_config_volume }}"
@@ -11,9 +89,33 @@
     restart_policy: "{{ nextcloud_aio_restart_policy }}"
     init: true
     network_mode: bridge
-    published_ports: "{{ nextcloud_aio_ports }}"
+    published_ports: >-
+      {{ nextcloud_aio_reverse_proxy_enabled
+         | ternary(nextcloud_aio_reverse_proxy_ports, nextcloud_aio_ports) }}
+    comparisons:
+      published_ports: strict
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "{{ nextcloud_aio_config_volume }}:/mnt/docker-aio-config"
-    env:
-      NEXTCLOUD_DATADIR: "{{ nextcloud_aio_data_dir }}"
+    env: >-
+      {{ {'NEXTCLOUD_DATADIR': nextcloud_aio_data_dir}
+         | combine(
+             nextcloud_aio_reverse_proxy_enabled
+             | ternary(
+                 {
+                   'APACHE_PORT': nextcloud_aio_apache_port | string,
+                   'APACHE_IP_BINDING': nextcloud_aio_apache_ip_binding,
+                   'SKIP_DOMAIN_VALIDATION':
+                     nextcloud_aio_skip_domain_validation | string | lower
+                 },
+                 nextcloud_aio_reverse_proxy_rollback
+                 | ternary(
+                     {
+                       'APACHE_PORT': '443',
+                       'APACHE_IP_BINDING': '0.0.0.0',
+                       'SKIP_DOMAIN_VALIDATION': 'false'
+                     },
+                     {}
+                   )
+               )
+           ) }}

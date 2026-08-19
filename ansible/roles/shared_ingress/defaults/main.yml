@@ -1,0 +1,31 @@
+---
+shared_ingress_enabled: false
+shared_ingress_start: false
+shared_ingress_cutover_confirmation: ""
+
+shared_ingress_container_name: shared-ingress
+shared_ingress_image: traefik:v3.7.1
+shared_ingress_restart_policy: unless-stopped
+shared_ingress_config_dir: /etc/shared-ingress
+shared_ingress_state_dir: /var/lib/shared-ingress
+shared_ingress_acme_email: ""
+
+shared_ingress_nextcloud_domain: nextcloud.jkandler.de
+shared_ingress_nextcloud_upstream: http://127.0.0.1:11000
+shared_ingress_nextcloud_read_timeout: 3610s
+
+shared_ingress_agent_enabled: false
+shared_ingress_agent_domain: ai.jkandler.de
+shared_ingress_agent_upstream: http://127.0.0.1:8090
+shared_ingress_agent_auth_username: julian
+shared_ingress_agent_auth_password_hash: ""
+shared_ingress_agent_rate_average: 10
+shared_ingress_agent_rate_period: 1m
+shared_ingress_agent_rate_burst: 5
+shared_ingress_agent_max_request_body_bytes: 16384
+
+shared_ingress_health_address: 127.0.0.1
+shared_ingress_health_port: 8082
+shared_ingress_memory_limit: 256M
+shared_ingress_cpu_limit: 0.5
+shared_ingress_pids_limit: 128

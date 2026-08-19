@@ -1,0 +1,43 @@
+---
+- name: Roll back to direct Nextcloud AIO ingress
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Require explicit ingress rollback confirmation
+      ansible.builtin.assert:
+        that:
+          - >-
+            ingress_cutover_confirmation | default('')
+            == "ROLLBACK_NEXTCLOUD_INGRESS"
+        fail_msg: >-
+          Stop the AIO application containers and pass
+          ingress_cutover_confirmation=ROLLBACK_NEXTCLOUD_INGRESS only during
+          a reviewed rollback.
+
+    - name: Read Nextcloud AIO Apache state before rollback
+      community.docker.docker_container_info:
+        name: nextcloud-aio-apache
+      register: shared_ingress_rollback_apache
+
+    - name: Require AIO Apache to be stopped before rollback
+      ansible.builtin.assert:
+        that:
+          - >-
+            not shared_ingress_rollback_apache.exists
+            or not shared_ingress_rollback_apache.container.State.Running
+        fail_msg: >-
+          Stop all application containers through the AIO interface before
+          rolling back the ingress.
+
+    - name: Stop shared ingress container
+      community.docker.docker_container:
+        name: shared-ingress
+        state: stopped
+
+  roles:
+    - role: nextcloud_aio
+      nextcloud_aio_reverse_proxy_rollback: true
+      nextcloud_aio_ingress_cutover_confirmation: >-
+        {{ ingress_cutover_confirmation | default('') }}

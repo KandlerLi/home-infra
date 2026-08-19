@@ -1,0 +1,80 @@
+http:
+  routers:
+    nextcloud:
+      rule: "Host(`{{ shared_ingress_nextcloud_domain }}`)"
+      entryPoints:
+        - websecure
+      service: nextcloud
+      middlewares:
+        - nextcloud-chain
+      tls:
+        certResolver: letsencrypt
+{% if shared_ingress_agent_enabled | bool %}
+    home-agent:
+      rule: "Host(`{{ shared_ingress_agent_domain }}`)"
+      entryPoints:
+        - websecure
+      service: home-agent
+      middlewares:
+        - agent-chain
+      tls:
+        certResolver: letsencrypt
+{% endif %}
+
+  services:
+    nextcloud:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "{{ shared_ingress_nextcloud_upstream }}"
+{% if shared_ingress_agent_enabled | bool %}
+    home-agent:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "{{ shared_ingress_agent_upstream }}"
+{% endif %}
+
+  middlewares:
+    nextcloud-secure-headers:
+      headers:
+        hostsProxyHeaders:
+          - X-Forwarded-Host
+        referrerPolicy: same-origin
+        customRequestHeaders:
+          X-Forwarded-Proto: https
+    nextcloud-chain:
+      chain:
+        middlewares:
+          - nextcloud-secure-headers
+{% if shared_ingress_agent_enabled | bool %}
+    agent-auth:
+      basicAuth:
+        usersFile: /etc/traefik/users
+        realm: Home Infrastructure
+        removeHeader: true
+    agent-rate-limit:
+      rateLimit:
+        average: {{ shared_ingress_agent_rate_average }}
+        period: {{ shared_ingress_agent_rate_period }}
+        burst: {{ shared_ingress_agent_rate_burst }}
+    agent-request-limit:
+      buffering:
+        maxRequestBodyBytes: {{ shared_ingress_agent_max_request_body_bytes }}
+        memRequestBodyBytes: {{ shared_ingress_agent_max_request_body_bytes }}
+    agent-security-headers:
+      headers:
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: no-referrer
+        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
+        stsSeconds: 31536000
+        stsIncludeSubdomains: false
+    agent-chain:
+      chain:
+        middlewares:
+          - agent-auth
+          - agent-rate-limit
+          - agent-request-limit
+          - agent-security-headers
+{% endif %}

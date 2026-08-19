@@ -10,6 +10,7 @@
     - docker
     - nextcloud_aio
     - home_agent
+    - shared_ingress
 
 - name: Configure GitHub Actions runner
   ansible.builtin.import_playbook: github-runner.yml

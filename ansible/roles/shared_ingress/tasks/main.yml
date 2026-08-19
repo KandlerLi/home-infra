@@ -1,0 +1,206 @@
+---
+- name: Configure shared ingress
+  when: shared_ingress_enabled | bool
+  block:
+    - name: Validate shared ingress configuration
+      ansible.builtin.assert:
+        that:
+          - shared_ingress_image == "traefik:v3.7.1"
+          - shared_ingress_nextcloud_domain | length > 3
+          - shared_ingress_nextcloud_upstream == "http://127.0.0.1:11000"
+          - shared_ingress_agent_domain | length > 3
+          - shared_ingress_agent_upstream == "http://127.0.0.1:8090"
+          - shared_ingress_health_address == "127.0.0.1"
+          - shared_ingress_health_port | int >= 1024
+          - shared_ingress_agent_max_request_body_bytes | int <= 16384
+          - shared_ingress_agent_rate_average | int > 0
+          - shared_ingress_agent_rate_burst | int > 0
+          - >-
+            not shared_ingress_agent_enabled | bool
+            or shared_ingress_agent_auth_username | length > 0
+          - >-
+            not shared_ingress_agent_enabled | bool
+            or shared_ingress_agent_auth_password_hash | length >= 20
+        fail_msg: >-
+          Configure the ACME and agent authentication values before enabling
+          public agent routing. Keep both upstreams bound to host loopback.
+      no_log: true
+
+    - name: Create shared ingress directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - path: "{{ shared_ingress_config_dir }}"
+          mode: "0750"
+        - path: "{{ shared_ingress_config_dir }}/dynamic"
+          mode: "0750"
+        - path: "{{ shared_ingress_state_dir }}"
+          mode: "0700"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Check ACME state file
+      ansible.builtin.stat:
+        path: "{{ shared_ingress_state_dir }}/acme.json"
+      register: shared_ingress_acme_state
+
+    - name: Initialise ACME state file
+      ansible.builtin.copy:
+        content: "{}\n"
+        dest: "{{ shared_ingress_state_dir }}/acme.json"
+        owner: root
+        group: root
+        mode: "0600"
+      when: not shared_ingress_acme_state.stat.exists
+
+    - name: Install Traefik static configuration
+      ansible.builtin.template:
+        src: traefik.yml.j2
+        dest: "{{ shared_ingress_config_dir }}/traefik.yml"
+        owner: root
+        group: root
+        mode: "0640"
+      register: shared_ingress_static_config
+
+    - name: Install Traefik dynamic configuration
+      ansible.builtin.template:
+        src: dynamic.yml.j2
+        dest: "{{ shared_ingress_config_dir }}/dynamic/routes.yml"
+        owner: root
+        group: root
+        mode: "0640"
+      register: shared_ingress_dynamic_config
+
+    - name: Install agent authentication file
+      ansible.builtin.template:
+        src: users.j2
+        dest: "{{ shared_ingress_config_dir }}/users"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      register: shared_ingress_users_file
+      when: shared_ingress_agent_enabled | bool
+
+    - name: Pull pinned Traefik image
+      community.docker.docker_image:
+        name: "{{ shared_ingress_image }}"
+        source: pull
+        state: present
+
+    - name: Validate Traefik configuration
+      ansible.builtin.command:
+        argv:
+          - timeout
+          - --signal=TERM
+          - 5s
+          - docker
+          - run
+          - --rm
+          - --network
+          - none
+          - --volume
+          - "{{ shared_ingress_config_dir }}:/etc/traefik:ro"
+          - --tmpfs
+          - /letsencrypt:rw,noexec,nosuid,nodev,size=1m
+          - "{{ shared_ingress_image }}"
+          - --configFile=/etc/traefik/traefik.yml
+      register: shared_ingress_config_validation
+      changed_when: false
+      failed_when: shared_ingress_config_validation.rc not in [0, 124]
+      when: not ansible_check_mode
+
+    - name: Start shared ingress during confirmed cutover
+      when: shared_ingress_start | bool
+      block:
+        - name: Read existing shared ingress container state
+          community.docker.docker_container_info:
+            name: "{{ shared_ingress_container_name }}"
+          register: shared_ingress_container_info
+
+        - name: Validate shared ingress start prerequisites
+          ansible.builtin.assert:
+            that:
+              - >-
+                (
+                  shared_ingress_container_info.exists
+                  and shared_ingress_container_info.container.State.Running
+                )
+                or shared_ingress_cutover_confirmation
+                   == "MIGRATE_NEXTCLOUD_INGRESS"
+              - shared_ingress_acme_email | length > 5
+            fail_msg: >-
+              Set the ACME email and pass
+              ingress_cutover_confirmation=MIGRATE_NEXTCLOUD_INGRESS only in
+              the reviewed maintenance window.
+
+        - name: Require public HTTP and HTTPS ports to be free
+          ansible.builtin.wait_for:
+            host: 127.0.0.1
+            port: "{{ item }}"
+            state: stopped
+            timeout: 2
+          loop:
+            - 80
+            - 443
+          when: >-
+            not shared_ingress_container_info.exists
+            or not shared_ingress_container_info.container.State.Running
+
+        - name: Ensure shared ingress container is running
+          community.docker.docker_container:
+            name: "{{ shared_ingress_container_name }}"
+            image: "{{ shared_ingress_image }}"
+            state: started
+            recreate: >-
+              {{ shared_ingress_static_config.changed
+                 or shared_ingress_dynamic_config.changed
+                 or shared_ingress_users_file.changed | default(false) }}
+            restart_policy: "{{ shared_ingress_restart_policy }}"
+            network_mode: host
+            read_only: true
+            cap_drop:
+              - ALL
+            cap_add:
+              - NET_BIND_SERVICE
+            security_opts:
+              - no-new-privileges:true
+            memory: "{{ shared_ingress_memory_limit }}"
+            cpus: "{{ shared_ingress_cpu_limit }}"
+            pids_limit: "{{ shared_ingress_pids_limit }}"
+            volumes:
+              - "{{ shared_ingress_config_dir }}:/etc/traefik:ro"
+              - "{{ shared_ingress_state_dir }}:/letsencrypt"
+            tmpfs:
+              - /tmp:rw,noexec,nosuid,nodev,size=16m
+            command:
+              - --configFile=/etc/traefik/traefik.yml
+            healthcheck:
+              test:
+                - CMD
+                - traefik
+                - healthcheck
+                - --ping
+              interval: 30s
+              timeout: 5s
+              retries: 3
+              start_period: 10s
+            log_driver: json-file
+            log_options:
+              max-size: 10m
+              max-file: "3"
+
+        - name: Verify shared ingress health endpoint
+          ansible.builtin.uri:
+            url: "http://{{ shared_ingress_health_address }}:{{ shared_ingress_health_port }}/ping"
+            method: GET
+            status_code: 200
+          register: shared_ingress_health
+          retries: 10
+          delay: 2
+          until: shared_ingress_health.status == 200
+          when: not ansible_check_mode

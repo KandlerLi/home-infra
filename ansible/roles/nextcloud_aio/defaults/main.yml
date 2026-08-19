@@ -12,3 +12,13 @@ nextcloud_aio_ports:
   - "80:80"
   - "8080:8080"
   - "8443:8443"
+
+nextcloud_aio_reverse_proxy_enabled: false
+nextcloud_aio_reverse_proxy_rollback: false
+nextcloud_aio_reverse_proxy_ports:
+  - "8080:8080"
+  - "8443:8443"
+nextcloud_aio_apache_port: 11000
+nextcloud_aio_apache_ip_binding: 127.0.0.1
+nextcloud_aio_skip_domain_validation: false
+nextcloud_aio_ingress_cutover_confirmation: ""
