@@ -185,6 +185,36 @@ Run the local unit tests with:
 python3 -m unittest discover -s tests -v
 ```
 
+## Hardware maintenance shutdown
+
+The guarded shutdown helper stops the Nextcloud AIO application containers,
+verifies that they are down, flushes filesystem buffers, and powers off the
+host. It refuses to continue if `/mnt/black-hdd` is not mounted or a libvirt VM
+is running. It does not create a backup; verify a suitable backup separately.
+
+Copy the script to the homeserver and run its read-only check from the
+controller:
+
+```bash
+scp scripts/shutdown-homeserver-for-maintenance.sh \
+  julian@192.168.178.100:/tmp/
+
+ssh -t julian@192.168.178.100 \
+  'sudo bash /tmp/shutdown-homeserver-for-maintenance.sh --check'
+```
+
+When ready for the outage, run it without `--check` and type `POWER OFF` at
+the prompt:
+
+```bash
+ssh -t julian@192.168.178.100 \
+  'sudo bash /tmp/shutdown-homeserver-for-maintenance.sh'
+```
+
+Wait for the host to turn off completely before disconnecting power. After the
+hardware work, verify the detected memory, failed units, containers, and the
+public Nextcloud status.
+
 If the qcow2 disk and libvirt domain get out of sync, the runner role stops
 with a recovery message. Inspect and archive or restore the orphaned resource
 manually before rerunning; normal automation intentionally uses neither
