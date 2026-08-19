@@ -3,3 +3,5 @@ github_runner_github_owner: "KandlerLi"
 github_runner_github_repositories:
   - id: "dyndns"
     repository: "dyndns"
+
+shared_ingress_acme_email: "julian.kandler@outlook.com"
