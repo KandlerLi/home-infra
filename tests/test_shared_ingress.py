@@ -26,6 +26,8 @@ class SharedIngressTests(unittest.TestCase):
         self.assertIn("no-new-privileges:true", tasks)
         self.assertIn("NET_BIND_SERVICE", tasks)
         self.assertIn("- ALL", tasks)
+        self.assertIn("capabilities:", tasks)
+        self.assertNotIn("cap_add:", tasks)
 
     def test_agent_route_requires_auth_and_resource_limits(self) -> None:
         dynamic = (ROLE_ROOT / "templates/dynamic.yml.j2").read_text(
