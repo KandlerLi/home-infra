@@ -24,6 +24,12 @@ read-only image attached makes first-boot identity, SSH, and network setup
 independent of virt-install's temporary cloud-init media lifecycle. It
 contains the controller's public SSH key, but no GitHub token.
 
+## Current physical host
+
+The managed host is a Fujitsu ESPRIMO P900 with an Intel Core i5-2400 and
+16 GiB DDR3 RAM. After the 2026-08-19 memory upgrade, Debian reported all
+16 GiB online and approximately 15.5 GiB usable after hardware reservations.
+
 ## Prerequisites
 
 Create a Python virtual environment and install the dependencies:
@@ -212,8 +218,9 @@ ssh -t julian@192.168.178.100 \
 ```
 
 Wait for the host to turn off completely before disconnecting power. After the
-hardware work, verify the detected memory, failed units, containers, and the
-public Nextcloud status.
+hardware work, the AIO application containers may remain stopped. Start them
+through the AIO interface at `https://192.168.178.100:8080`, then verify the
+detected memory, failed units, containers, and public Nextcloud status.
 
 If the qcow2 disk and libvirt domain get out of sync, the runner role stops
 with a recovery message. Inspect and archive or restore the orphaned resource

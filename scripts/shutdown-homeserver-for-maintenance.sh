@@ -193,6 +193,9 @@ else
 fi
 
 printf 'Nextcloud AIO application containers are stopped.\n'
+printf '%s\n' \
+  'After the next boot, start them through the AIO interface if needed:' \
+  '  https://192.168.178.100:8080'
 printf 'Flushing filesystem buffers and powering off now...\n'
 sync
 systemctl poweroff
