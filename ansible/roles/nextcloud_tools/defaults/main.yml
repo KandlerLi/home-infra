@@ -1,0 +1,24 @@
+---
+nextcloud_tools_enabled: false
+
+nextcloud_tools_service_user: nextcloud-tools
+nextcloud_tools_client_group: nextcloud-tools-client
+nextcloud_tools_install_dir: /usr/local/lib/nextcloud-tools
+nextcloud_tools_config_dir: /etc/nextcloud-tools
+nextcloud_tools_app_password_path: /etc/nextcloud-tools/app-password
+nextcloud_tools_socket_dir: /run/nextcloud-tools
+nextcloud_tools_socket_path: /run/nextcloud-tools/nextcloud-tools.sock
+
+nextcloud_tools_endpoint_host: 127.0.0.1
+nextcloud_tools_endpoint_port: 11000
+nextcloud_tools_http_host: nextcloud.jkandler.de
+nextcloud_tools_username: ""
+nextcloud_tools_app_password: ""
+nextcloud_tools_allowed_root: AI Workspace
+
+nextcloud_tools_max_request_bytes: 8192
+nextcloud_tools_max_response_bytes: 2097152
+nextcloud_tools_max_read_bytes: 262144
+nextcloud_tools_max_results: 50
+nextcloud_tools_max_scan_entries: 500
+nextcloud_tools_max_scan_depth: 4

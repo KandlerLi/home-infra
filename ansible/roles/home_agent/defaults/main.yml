@@ -30,3 +30,11 @@ home_agent_tools_docker_socket_path: /var/run/docker.sock
 home_agent_tools_filesystems:
   - /
   - /mnt/black-hdd
+
+home_agent_nextcloud_tools_enabled: "{{ nextcloud_tools_enabled | default(false) }}"
+home_agent_nextcloud_tools_client_group: >-
+  {{ nextcloud_tools_client_group | default('nextcloud-tools-client') }}
+home_agent_nextcloud_tools_socket_dir: >-
+  {{ nextcloud_tools_socket_dir | default('/run/nextcloud-tools') }}
+home_agent_nextcloud_tools_socket_path: >-
+  {{ nextcloud_tools_socket_path | default('/run/nextcloud-tools/nextcloud-tools.sock') }}

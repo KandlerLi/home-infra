@@ -1,0 +1,59 @@
+[Unit]
+Description=Restricted read-only Nextcloud file service
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User={{ nextcloud_tools_service_user }}
+Group={{ nextcloud_tools_client_group }}
+RuntimeDirectory={{ nextcloud_tools_socket_dir | basename }}
+RuntimeDirectoryMode=0750
+UMask=0007
+Environment="NEXTCLOUD_TOOLS_SOCKET={{ nextcloud_tools_socket_path }}"
+Environment="NEXTCLOUD_ENDPOINT_HOST={{ nextcloud_tools_endpoint_host }}"
+Environment="NEXTCLOUD_ENDPOINT_PORT={{ nextcloud_tools_endpoint_port }}"
+Environment="NEXTCLOUD_HTTP_HOST={{ nextcloud_tools_http_host }}"
+Environment="NEXTCLOUD_USERNAME={{ nextcloud_tools_username }}"
+Environment="NEXTCLOUD_APP_PASSWORD_FILE={{ nextcloud_tools_app_password_path }}"
+Environment="NEXTCLOUD_ALLOWED_ROOT={{ nextcloud_tools_allowed_root }}"
+Environment="NEXTCLOUD_MAX_REQUEST_BYTES={{ nextcloud_tools_max_request_bytes }}"
+Environment="NEXTCLOUD_MAX_RESPONSE_BYTES={{ nextcloud_tools_max_response_bytes }}"
+Environment="NEXTCLOUD_MAX_READ_BYTES={{ nextcloud_tools_max_read_bytes }}"
+Environment="NEXTCLOUD_MAX_RESULTS={{ nextcloud_tools_max_results }}"
+Environment="NEXTCLOUD_MAX_SCAN_ENTRIES={{ nextcloud_tools_max_scan_entries }}"
+Environment="NEXTCLOUD_MAX_SCAN_DEPTH={{ nextcloud_tools_max_scan_depth }}"
+ExecStart=/usr/bin/python3 {{ nextcloud_tools_install_dir }}/nextcloud_tools_service.py
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=10s
+MemoryMax=128M
+TasksMax=64
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -47,6 +47,15 @@ class FakeHomeTools:
         return {"status": "ok"}
 
 
+class FakeNextcloudTools:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def call(self, name: str, arguments: dict):
+        self.calls.append((name, arguments))
+        return {"matches": [{"path": "Photos/sunset.jpg"}]}
+
+
 class HomeAgentTests(unittest.TestCase):
     def test_provider_executes_only_named_tool_and_returns_final_text(self) -> None:
         responses = FakeResponses()
@@ -88,6 +97,32 @@ class HomeAgentTests(unittest.TestCase):
 
         self.assertEqual(answer, "The current load is normal.")
         self.assertEqual(responses.requests[0]["input"], messages)
+
+    def test_provider_calls_bounded_nextcloud_tool_when_enabled(self) -> None:
+        responses = FakeResponses()
+        responses.responses[0].output[0].name = "search_nextcloud_files"
+        responses.responses[0].output[0].arguments = (
+            '{"query":"sunset","path":"Photos"}'
+        )
+        nextcloud_tools = FakeNextcloudTools()
+        provider = OpenAIResponsesProvider(
+            api_key="unused-test-key",
+            model="test-model",
+            home_tools=FakeHomeTools(),
+            nextcloud_tools=nextcloud_tools,
+            client=SimpleNamespace(responses=responses),
+        )
+
+        provider.respond("Find my sunset photos.")
+
+        self.assertEqual(
+            nextcloud_tools.calls,
+            [("search_nextcloud_files", {"query": "sunset", "path": "Photos"})],
+        )
+        offered_names = {
+            tool["name"] for tool in responses.requests[0]["tools"]
+        }
+        self.assertIn("search_nextcloud_files", offered_names)
 
     def test_conversation_ignores_external_system_instructions(self) -> None:
         messages = normalize_conversation(

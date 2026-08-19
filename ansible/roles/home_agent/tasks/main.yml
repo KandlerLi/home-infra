@@ -17,6 +17,10 @@
           - >-
             home_agent_tools_socket_path | dirname
             == home_agent_tools_socket_dir
+          - >-
+            not home_agent_nextcloud_tools_enabled | bool
+            or home_agent_nextcloud_tools_socket_path | dirname
+               == home_agent_nextcloud_tools_socket_dir
         fail_msg: >-
           Configure home_agent_openai_api_key through SOPS and keep the
           initial API bound to a loopback address.
@@ -68,6 +72,18 @@
           {{ ansible_facts.getent_passwd[home_agent_tools_container_user][1] }}
         home_agent_container_gid: >-
           {{ ansible_facts.getent_group[home_agent_tools_client_group][1] }}
+
+    - name: Read Nextcloud tools client group
+      ansible.builtin.getent:
+        database: group
+        key: "{{ home_agent_nextcloud_tools_client_group }}"
+      when: home_agent_nextcloud_tools_enabled | bool
+
+    - name: Record Nextcloud tools client group
+      ansible.builtin.set_fact:
+        home_agent_nextcloud_tools_client_gid: >-
+          {{ ansible_facts.getent_group[home_agent_nextcloud_tools_client_group][1] }}
+      when: home_agent_nextcloud_tools_enabled | bool
 
     - name: Create home tools installation directory
       ansible.builtin.file:
@@ -198,6 +214,12 @@
           {{ home_agent_image.changed or home_agent_api_key_file.changed }}
         restart_policy: "{{ home_agent_restart_policy }}"
         user: "{{ home_agent_container_uid }}:{{ home_agent_container_gid }}"
+        groups: >-
+          {{
+            [home_agent_nextcloud_tools_client_gid]
+            if home_agent_nextcloud_tools_enabled | bool
+            else omit
+          }}
         read_only: true
         cap_drop:
           - ALL
@@ -220,17 +242,40 @@
             if home_agent_frontend_network_enabled | bool
             else omit
           }}
-        volumes:
-          - >-
-            {{ home_agent_tools_socket_dir }}:/run/home-tools:ro
-          - "{{ home_agent_openai_api_key_path }}:/run/secrets/openai_api_key:ro"
+        volumes: >-
+          {{
+            [
+              home_agent_tools_socket_dir + ':/run/home-tools:ro',
+              home_agent_openai_api_key_path + ':/run/secrets/openai_api_key:ro'
+            ]
+            + (
+              [
+                home_agent_nextcloud_tools_socket_dir
+                + ':/run/nextcloud-tools:ro'
+              ]
+              if home_agent_nextcloud_tools_enabled | bool
+              else []
+            )
+          }}
         tmpfs:
           - /tmp:rw,noexec,nosuid,nodev,size=16m
-        env:
-          HOME_AGENT_MODEL: "{{ home_agent_model }}"
-          HOME_TOOLS_SOCKET: /run/home-tools/home-tools.sock
-          OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-          PYTHONDONTWRITEBYTECODE: "1"
+        env: >-
+          {{
+            {
+              'HOME_AGENT_MODEL': home_agent_model,
+              'HOME_TOOLS_SOCKET': '/run/home-tools/home-tools.sock',
+              'OPENAI_API_KEY_FILE': '/run/secrets/openai_api_key',
+              'PYTHONDONTWRITEBYTECODE': '1'
+            }
+            | combine(
+                {
+                  'NEXTCLOUD_TOOLS_SOCKET':
+                    '/run/nextcloud-tools/nextcloud-tools.sock'
+                }
+                if home_agent_nextcloud_tools_enabled | bool
+                else {}
+              )
+          }}
         healthcheck:
           test:
             - CMD

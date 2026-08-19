@@ -9,6 +9,7 @@ and an isolated GitHub Actions runner VM.
 - `/mnt/black-hdd` storage mount
 - Docker and Nextcloud AIO
 - Opt-in private homeserver health agent
+- Prepared opt-in read-only Nextcloud tool boundary
 - Opt-in Open WebUI chat frontend for the restricted agent
 - Opt-in shared Traefik ingress for Nextcloud and the agent
 - KVM/QEMU and libvirt
@@ -150,13 +151,55 @@ curl --fail-with-body \
 ```
 
 Host data selected by the tools, including container names and health metrics,
-is sent to the configured cloud model when needed. No Nextcloud documents are
-indexed or sent by this milestone.
+is sent to the configured cloud model when needed. Nextcloud data remains
+unavailable unless the separate read-only tool role is explicitly configured
+and deployed.
 
 The agent also exposes an OpenAI-compatible API on its container port. This
 compatibility layer accepts bounded conversation history, ignores caller
 system/developer messages, and advertises only the synthetic `home-agent`
 model. The existing `/healthz` and `/v1/chat` endpoints remain available.
+
+## Read-only Nextcloud tools
+
+The disabled-by-default `nextcloud_tools` role prepares a separate hardened
+systemd service. It holds one dedicated Nextcloud app password and talks only
+to AIO Apache on `127.0.0.1:11000`. The `home-agent` container receives a
+read-only mount of the service's Unix socket, never the credential or direct
+WebDAV access. Open WebUI remains only a chat frontend.
+
+The first milestone exposes three bounded operations below one configured
+folder: list files, search names and paths, and read UTF-8 text files up to
+256 KiB. Search scans at most 500 entries to depth four and returns at most 50
+matches. Metadata includes file type, size, modification time, content type,
+preview availability, and identifiers. The service implements no WebDAV write
+method. Images and binary documents can be found by name and metadata but their
+contents cannot be read or analysed.
+
+Before deployment, create a non-admin Nextcloud account solely for the agent,
+share only an `AI Workspace` folder with it as read-only, and create a unique
+device/app password. Store the username and generated password in the encrypted
+SOPS inventory, never in plaintext Git:
+
+```yaml
+nextcloud_tools_username: "home-agent"
+nextcloud_tools_app_password: "generated-device-password"
+```
+
+Then use the dedicated playbook only after separately approving production
+deployment:
+
+```bash
+.venv/bin/ansible-playbook ansible/playbooks/nextcloud-tools.yml \
+  --ask-become-pass
+```
+
+Do not enable `nextcloud_tools_enabled` in persistent inventory until the
+private service and agent integration have been validated. File metadata or
+text content selected by these tools is sent to the configured cloud model only
+when the user explicitly requests a Nextcloud operation. Writes, bulk indexing,
+PDF/Office extraction, and image-content recognition require separate reviewed
+milestones.
 
 ## Open WebUI frontend
 

@@ -9,6 +9,7 @@
     - storage
     - docker
     - nextcloud_aio
+    - nextcloud_tools
     - home_agent
     - open_webui
     - shared_ingress
