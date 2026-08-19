@@ -160,8 +160,8 @@ model. The existing `/healthz` and `/v1/chat` endpoints remain available.
 
 ## Open WebUI frontend
 
-The opt-in `open_webui` role provides the prepared chat window for
-`ai.jkandler.de`. It is not enabled by ordinary `site.yml` runs. Open WebUI
+The `open_webui` role provides the deployed chat window at
+`ai.jkandler.de`. It is enabled by ordinary `site.yml` runs. Open WebUI
 connects only to the restricted `home-agent` compatibility API over an
 isolated, non-masqueraded Docker bridge; it receives neither the real OpenAI
 key nor host access. The bridge blocks external egress while still allowing
@@ -184,14 +184,14 @@ Deploy the private frontend without changing the public route:
   --ask-become-pass
 ```
 
-Create the first Open WebUI administrator through an SSH tunnel, validate a
-chat, and only then run the separately guarded publication playbook. It
-requires the exact confirmation `PUBLISH_OPEN_WEBUI`. The rollback playbook
-requires `ROLL_BACK_OPEN_WEBUI` and restores the existing direct agent API
-route. Follow the documentation repository's Open WebUI runbook before either
-operation. The UI route uses Open WebUI authentication because its Bearer
-token and HTTP Basic Auth cannot share one `Authorization` header. The retained
-direct `/healthz` and `/v1/chat` routes continue to require Basic Auth.
+The initial administrator setup and authenticated public chat validation are
+complete. The separately guarded publication playbook requires the exact
+confirmation `PUBLISH_OPEN_WEBUI`; the rollback playbook requires
+`ROLL_BACK_OPEN_WEBUI` and restores the existing direct agent API route.
+Follow the documentation repository's Open WebUI runbook before either
+operation. The UI route uses Open WebUI authentication because its Bearer token
+and HTTP Basic Auth cannot share one `Authorization` header. The retained direct
+`/healthz` and `/v1/chat` routes continue to require Basic Auth.
 
 ## Shared HTTPS ingress
 
