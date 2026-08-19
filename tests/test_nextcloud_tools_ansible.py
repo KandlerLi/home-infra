@@ -54,6 +54,15 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
             with self.subTest(method=method):
                 self.assertNotIn(method, service)
 
+    def test_disable_playbook_detaches_agent_before_stopping_service(self) -> None:
+        playbook = (
+            PROJECT_ROOT / "ansible/playbooks/disable-nextcloud-tools.yml"
+        ).read_text()
+
+        detach_position = playbook.index("home_agent_nextcloud_tools_enabled: false")
+        stop_position = playbook.index("Stop and disable Nextcloud tools service")
+        self.assertLess(detach_position, stop_position)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -201,6 +201,14 @@ when the user explicitly requests a Nextcloud operation. Writes, bulk indexing,
 PDF/Office extraction, and image-content recognition require separate reviewed
 milestones.
 
+To detach the socket and stop the credential-bearing service without deleting
+its configuration, use the dedicated rollback playbook after explicit approval:
+
+```bash
+.venv/bin/ansible-playbook ansible/playbooks/disable-nextcloud-tools.yml \
+  --ask-become-pass
+```
+
 ## Open WebUI frontend
 
 The `open_webui` role provides the deployed chat window at

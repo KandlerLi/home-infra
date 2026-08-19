@@ -1,0 +1,21 @@
+---
+- name: Disable Nextcloud tools and detach them from the home agent
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: home_agent
+      home_agent_enabled: true
+      home_agent_nextcloud_tools_enabled: false
+
+  tasks:
+    - name: Read service facts before disabling Nextcloud tools
+      ansible.builtin.service_facts:
+
+    - name: Stop and disable Nextcloud tools service
+      ansible.builtin.systemd_service:
+        name: nextcloud-tools.service
+        enabled: false
+        state: stopped
+      when: "'nextcloud-tools.service' in ansible_facts.services"
