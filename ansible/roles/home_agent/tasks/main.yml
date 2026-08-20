@@ -211,7 +211,11 @@
         image: "{{ home_agent_image_name }}:{{ home_agent_image_tag }}"
         state: started
         recreate: >-
-          {{ home_agent_image.changed or home_agent_api_key_file.changed }}
+          {{
+            home_agent_image.changed
+            or home_agent_api_key_file.changed
+            or home_agent_force_recreate | bool
+          }}
         restart_policy: "{{ home_agent_restart_policy }}"
         user: "{{ home_agent_container_uid }}:{{ home_agent_container_gid }}"
         groups: >-

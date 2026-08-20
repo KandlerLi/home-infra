@@ -29,6 +29,7 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
 
         self.assertIn("IPAddressDeny=any", unit)
         self.assertIn("IPAddressAllow=127.0.0.1", unit)
+        self.assertIn("RuntimeDirectoryPreserve=restart", unit)
         self.assertIn("RestrictAddressFamilies=AF_UNIX AF_INET", unit)
         self.assertIn("NoNewPrivileges=true", unit)
         self.assertIn("CapabilityBoundingSet=", unit)
@@ -104,6 +105,7 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
         self.assertIn("--no-interaction", playbook)
         self.assertNotIn("--password-from-env", playbook)
         self.assertIn("no_log: true", playbook)
+        self.assertIn("home_agent_force_recreate: true", playbook)
 
     def test_rotation_validates_replacement_before_revoking_old_tokens(self) -> None:
         playbook = (

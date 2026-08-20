@@ -9,6 +9,7 @@ User={{ nextcloud_tools_service_user }}
 Group={{ nextcloud_tools_client_group }}
 RuntimeDirectory={{ nextcloud_tools_socket_dir | basename }}
 RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
 UMask=0007
 Environment="NEXTCLOUD_TOOLS_SOCKET={{ nextcloud_tools_socket_path }}"
 Environment="NEXTCLOUD_ENDPOINT_HOST={{ nextcloud_tools_endpoint_host }}"
