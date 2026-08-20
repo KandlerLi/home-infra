@@ -184,7 +184,9 @@ class NextcloudWebDAV:
                 raise ToolUnavailable("Nextcloud response exceeded the size limit")
             return response.status, response_headers, response_body
         except (OSError, http.client.HTTPException) as error:
-            raise ToolUnavailable("Nextcloud request failed") from error
+            raise ToolUnavailable(
+                f"Nextcloud request failed ({type(error).__name__})"
+            ) from error
         finally:
             connection.close()
 
@@ -197,7 +199,9 @@ class NextcloudWebDAV:
             headers={"Content-Type": "application/xml", "Depth": "1"},
         )
         if status != 207:
-            raise ToolUnavailable("Nextcloud directory listing failed")
+            raise ToolUnavailable(
+                f"Nextcloud directory listing returned HTTP {status}"
+            )
         entries = parse_multistatus(body, self._decoded_root_path)
         requested = relative_path.rstrip("/")
         return [entry for entry in entries if entry.path.rstrip("/") != requested]
@@ -394,7 +398,8 @@ class NextcloudToolsRequestHandler(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError, InvalidToolRequest):
             self._send_json(400, {"error": "invalid_request"})
             return
-        except ToolUnavailable:
+        except ToolUnavailable as error:
+            LOGGER.warning("Nextcloud tool request failed: %s", error)
             self._send_json(503, {"error": "tool_unavailable"})
             return
         self._send_json(200, result)

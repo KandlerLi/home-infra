@@ -4,6 +4,7 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = (
@@ -123,7 +124,26 @@ class NextcloudToolsServiceTests(unittest.TestCase):
         )
 
         with self.assertRaises(nextcloud_tools.InvalidToolRequest):
-            client.read_text_file("Photos/sunset.jpg")
+                client.read_text_file("Photos/sunset.jpg")
+
+    def test_upstream_status_error_does_not_echo_request_path(self) -> None:
+        client = nextcloud_tools.NextcloudWebDAV(
+            "127.0.0.1",
+            11000,
+            "nextcloud.jkandler.de",
+            "agent",
+            "unused-app-password",
+            "AI Workspace",
+        )
+
+        with patch.object(client, "_request", return_value=(404, {}, b"")):
+            with self.assertRaises(nextcloud_tools.ToolUnavailable) as raised:
+                client.list_directory("private-name-must-not-be-logged")
+
+        self.assertEqual(
+            str(raised.exception),
+            "Nextcloud directory listing returned HTTP 404",
+        )
 
 
 if __name__ == "__main__":
