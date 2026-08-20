@@ -16,6 +16,7 @@ class SharedIngressTests(unittest.TestCase):
         self.assertIn("traefik:v3.7.1", defaults)
         self.assertIn("http://127.0.0.1:11000", defaults)
         self.assertIn("http://127.0.0.1:8090", defaults)
+        self.assertIn("shared_ingress_open_webui_rate_burst: 240", defaults)
 
     def test_proxy_has_no_docker_socket_and_keeps_hardening(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")

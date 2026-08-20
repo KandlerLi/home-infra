@@ -28,7 +28,9 @@ shared_ingress_open_webui_enabled: false
 shared_ingress_open_webui_upstream: http://127.0.0.1:8091
 shared_ingress_open_webui_rate_average: 120
 shared_ingress_open_webui_rate_period: 1m
-shared_ingress_open_webui_rate_burst: 60
+# A cold browser load currently requests more than 60 HTML/JS/CSS/API resources.
+# Keep the sustained limit while allowing a complete frontend bootstrap.
+shared_ingress_open_webui_rate_burst: 240
 shared_ingress_open_webui_max_request_body_bytes: 1048576
 shared_ingress_open_webui_publish_confirmation: ""
 
