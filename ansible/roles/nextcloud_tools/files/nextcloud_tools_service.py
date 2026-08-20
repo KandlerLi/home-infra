@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import posixpath
+import re
 import socket
 import socketserver
 import xml.etree.ElementTree as ET
@@ -58,6 +59,24 @@ READABLE_EXTENSIONS = frozenset(
 
 class ToolUnavailable(RuntimeError):
     """Indicate that Nextcloud could not safely answer a tool request."""
+
+
+def safe_unavailable_reason(error: ToolUnavailable) -> str:
+    """Return only allowlisted diagnostic categories to the socket client."""
+    message = str(error)
+    status = re.fullmatch(
+        r"Nextcloud directory listing returned HTTP ([1-5][0-9]{2})",
+        message,
+    )
+    if status:
+        return f"upstream_http_{status.group(1)}"
+    transport = re.fullmatch(
+        r"Nextcloud request failed \(([A-Za-z][A-Za-z0-9_]{0,63})\)",
+        message,
+    )
+    if transport:
+        return f"upstream_transport_{transport.group(1)}"
+    return "upstream_response_invalid"
 
 
 class InvalidToolRequest(ValueError):
@@ -400,7 +419,13 @@ class NextcloudToolsRequestHandler(BaseHTTPRequestHandler):
             return
         except ToolUnavailable as error:
             LOGGER.warning("Nextcloud tool request failed: %s", error)
-            self._send_json(503, {"error": "tool_unavailable"})
+            self._send_json(
+                503,
+                {
+                    "error": "tool_unavailable",
+                    "reason": safe_unavailable_reason(error),
+                },
+            )
             return
         self._send_json(200, result)
 

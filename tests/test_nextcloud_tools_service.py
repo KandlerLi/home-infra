@@ -144,6 +144,17 @@ class NextcloudToolsServiceTests(unittest.TestCase):
             str(raised.exception),
             "Nextcloud directory listing returned HTTP 404",
         )
+        self.assertEqual(
+            nextcloud_tools.safe_unavailable_reason(raised.exception),
+            "upstream_http_404",
+        )
+
+    def test_unavailable_reason_rejects_unstructured_detail(self) -> None:
+        reason = nextcloud_tools.safe_unavailable_reason(
+            nextcloud_tools.ToolUnavailable("private/path must not escape")
+        )
+
+        self.assertEqual(reason, "upstream_response_invalid")
 
 
 if __name__ == "__main__":
