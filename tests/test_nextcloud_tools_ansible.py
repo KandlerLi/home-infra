@@ -21,6 +21,14 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
         self.assertIn("nextcloud_tools_username: home-agent", defaults)
         self.assertIn("nextcloud_tools_allowed_root: AI Workspace", defaults)
 
+        inventory = (
+            PROJECT_ROOT / "ansible/inventory/group_vars/all/main.yml"
+        ).read_text()
+        self.assertIn(
+            "nextcloud_tools_allowed_root: Shared/AI Workspace",
+            inventory,
+        )
+
     def test_service_is_network_and_process_restricted(self) -> None:
         unit = (
             PROJECT_ROOT
