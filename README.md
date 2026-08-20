@@ -199,8 +199,9 @@ normal Nextcloud account and share it with `home-agent` with editing disabled.
 That one share remains manual so Ansible never needs a credential for the
 account that owns your personal files.
 
-Do not enable `nextcloud_tools_enabled` in persistent inventory until the
-private service and agent integration have been validated. File metadata or
+After private list/search/text-read checks and an Open WebUI acceptance passed,
+`home_agent_enabled` and `nextcloud_tools_enabled` were persisted in inventory
+so aggregate applies retain the validated socket integration. File metadata or
 text content selected by these tools is sent to the configured cloud model only
 when the user explicitly requests a Nextcloud operation. Writes, bulk indexing,
 PDF/Office extraction, and image-content recognition require separate reviewed

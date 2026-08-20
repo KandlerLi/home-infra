@@ -28,6 +28,8 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
             "nextcloud_tools_allowed_root: Shared/AI Workspace",
             inventory,
         )
+        self.assertIn("nextcloud_tools_enabled: true", inventory)
+        self.assertIn("home_agent_enabled: true", inventory)
 
     def test_service_is_network_and_process_restricted(self) -> None:
         unit = (
