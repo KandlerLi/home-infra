@@ -23,8 +23,10 @@
           - nextcloud_tools_allowed_root | length >= 1
           - not nextcloud_tools_allowed_root.startswith('/')
           - "'..' not in nextcloud_tools_allowed_root.split('/')"
-          - "'\\' not in nextcloud_tools_allowed_root"
-          - "'\"' not in nextcloud_tools_allowed_root"
+          - >-
+            '\\' not in nextcloud_tools_allowed_root
+          - >-
+            '"' not in nextcloud_tools_allowed_root
           - nextcloud_tools_max_read_bytes | int >= 1024
           - nextcloud_tools_max_read_bytes | int <= 1048576
           - nextcloud_tools_max_results | int >= 1

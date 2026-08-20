@@ -3,6 +3,9 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+import yaml
+from jinja2 import Environment
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -54,6 +57,24 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
         for method in ('"PUT"', '"DELETE"', '"MOVE"', '"COPY"', '"MKCOL"'):
             with self.subTest(method=method):
                 self.assertNotIn(method, service)
+
+    def test_role_validation_expressions_compile(self) -> None:
+        tasks_path = (
+            PROJECT_ROOT / "ansible/roles/nextcloud_tools/tasks/main.yml"
+        )
+        tasks = yaml.safe_load(tasks_path.read_text())
+        validation = next(
+            task
+            for task in tasks[0]["block"]
+            if task["name"] == "Validate Nextcloud tools configuration"
+        )
+        expressions = validation["ansible.builtin.assert"]["that"]
+        environment = Environment()
+        environment.tests["match"] = lambda value, pattern: True
+
+        for expression in expressions:
+            with self.subTest(expression=expression):
+                environment.compile_expression(str(expression))
 
     def test_disable_playbook_detaches_agent_before_stopping_service(self) -> None:
         playbook = (
