@@ -58,6 +58,14 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
             with self.subTest(method=method):
                 self.assertNotIn(method, service)
 
+    def test_service_does_not_unlink_a_replacement_socket_at_shutdown(self) -> None:
+        service = (
+            PROJECT_ROOT
+            / "ansible/roles/nextcloud_tools/files/nextcloud_tools_service.py"
+        ).read_text()
+
+        self.assertEqual(service.count("socket_path.unlink(missing_ok=True)"), 1)
+
     def test_role_validation_expressions_compile(self) -> None:
         tasks_path = (
             PROJECT_ROOT / "ansible/roles/nextcloud_tools/tasks/main.yml"

@@ -444,13 +444,10 @@ def main() -> None:
     socket_path = Path(SOCKET_PATH)
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     socket_path.unlink(missing_ok=True)
-    try:
-        with ThreadingUnixServer(str(socket_path), NextcloudToolsRequestHandler) as server:
-            server.client = client
-            os.chmod(socket_path, 0o660)
-            server.serve_forever()
-    finally:
-        socket_path.unlink(missing_ok=True)
+    with ThreadingUnixServer(str(socket_path), NextcloudToolsRequestHandler) as server:
+        server.client = client
+        os.chmod(socket_path, 0o660)
+        server.serve_forever()
 
 
 if __name__ == "__main__":
