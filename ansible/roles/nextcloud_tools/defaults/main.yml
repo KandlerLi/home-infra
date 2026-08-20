@@ -12,7 +12,10 @@ nextcloud_tools_socket_path: /run/nextcloud-tools/nextcloud-tools.sock
 nextcloud_tools_endpoint_host: 127.0.0.1
 nextcloud_tools_endpoint_port: 11000
 nextcloud_tools_http_host: nextcloud.jkandler.de
-nextcloud_tools_username: ""
+nextcloud_tools_nextcloud_container: nextcloud-aio-nextcloud
+nextcloud_tools_username: home-agent
+nextcloud_tools_account_display_name: Home Agent
+nextcloud_tools_token_name: home-agent-readonly
 nextcloud_tools_app_password: ""
 nextcloud_tools_allowed_root: AI Workspace
 

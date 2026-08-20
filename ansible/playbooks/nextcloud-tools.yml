@@ -1,12 +1,180 @@
 ---
-- name: Configure read-only Nextcloud tools and home agent integration
+- name: Bootstrap read-only Nextcloud tools and home agent integration
   hosts: home_servers
   become: true
   gather_facts: true
 
+  vars:
+    nextcloud_tools_bootstrap_confirmation: ""
+
+  pre_tasks:
+    - name: Require confirmation for initial Nextcloud tools bootstrap
+      ansible.builtin.assert:
+        that:
+          - >-
+            nextcloud_tools_bootstrap_confirmation
+            == 'BOOTSTRAP_NEXTCLOUD_TOOLS'
+        fail_msg: >-
+          Initial Nextcloud account and token creation requires the exact
+          confirmation BOOTSTRAP_NEXTCLOUD_TOOLS.
+
+    - name: Validate Nextcloud bootstrap identity
+      ansible.builtin.assert:
+        that:
+          - nextcloud_tools_username is match('^[A-Za-z0-9_@-]{1,64}$')
+          - nextcloud_tools_account_display_name | length >= 3
+          - nextcloud_tools_account_display_name | length <= 64
+          - nextcloud_tools_token_name is match('^[A-Za-z0-9_.@-]{3,64}$')
+        fail_msg: Configure a bounded dedicated Nextcloud identity.
+
+    - name: Inspect Nextcloud AIO application container
+      community.docker.docker_container_info:
+        name: "{{ nextcloud_tools_nextcloud_container }}"
+      register: nextcloud_tools_nextcloud_container_info
+
+    - name: Require a running Nextcloud AIO application container
+      ansible.builtin.assert:
+        that:
+          - nextcloud_tools_nextcloud_container_info.exists
+          - nextcloud_tools_nextcloud_container_info.container.State.Running
+        fail_msg: Nextcloud must be running before bootstrapping its agent user.
+
+    - name: Check dedicated Nextcloud account
+      community.docker.docker_container_exec:
+        container: "{{ nextcloud_tools_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - user:info
+          - --output=json
+          - "{{ nextcloud_tools_username }}"
+      register: nextcloud_tools_account_check
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Validate dedicated account lookup result
+      ansible.builtin.assert:
+        that:
+          - nextcloud_tools_account_check.rc in [0, 1]
+        fail_msg: Could not safely inspect the dedicated Nextcloud account.
+      no_log: true
+
+    - name: Create dedicated non-admin Nextcloud account
+      community.docker.docker_container_exec:
+        container: "{{ nextcloud_tools_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - user:add
+          - --generate-password
+          - --no-interaction
+          - "--display-name={{ nextcloud_tools_account_display_name }}"
+          - "{{ nextcloud_tools_username }}"
+      when: nextcloud_tools_account_check.rc == 1
+      no_log: true
+
+    - name: Check existing host-side app password file
+      ansible.builtin.stat:
+        path: "{{ nextcloud_tools_app_password_path }}"
+      register: nextcloud_tools_bootstrap_password_file
+
+    - name: List existing dedicated-account tokens
+      community.docker.docker_container_exec:
+        container: "{{ nextcloud_tools_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - user:auth-tokens:list
+          - "{{ nextcloud_tools_username }}"
+      register: nextcloud_tools_existing_token_list
+      changed_when: false
+      no_log: true
+      when:
+        - not nextcloud_tools_bootstrap_password_file.stat.exists
+        - nextcloud_tools_app_password | trim | length < 16
+
+    - name: Refuse to orphan an existing managed app password
+      ansible.builtin.assert:
+        that:
+          - >-
+            nextcloud_tools_token_name
+            not in nextcloud_tools_existing_token_list.stdout
+        fail_msg: >-
+          A managed token exists but its host-side password file is missing.
+          Run the guarded rotate-nextcloud-tools-token.yml playbook to replace
+          it, validate the replacement, and revoke the orphaned token.
+      no_log: true
+      when:
+        - not nextcloud_tools_bootstrap_password_file.stat.exists
+        - nextcloud_tools_app_password | trim | length < 16
+
+    - name: Generate limited Nextcloud app password
+      community.docker.docker_container_exec:
+        container: "{{ nextcloud_tools_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - user:auth-tokens:add
+          - --no-interaction
+          - "--name={{ nextcloud_tools_token_name }}"
+          - "{{ nextcloud_tools_username }}"
+      register: nextcloud_tools_generated_token
+      no_log: true
+      when:
+        - not nextcloud_tools_bootstrap_password_file.stat.exists
+        - nextcloud_tools_app_password | trim | length < 16
+
+    - name: Record generated Nextcloud app password for this apply
+      ansible.builtin.set_fact:
+        nextcloud_tools_bootstrap_app_password: >-
+          {{
+            nextcloud_tools_generated_token.stdout_lines
+            | last
+            | trim
+            | default('')
+          }}
+      no_log: true
+      when: nextcloud_tools_generated_token is not skipped
+
+    - name: Validate generated Nextcloud app password
+      ansible.builtin.assert:
+        that:
+          - nextcloud_tools_bootstrap_app_password | length >= 16
+          - >-
+            nextcloud_tools_bootstrap_app_password
+            is match('^[A-Za-z0-9]{64,128}$')
+        fail_msg: Nextcloud did not return a usable app password.
+      no_log: true
+      when: nextcloud_tools_generated_token is not skipped
+
+    - name: Select app password input for the service role
+      ansible.builtin.set_fact:
+        nextcloud_tools_role_app_password: >-
+          {{
+            nextcloud_tools_bootstrap_app_password
+            | default(nextcloud_tools_app_password)
+          }}
+      no_log: true
+
   roles:
     - role: nextcloud_tools
       nextcloud_tools_enabled: true
+      nextcloud_tools_app_password: "{{ nextcloud_tools_role_app_password }}"
     - role: home_agent
       home_agent_enabled: true
       home_agent_nextcloud_tools_enabled: true
+
+  post_tasks:
+    - name: Verify restricted Nextcloud tools health endpoint
+      ansible.builtin.uri:
+        url: http://localhost/v1/health
+        unix_socket: "{{ nextcloud_tools_socket_path }}"
+        method: GET
+        return_content: false
+        status_code: 200
+      when: not ansible_check_mode

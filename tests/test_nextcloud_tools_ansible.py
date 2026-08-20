@@ -15,6 +15,7 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
         self.assertIn("nextcloud_tools_enabled: false", defaults)
         self.assertIn("nextcloud_tools_endpoint_host: 127.0.0.1", defaults)
         self.assertIn("nextcloud_tools_endpoint_port: 11000", defaults)
+        self.assertIn("nextcloud_tools_username: home-agent", defaults)
         self.assertIn("nextcloud_tools_allowed_root: AI Workspace", defaults)
 
     def test_service_is_network_and_process_restricted(self) -> None:
@@ -62,6 +63,32 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
         detach_position = playbook.index("home_agent_nextcloud_tools_enabled: false")
         stop_position = playbook.index("Stop and disable Nextcloud tools service")
         self.assertLess(detach_position, stop_position)
+
+    def test_bootstrap_is_guarded_and_never_requests_a_login_password(self) -> None:
+        playbook = (
+            PROJECT_ROOT / "ansible/playbooks/nextcloud-tools.yml"
+        ).read_text()
+
+        self.assertIn("BOOTSTRAP_NEXTCLOUD_TOOLS", playbook)
+        self.assertIn("--generate-password", playbook)
+        self.assertIn("user:auth-tokens:add", playbook)
+        self.assertIn("--no-interaction", playbook)
+        self.assertNotIn("--password-from-env", playbook)
+        self.assertIn("no_log: true", playbook)
+
+    def test_rotation_validates_replacement_before_revoking_old_tokens(self) -> None:
+        playbook = (
+            PROJECT_ROOT
+            / "ansible/playbooks/rotate-nextcloud-tools-token.yml"
+        ).read_text()
+
+        self.assertIn("ROTATE_NEXTCLOUD_TOOLS_TOKEN", playbook)
+        self.assertNotIn("Require an existing managed app password file", playbook)
+        validate_position = playbook.index(
+            "Validate replacement token against loopback WebDAV"
+        )
+        revoke_position = playbook.index("Revoke superseded managed tokens")
+        self.assertLess(validate_position, revoke_position)
 
 
 if __name__ == "__main__":

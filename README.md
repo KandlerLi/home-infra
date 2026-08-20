@@ -176,23 +176,28 @@ preview availability, and identifiers. The service implements no WebDAV write
 method. Images and binary documents can be found by name and metadata but their
 contents cannot be read or analysed.
 
-Before deployment, create a non-admin Nextcloud account solely for the agent,
-share only an `AI Workspace` folder with it as read-only, and create a unique
-device/app password. Store the username and generated password in the encrypted
-SOPS inventory, never in plaintext Git:
+The guarded bootstrap playbook creates the non-admin `home-agent` Nextcloud
+account with an unrevealed generated login password, creates a limited
+`home-agent-readonly` app password non-interactively, and installs that token
+directly as a service-owned `0400` file. The token is protected by Ansible
+`no_log` and is never written to the controller, SOPS, Docker environment, or
+chat. If the account or token file already exists, the play reuses it; it
+refuses to silently orphan a token after partial state loss.
 
-```yaml
-nextcloud_tools_username: "home-agent"
-nextcloud_tools_app_password: "generated-device-password"
-```
-
-Then use the dedicated playbook only after separately approving production
-deployment:
+Use the dedicated playbook only after separately approving both the Nextcloud
+account/token mutation and production service deployment:
 
 ```bash
 .venv/bin/ansible-playbook ansible/playbooks/nextcloud-tools.yml \
-  --ask-become-pass
+  --ask-become-pass \
+  --extra-vars \
+  nextcloud_tools_bootstrap_confirmation=BOOTSTRAP_NEXTCLOUD_TOOLS
 ```
+
+After the play creates the account, create or select `AI Workspace` under your
+normal Nextcloud account and share it with `home-agent` with editing disabled.
+That one share remains manual so Ansible never needs a credential for the
+account that owns your personal files.
 
 Do not enable `nextcloud_tools_enabled` in persistent inventory until the
 private service and agent integration have been validated. File metadata or
@@ -200,6 +205,18 @@ text content selected by these tools is sent to the configured cloud model only
 when the user explicitly requests a Nextcloud operation. Writes, bulk indexing,
 PDF/Office extraction, and image-content recognition require separate reviewed
 milestones.
+
+Token rotation is separately guarded. It validates the replacement token over
+loopback WebDAV before installing it and revokes only older tokens with the
+managed name:
+
+```bash
+.venv/bin/ansible-playbook \
+  ansible/playbooks/rotate-nextcloud-tools-token.yml \
+  --ask-become-pass \
+  --extra-vars \
+  nextcloud_tools_rotation_confirmation=ROTATE_NEXTCLOUD_TOOLS_TOKEN
+```
 
 To detach the socket and stop the credential-bearing service without deleting
 its configuration, use the dedicated rollback playbook after explicit approval:

@@ -2,6 +2,11 @@
 - name: Configure restricted Nextcloud tools
   when: nextcloud_tools_enabled | bool
   block:
+    - name: Check existing Nextcloud app password file
+      ansible.builtin.stat:
+        path: "{{ nextcloud_tools_app_password_path }}"
+      register: nextcloud_tools_app_password_file
+
     - name: Validate Nextcloud tools configuration
       ansible.builtin.assert:
         that:
@@ -9,8 +14,12 @@
           - nextcloud_tools_endpoint_port | int == 11000
           - nextcloud_tools_http_host == "nextcloud.jkandler.de"
           - nextcloud_tools_username is match('^[A-Za-z0-9_.@-]{1,64}$')
-          - nextcloud_tools_app_password | trim | length >= 16
-          - nextcloud_tools_app_password | trim != "CHANGE_ME"
+          - >-
+            nextcloud_tools_app_password_file.stat.exists
+            or (
+              nextcloud_tools_app_password | trim | length >= 16
+              and nextcloud_tools_app_password | trim != "CHANGE_ME"
+            )
           - nextcloud_tools_allowed_root | length >= 1
           - not nextcloud_tools_allowed_root.startswith('/')
           - "'..' not in nextcloud_tools_allowed_root.split('/')"
@@ -25,7 +34,7 @@
           - nextcloud_tools_max_scan_depth | int >= 1
           - nextcloud_tools_max_scan_depth | int <= 8
         fail_msg: >-
-          Configure a dedicated Nextcloud username and app password, keep the
+          Bootstrap the dedicated Nextcloud account and app password, keep the
           WebDAV upstream on the fixed loopback AIO endpoint, and select one
           relative allowed root folder.
       no_log: true
@@ -80,6 +89,16 @@
         group: root
         mode: "0400"
       no_log: true
+      notify: Restart nextcloud tools
+      when: nextcloud_tools_app_password | trim | length >= 16
+
+    - name: Enforce Nextcloud app password file permissions
+      ansible.builtin.file:
+        path: "{{ nextcloud_tools_app_password_path }}"
+        state: file
+        owner: "{{ nextcloud_tools_service_user }}"
+        group: root
+        mode: "0400"
       notify: Restart nextcloud tools
 
     - name: Install Nextcloud tools systemd unit
