@@ -59,10 +59,11 @@
       loop_control:
         label: "{{ item }}"
 
-    - name: Check whether Deluge's web.conf already exists
-      ansible.builtin.stat:
+    - name: Read Deluge's web.conf, if it exists
+      ansible.builtin.slurp:
         path: "{{ deluge_config_dir }}/web.conf"
-      register: deluge_web_conf_stat
+      register: deluge_web_conf_slurp
+      failed_when: false
 
     # Deluge has no "no login required" mode: its own auth.py source
     # (deluge/ui/web/auth.py, check_password()) returns False for every
@@ -74,8 +75,21 @@
     # its own default: it doesn't write web.conf to disk until something
     # triggers a config save (a password change, in the normal UI flow),
     # so a fresh container never generates one on its own.
+    #
+    # Checked by content, not just existence: a first version of this task
+    # wrote "file": 1 in the header, one version behind what this Deluge
+    # release's ConfigManager targets (file_version=2). That mismatch ran a
+    # migration path which, empirically, ended up with the well-known
+    # default pwd_sha1/salt live instead of the configured password -- even
+    # though the migration function itself only touches the "language" key.
+    # Re-detect and repair that specific known-bad state, not just "file
+    # exists", so this stays self-healing rather than needing a manual fix
+    # every time the assumption turns out wrong again.
     - name: Set Deluge's own web UI password
-      when: not deluge_web_conf_stat.stat.exists
+      when: >-
+        deluge_web_conf_slurp.content is not defined
+        or 'pwd_sha1": "2ce1a410bcdcc53064129b6d950f2e9fee4edc1e"'
+           in (deluge_web_conf_slurp.content | b64decode)
       no_log: true
       block:
         - name: Validate the Deluge web UI password is configured

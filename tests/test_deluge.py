@@ -81,6 +81,15 @@ class DelugeRoleTests(unittest.TestCase):
         # shape: a {"file": ..., "format": ...} header immediately followed
         # by the actual config object, found via brace-matching (not a
         # naive split), each parsed independently as JSON.
+        #
+        # "file": 2 matters, not just cosmetically: deluge/ui/web/server.py
+        # constructs its ConfigManager with file_version=2. A first version
+        # of this template said "file": 1, one version behind -- Deluge
+        # accepted the file but ran its 1-to-2 migration path, which
+        # (confirmed live, not just in theory) resulted in the well-known
+        # default pwd_sha1/salt taking effect instead of the configured
+        # password. Matching the current version exactly avoids that
+        # migration path running at all.
         import json
 
         from jinja2 import Environment, FileSystemLoader
@@ -97,11 +106,64 @@ class DelugeRoleTests(unittest.TestCase):
         header = json.loads(rendered[:split_at])
         body = json.loads(rendered[split_at:])
 
-        self.assertEqual(header, {"file": 1, "format": 1})
+        self.assertEqual(header, {"file": 2, "format": 1})
         self.assertEqual(body["pwd_salt"], "a" * 40)
         self.assertEqual(body["pwd_sha1"], "b" * 40)
         self.assertEqual(body["port"], 8112)
         self.assertEqual(body["sessions"], {})
+        self.assertIs(body["first_login"], False)
+
+    def test_web_conf_template_matches_deluges_current_config_defaults(
+        self,
+    ) -> None:
+        # deluge/ui/web/server.py's CONFIG_DEFAULTS, as of the pinned image
+        # version -- every key it declares must be present in our seeded
+        # file too, or Deluge silently falls back to defaults for whatever
+        # is missing (harmless for most keys, but exactly how the
+        # file-version mismatch above went unnoticed for pwd_sha1/salt).
+        from jinja2 import Environment, FileSystemLoader
+
+        env = Environment(
+            loader=FileSystemLoader(str(ROLE_ROOT / "templates"))
+        )
+        rendered = env.get_template("web.conf.j2").render(
+            deluge_web_pwd_salt="a" * 40,
+            deluge_web_pwd_sha1="b" * 40,
+        )
+
+        expected_keys = {
+            "enabled_plugins",
+            "default_daemon",
+            "pwd_salt",
+            "pwd_sha1",
+            "session_timeout",
+            "sessions",
+            "sidebar_show_zero",
+            "sidebar_multiple_filters",
+            "show_session_speed",
+            "show_sidebar",
+            "theme",
+            "first_login",
+            "language",
+            "base",
+            "interface",
+            "port",
+            "https",
+            "pkey",
+            "cert",
+        }
+        for key in expected_keys:
+            with self.subTest(key=key):
+                self.assertIn(f'"{key}"', rendered)
+
+    def test_repairs_a_web_conf_left_with_the_default_password(self) -> None:
+        # Must re-detect and fix the specific known-bad state (file exists
+        # but still has the well-known default pwd_sha1) by content, not
+        # just skip because a file is now present.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("2ce1a410bcdcc53064129b6d950f2e9fee4edc1e", tasks)
+        self.assertIn("deluge_web_conf_slurp.content | b64decode", tasks)
 
 
 class DelugeIngressTests(unittest.TestCase):
