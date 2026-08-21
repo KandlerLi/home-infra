@@ -134,44 +134,37 @@ class NextcloudToolsClientTests(unittest.TestCase):
                 "list_nextcloud_files", {"path": ""}
             )
 
-    def test_propose_and_confirm_write_tools_are_wired_to_their_endpoints(
-        self,
-    ) -> None:
+    def test_write_tool_is_wired_to_its_endpoint(self) -> None:
         from home_agent import nextcloud_tools
 
         self.assertEqual(
-            nextcloud_tools.TOOL_PATHS["propose_nextcloud_write"],
-            "/v1/propose_write",
-        )
-        self.assertEqual(
-            nextcloud_tools.TOOL_PATHS["confirm_nextcloud_write"],
-            "/v1/confirm_write",
-        )
-        self.assertIn(
-            "confirm_nextcloud_write", nextcloud_tools.CONFIRMATION_GATED_TOOLS
-        )
-        self.assertNotIn(
-            "propose_nextcloud_write", nextcloud_tools.CONFIRMATION_GATED_TOOLS
+            nextcloud_tools.TOOL_PATHS["write_nextcloud_file"], "/v1/write"
         )
 
-    def test_confirm_write_reaches_the_confirm_endpoint(self) -> None:
+    def test_write_tool_reaches_the_write_endpoint(self) -> None:
         socket_path = self._serve(
             200, b'{"operation": "create", "path": "note.txt"}'
         )
 
         result = NextcloudToolsClient(socket_path).call(
-            "confirm_nextcloud_write", {"confirmation_code": "AB12CD"}
+            "write_nextcloud_file",
+            {
+                "operation": "create",
+                "path": "note.txt",
+                "content": "hi",
+                "destination_path": None,
+            },
         )
 
         self.assertEqual(result["operation"], "create")
 
-    def test_propose_write_content_bypasses_the_small_argument_cap(self) -> None:
+    def test_write_content_bypasses_the_small_argument_cap(self) -> None:
         # 5000 bytes exceeds the 4096-byte cap other tools use, but must
-        # not be rejected locally for propose_nextcloud_write -- it should
+        # not be rejected locally for write_nextcloud_file -- it should
         # get far enough to attempt a (failing) connection instead.
         with self.assertRaises(NextcloudToolsError) as raised:
             NextcloudToolsClient("/nonexistent/socket").call(
-                "propose_nextcloud_write",
+                "write_nextcloud_file",
                 {
                     "operation": "create",
                     "path": "note.txt",
@@ -187,7 +180,7 @@ class NextcloudToolsClientTests(unittest.TestCase):
 
         with self.assertRaises(NextcloudToolsError) as raised:
             NextcloudToolsClient("/nonexistent/socket").call(
-                "propose_nextcloud_write",
+                "write_nextcloud_file",
                 {
                     "operation": "create",
                     "path": "note.txt",

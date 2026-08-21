@@ -98,10 +98,6 @@ class FakeClient:
         return _entry(path=destination_path)
 
 
-def _store(ttl_seconds: int = 600, max_entries: int = 20) -> "nextcloud_tools.PendingWriteStore":
-    return nextcloud_tools.PendingWriteStore(ttl_seconds, max_entries)
-
-
 def _webdav_client() -> "nextcloud_tools.NextcloudWebDAV":
     return nextcloud_tools.NextcloudWebDAV(
         "127.0.0.1",
@@ -151,12 +147,11 @@ class NextcloudToolsServiceTests(unittest.TestCase):
                 "/v1/search",
                 {"query": "sunset", "path": "", "include_content": True},
                 FakeClient(),
-                _store(),
             )
 
     def test_list_exposes_bounded_metadata(self) -> None:
         result = nextcloud_tools.handle_tool(
-            "/v1/list", {"path": "Photos"}, FakeClient(), _store()
+            "/v1/list", {"path": "Photos"}, FakeClient()
         )
 
         self.assertEqual(result["root"], "Photos")
@@ -204,57 +199,6 @@ class NextcloudToolsServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(reason, "upstream_response_invalid")
-
-
-class PendingWriteStoreTests(unittest.TestCase):
-    @staticmethod
-    def _entry(created_at: float | None = None) -> "nextcloud_tools.PendingWrite":
-        return nextcloud_tools.PendingWrite(
-            operation="create",
-            path="note.txt",
-            destination_path=None,
-            content="hi",
-            expected_etag=None,
-            created_at=nextcloud_tools.time.monotonic()
-            if created_at is None
-            else created_at,
-        )
-
-    def test_generates_short_codes_from_the_unambiguous_alphabet(self) -> None:
-        store = _store()
-        codes = {store.add(self._entry()) for _ in range(50)}
-
-        self.assertEqual(len(codes), 50)
-        for code in codes:
-            self.assertEqual(len(code), nextcloud_tools.CONFIRMATION_CODE_LENGTH)
-            self.assertTrue(
-                set(code) <= set(nextcloud_tools.CONFIRMATION_CODE_ALPHABET)
-            )
-
-    def test_expired_entries_cannot_be_confirmed(self) -> None:
-        store = _store(ttl_seconds=10)
-        with patch("nextcloud_tools_service.time.monotonic", return_value=0.0):
-            code = store.add(self._entry(created_at=0.0))
-        with patch("nextcloud_tools_service.time.monotonic", return_value=20.0):
-            self.assertIsNone(store.pop(code))
-
-    def test_a_code_can_only_be_confirmed_once(self) -> None:
-        store = _store()
-        code = store.add(self._entry())
-
-        self.assertIsNotNone(store.pop(code))
-        self.assertIsNone(store.pop(code))
-
-    def test_oldest_entry_is_evicted_at_capacity(self) -> None:
-        store = _store(max_entries=2)
-        with patch("nextcloud_tools_service.time.monotonic", return_value=1.0):
-            first_code = store.add(self._entry(created_at=1.0))
-        with patch("nextcloud_tools_service.time.monotonic", return_value=2.0):
-            store.add(self._entry(created_at=2.0))
-        with patch("nextcloud_tools_service.time.monotonic", return_value=3.0):
-            store.add(self._entry(created_at=3.0))
-
-        self.assertIsNone(store.pop(first_code))
 
 
 class NextcloudWebDAVWriteTests(unittest.TestCase):
@@ -328,12 +272,19 @@ class NextcloudWebDAVWriteTests(unittest.TestCase):
         self.assertIn("renamed.txt", captured["headers"]["Destination"])
 
 
-class ProposeConfirmWriteHandlerTests(unittest.TestCase):
-    def test_propose_create_returns_a_confirmation_code(self) -> None:
+class WriteFileHandlerTests(unittest.TestCase):
+    """/v1/write executes immediately -- no confirmation round-trip.
+
+    Safety here comes from scope, the extension/size allowlist, conflict
+    protection, and the empty-folder-only delete guard, not from a human
+    approving each write (a deliberate simplification -- see ADR 0013).
+    """
+
+    def test_create_writes_the_file_immediately(self) -> None:
         client = FakeClient()
 
         result = nextcloud_tools.handle_tool(
-            "/v1/propose_write",
+            "/v1/write",
             {
                 "operation": "create",
                 "path": "note.txt",
@@ -341,21 +292,19 @@ class ProposeConfirmWriteHandlerTests(unittest.TestCase):
                 "destination_path": None,
             },
             client,
-            _store(),
         )
 
-        self.assertEqual(
-            len(result["confirmation_code"]), nextcloud_tools.CONFIRMATION_CODE_LENGTH
-        )
+        self.assertEqual(client.creates, [("note.txt", "hello")])
         self.assertEqual(result["operation"], "create")
+        self.assertIn("note.txt", result["summary"])
 
-    def test_propose_create_rejects_an_existing_path(self) -> None:
+    def test_create_rejects_an_existing_path(self) -> None:
         client = FakeClient()
         client.exists_result = True
 
         with self.assertRaises(nextcloud_tools.InvalidToolRequest):
             nextcloud_tools.handle_tool(
-                "/v1/propose_write",
+                "/v1/write",
                 {
                     "operation": "create",
                     "path": "note.txt",
@@ -363,90 +312,13 @@ class ProposeConfirmWriteHandlerTests(unittest.TestCase):
                     "destination_path": None,
                 },
                 client,
-                _store(),
             )
 
-    def test_propose_update_includes_a_diff_of_the_change(self) -> None:
+    def test_create_with_no_content_makes_a_folder(self) -> None:
         client = FakeClient()
 
-        result = nextcloud_tools.handle_tool(
-            "/v1/propose_write",
-            {
-                "operation": "update",
-                "path": "note.txt",
-                "content": "new text",
-                "destination_path": None,
-            },
-            client,
-            _store(),
-        )
-
-        self.assertIn("safe text", result["summary"])
-        self.assertIn("new text", result["summary"])
-
-    def test_propose_delete_rejects_a_nonempty_folder(self) -> None:
-        client = FakeClient()
-        client.stat_kind = "folder"
-
-        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
-            nextcloud_tools.handle_tool(
-                "/v1/propose_write",
-                {
-                    "operation": "delete",
-                    "path": "Photos",
-                    "content": None,
-                    "destination_path": None,
-                },
-                client,
-                _store(),
-            )
-
-    def test_propose_move_requires_a_destination(self) -> None:
-        client = FakeClient()
-
-        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
-            nextcloud_tools.handle_tool(
-                "/v1/propose_write",
-                {
-                    "operation": "move",
-                    "path": "note.txt",
-                    "content": None,
-                    "destination_path": None,
-                },
-                client,
-                _store(),
-            )
-
-    def test_confirm_write_executes_the_pending_create(self) -> None:
-        client = FakeClient()
-        store = _store()
-        proposed = nextcloud_tools.handle_tool(
-            "/v1/propose_write",
-            {
-                "operation": "create",
-                "path": "note.txt",
-                "content": "hello",
-                "destination_path": None,
-            },
-            client,
-            store,
-        )
-
-        result = nextcloud_tools.handle_tool(
-            "/v1/confirm_write",
-            {"confirmation_code": proposed["confirmation_code"]},
-            client,
-            store,
-        )
-
-        self.assertEqual(client.creates, [("note.txt", "hello")])
-        self.assertEqual(result["operation"], "create")
-
-    def test_confirm_write_creates_a_folder_when_content_is_omitted(self) -> None:
-        client = FakeClient()
-        store = _store()
-        proposed = nextcloud_tools.handle_tool(
-            "/v1/propose_write",
+        nextcloud_tools.handle_tool(
+            "/v1/write",
             {
                 "operation": "create",
                 "path": "NewFolder",
@@ -454,51 +326,93 @@ class ProposeConfirmWriteHandlerTests(unittest.TestCase):
                 "destination_path": None,
             },
             client,
-            store,
-        )
-
-        nextcloud_tools.handle_tool(
-            "/v1/confirm_write",
-            {"confirmation_code": proposed["confirmation_code"]},
-            client,
-            store,
         )
 
         self.assertEqual(client.mkcols, ["NewFolder"])
         self.assertEqual(client.creates, [])
 
-    def test_confirm_write_rejects_an_unknown_code(self) -> None:
-        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
-            nextcloud_tools.handle_tool(
-                "/v1/confirm_write",
-                {"confirmation_code": "BOGUS1"},
-                FakeClient(),
-                _store(),
-            )
-
-    def test_confirm_write_cannot_be_replayed(self) -> None:
+    def test_update_writes_immediately_and_summarizes_the_diff(self) -> None:
         client = FakeClient()
-        store = _store()
-        proposed = nextcloud_tools.handle_tool(
-            "/v1/propose_write",
+
+        result = nextcloud_tools.handle_tool(
+            "/v1/write",
             {
-                "operation": "create",
+                "operation": "update",
                 "path": "note.txt",
-                "content": "hello",
+                "content": "new text",
                 "destination_path": None,
             },
             client,
-            store,
         )
-        code = proposed["confirmation_code"]
-        nextcloud_tools.handle_tool(
-            "/v1/confirm_write", {"confirmation_code": code}, client, store
-        )
+
+        self.assertEqual(client.updates, [("note.txt", "new text", "etag-safe")])
+        self.assertIn("safe text", result["summary"])
+        self.assertIn("new text", result["summary"])
+
+    def test_delete_rejects_a_nonempty_folder(self) -> None:
+        client = FakeClient()
+        client.stat_kind = "folder"
 
         with self.assertRaises(nextcloud_tools.InvalidToolRequest):
             nextcloud_tools.handle_tool(
-                "/v1/confirm_write", {"confirmation_code": code}, client, store
+                "/v1/write",
+                {
+                    "operation": "delete",
+                    "path": "Photos",
+                    "content": None,
+                    "destination_path": None,
+                },
+                client,
             )
+
+    def test_delete_removes_the_item_immediately(self) -> None:
+        client = FakeClient()
+
+        result = nextcloud_tools.handle_tool(
+            "/v1/write",
+            {
+                "operation": "delete",
+                "path": "note.txt",
+                "content": None,
+                "destination_path": None,
+            },
+            client,
+        )
+
+        self.assertEqual(client.deletes, [("note.txt", "etag-safe")])
+        self.assertIsNone(result["result"])
+
+    def test_move_requires_a_destination(self) -> None:
+        client = FakeClient()
+
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.handle_tool(
+                "/v1/write",
+                {
+                    "operation": "move",
+                    "path": "note.txt",
+                    "content": None,
+                    "destination_path": None,
+                },
+                client,
+            )
+
+    def test_move_relocates_the_item_immediately(self) -> None:
+        client = FakeClient()
+
+        result = nextcloud_tools.handle_tool(
+            "/v1/write",
+            {
+                "operation": "move",
+                "path": "note.txt",
+                "content": None,
+                "destination_path": "renamed.txt",
+            },
+            client,
+        )
+
+        self.assertEqual(client.moves, [("note.txt", "renamed.txt", "etag-safe")])
+        self.assertEqual(result["operation"], "move")
 
 
 if __name__ == "__main__":

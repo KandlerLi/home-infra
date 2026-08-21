@@ -124,11 +124,14 @@ class HomeAgentTests(unittest.TestCase):
         }
         self.assertIn("search_nextcloud_files", offered_names)
 
-    def test_confirm_write_dispatches_when_user_echoed_the_code(self) -> None:
+    def test_write_nextcloud_file_dispatches_immediately(self) -> None:
+        # No confirmation round-trip: the model requests a write and it
+        # happens in the same turn, same as any other Nextcloud tool call.
         responses = FakeResponses()
-        responses.responses[0].output[0].name = "confirm_nextcloud_write"
+        responses.responses[0].output[0].name = "write_nextcloud_file"
         responses.responses[0].output[0].arguments = (
-            '{"confirmation_code":"AB12CD"}'
+            '{"operation":"create","path":"note.txt","content":"hi",'
+            '"destination_path":null}'
         )
         nextcloud_tools = FakeNextcloudTools()
         provider = OpenAIResponsesProvider(
@@ -139,50 +142,22 @@ class HomeAgentTests(unittest.TestCase):
             client=SimpleNamespace(responses=responses),
         )
 
-        provider.respond(
-            [
-                {"role": "user", "content": "Create a note."},
-                {"role": "assistant", "content": "Code: AB12CD"},
-                {"role": "user", "content": "yes, AB12CD, go ahead"},
-            ]
-        )
+        provider.respond("Save a note called note.txt with the text hi.")
 
         self.assertEqual(
             nextcloud_tools.calls,
-            [("confirm_nextcloud_write", {"confirmation_code": "AB12CD"})],
-        )
-
-    def test_confirm_write_is_refused_locally_without_a_genuine_user_echo(
-        self,
-    ) -> None:
-        # The model claiming the user approved is not enough -- the code
-        # must literally appear in the human's own last message. This is
-        # the actual security boundary for writes, not just UX copy.
-        responses = FakeResponses()
-        responses.responses[0].output[0].name = "confirm_nextcloud_write"
-        responses.responses[0].output[0].arguments = (
-            '{"confirmation_code":"AB12CD"}'
-        )
-        nextcloud_tools = FakeNextcloudTools()
-        provider = OpenAIResponsesProvider(
-            api_key="unused-test-key",
-            model="test-model",
-            home_tools=FakeHomeTools(),
-            nextcloud_tools=nextcloud_tools,
-            client=SimpleNamespace(responses=responses),
-        )
-
-        provider.respond(
             [
-                {"role": "user", "content": "Create a note."},
-                {"role": "assistant", "content": "Code: AB12CD"},
-                {"role": "user", "content": "sure, go ahead"},
-            ]
+                (
+                    "write_nextcloud_file",
+                    {
+                        "operation": "create",
+                        "path": "note.txt",
+                        "content": "hi",
+                        "destination_path": None,
+                    },
+                )
+            ],
         )
-
-        self.assertEqual(nextcloud_tools.calls, [])
-        second_input = responses.requests[1]["input"]
-        self.assertIn("confirmation_not_verified", second_input[-1]["output"])
 
     def test_conversation_ignores_external_system_instructions(self) -> None:
         messages = normalize_conversation(
