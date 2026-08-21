@@ -26,6 +26,10 @@ MAX_CONVERSATION_CHARACTERS = 24_000
 LOGGER = logging.getLogger(__name__)
 
 
+class _ChunkedBodyTooLarge(Exception):
+    """Indicate that a chunked request body exceeded its size cap."""
+
+
 def read_secret(path: str) -> str:
     value = Path(path).read_text(encoding="utf-8").strip()
     if len(value) < 20 or value == "CHANGE_ME":
@@ -169,18 +173,62 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             },
         )
 
+    def _read_chunked_body(self, max_bytes: int) -> bytes:
+        """Read an HTTP/1.1 chunked-encoded request body, capped at max_bytes.
+
+        Raises _ChunkedBodyTooLarge if the body would exceed max_bytes, or
+        ValueError for anything malformed (bad chunk-size line, a chunk
+        shorter than declared, a missing chunk terminator).
+        """
+        body = bytearray()
+        while True:
+            size_line = self.rfile.readline(64)
+            if not size_line:
+                raise ValueError("truncated chunked body")
+            chunk_size = int(size_line.split(b";", 1)[0].strip(), 16)
+            if chunk_size == 0:
+                # Consume any trailer headers up to the terminating blank line.
+                while True:
+                    trailer_line = self.rfile.readline(64)
+                    if not trailer_line or trailer_line in (b"\r\n", b"\n"):
+                        break
+                return bytes(body)
+            if len(body) + chunk_size > max_bytes:
+                raise _ChunkedBodyTooLarge()
+            chunk = self.rfile.read(chunk_size)
+            if len(chunk) != chunk_size or self.rfile.read(2) != b"\r\n":
+                raise ValueError("malformed chunk")
+            body.extend(chunk)
+
     def _handle_audio_transcriptions(self) -> None:
         content_type = self.headers.get("Content-Type", "")
-        try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            self._send_openai_error(400, "invalid_content_length")
-            return
-        if content_length <= 0 or content_length > MAX_AUDIO_BYTES:
-            self._send_openai_error(413, "invalid_request_size")
-            return
 
-        body = self.rfile.read(content_length)
+        # Open WebUI streams the recorded file through aiohttp from an
+        # async generator, so it can't know the body's total size upfront
+        # and sends Transfer-Encoding: chunked with no Content-Length at
+        # all (confirmed against its actual FormData behavior) -- handle
+        # both shapes rather than assuming a fixed Content-Length always
+        # exists like the JSON endpoints can.
+        if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+            try:
+                body = self._read_chunked_body(MAX_AUDIO_BYTES)
+            except _ChunkedBodyTooLarge:
+                self._send_openai_error(413, "invalid_request_size")
+                return
+            except ValueError:
+                self._send_openai_error(400, "invalid_request")
+                return
+        else:
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                self._send_openai_error(400, "invalid_content_length")
+                return
+            if content_length <= 0 or content_length > MAX_AUDIO_BYTES:
+                self._send_openai_error(413, "invalid_request_size")
+                return
+            body = self.rfile.read(content_length)
+
         try:
             result = self.server.transcriber.transcribe(body, content_type)
         except Exception as error:  # noqa: BLE001

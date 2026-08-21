@@ -331,6 +331,65 @@ class HomeAgentAPITests(unittest.TestCase):
         self.assertEqual(json.loads(response_body), {"text": "hello world"})
         self.assertEqual(len(self.server.transcriber.calls), 1)
 
+    def test_audio_transcriptions_relays_chunked_bodies(self) -> None:
+        # Open WebUI's aiohttp client streams the recorded file from an
+        # async generator, so it can't know the total size upfront and
+        # sends Transfer-Encoding: chunked with no Content-Length at all
+        # (confirmed against aiohttp's actual FormData behavior) -- this
+        # must not be treated as a zero-length request and rejected.
+        body = (
+            b"--X\r\n"
+            b'Content-Disposition: form-data; name="file"; filename="a.webm"\r\n'
+            b"Content-Type: audio/webm\r\n\r\n"
+            b"FAKEAUDIO\r\n"
+            b"--X--\r\n"
+        )
+
+        def chunks():
+            yield body[:10]
+            yield body[10:]
+
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_address[1], timeout=2
+        )
+        connection.request(
+            "POST",
+            "/v1/audio/transcriptions",
+            body=chunks(),
+            headers={"Content-Type": "multipart/form-data; boundary=X"},
+        )
+        response = connection.getresponse()
+        response_body = response.read()
+        connection.close()
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(json.loads(response_body), {"text": "hello world"})
+        self.assertEqual(self.server.transcriber.calls[0][0], body)
+
+    def test_audio_transcriptions_rejects_chunked_bodies_over_the_size_limit(
+        self,
+    ) -> None:
+        def chunks():
+            chunk = b"x" * (1024 * 1024)
+            for _ in range(26):  # 26 MiB, over the 25 MiB cap
+                yield chunk
+
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_address[1], timeout=5
+        )
+        connection.request(
+            "POST",
+            "/v1/audio/transcriptions",
+            body=chunks(),
+            headers={"Content-Type": "multipart/form-data; boundary=X"},
+        )
+        response = connection.getresponse()
+        response.read()
+        connection.close()
+
+        self.assertEqual(response.status, 413)
+        self.assertEqual(self.server.transcriber.calls, [])
+
     def test_audio_transcriptions_rejects_uploads_over_the_size_limit(self) -> None:
         # The claimed Content-Length alone must be enough to reject before
         # ever reading the body -- the connection sends only one byte.
