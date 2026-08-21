@@ -74,15 +74,6 @@
       loop_control:
         label: "{{ item.path }}"
 
-    - name: Install restricted Nextcloud tools service
-      ansible.builtin.copy:
-        src: nextcloud_tools_service.py
-        dest: "{{ nextcloud_tools_install_dir }}/nextcloud_tools_service.py"
-        owner: root
-        group: root
-        mode: "0755"
-      notify: Restart nextcloud tools
-
     - name: Install Nextcloud app password file
       ansible.builtin.copy:
         content: "{{ nextcloud_tools_app_password | trim }}\n"
@@ -103,26 +94,13 @@
         mode: "0400"
       notify: Restart nextcloud tools
 
-    - name: Install Nextcloud tools systemd unit
-      ansible.builtin.template:
-        src: nextcloud-tools.service.j2
-        dest: /etc/systemd/system/nextcloud-tools.service
-        owner: root
-        group: root
-        mode: "0644"
-      notify: Restart nextcloud tools
-
-    - name: Apply Nextcloud tools service changes
-      ansible.builtin.meta: flush_handlers
-
-    - name: Ensure Nextcloud tools is enabled and running
-      ansible.builtin.systemd_service:
-        name: nextcloud-tools.service
-        enabled: true
-        state: started
-
-    - name: Wait for restricted Nextcloud tools socket
-      ansible.builtin.wait_for:
-        path: "{{ nextcloud_tools_socket_path }}"
-        state: present
-        timeout: 10
+    - name: Deploy and wait for the Nextcloud tools socket service
+      ansible.builtin.include_tasks: "{{ role_path }}/../../tasks/deploy_socket_service.yml"
+      vars:
+        socket_service_name: Nextcloud tools
+        socket_service_src: "{{ role_path }}/files/nextcloud_tools_service.py"
+        socket_service_dest: "{{ nextcloud_tools_install_dir }}/nextcloud_tools_service.py"
+        socket_service_unit_template: "{{ role_path }}/templates/nextcloud-tools.service.j2"
+        socket_service_unit_name: nextcloud-tools.service
+        socket_service_socket_path: "{{ nextcloud_tools_socket_path }}"
+        socket_service_handler: Restart nextcloud tools

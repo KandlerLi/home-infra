@@ -77,6 +77,58 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
 
         self.assertEqual(service.count("socket_path.unlink(missing_ok=True)"), 1)
 
+    def test_both_roles_deploy_their_socket_service_through_the_shared_task_file(
+        self,
+    ) -> None:
+        shared_tasks = yaml.safe_load(
+            (PROJECT_ROOT / "ansible/tasks/deploy_socket_service.yml").read_text()
+        )
+        shared_task_names = {task["name"] for task in shared_tasks}
+        self.assertIn(
+            "Install restricted {{ socket_service_name }} service", shared_task_names
+        )
+        self.assertIn(
+            "Wait for restricted {{ socket_service_name }} socket", shared_task_names
+        )
+
+        expected_vars = {
+            "home_agent": {
+                "socket_service_unit_name": "home-tools.service",
+                "socket_service_handler": "Restart home tools",
+                "socket_service_socket_path": "{{ home_agent_tools_socket_path }}",
+            },
+            "nextcloud_tools": {
+                "socket_service_unit_name": "nextcloud-tools.service",
+                "socket_service_handler": "Restart nextcloud tools",
+                "socket_service_socket_path": "{{ nextcloud_tools_socket_path }}",
+            },
+        }
+        for role_name, expected in expected_vars.items():
+            with self.subTest(role=role_name):
+                tasks = yaml.safe_load(
+                    (
+                        PROJECT_ROOT / f"ansible/roles/{role_name}/tasks/main.yml"
+                    ).read_text()
+                )
+                deploy_task = next(
+                    task
+                    for task in tasks[0]["block"]
+                    if "deploy_socket_service.yml"
+                    in task.get("ansible.builtin.include_tasks", "")
+                )
+                self.assertEqual(
+                    deploy_task["vars"]["socket_service_unit_name"],
+                    expected["socket_service_unit_name"],
+                )
+                self.assertEqual(
+                    deploy_task["vars"]["socket_service_handler"],
+                    expected["socket_service_handler"],
+                )
+                self.assertEqual(
+                    deploy_task["vars"]["socket_service_socket_path"],
+                    expected["socket_service_socket_path"],
+                )
+
     def test_role_validation_expressions_compile(self) -> None:
         tasks_path = (
             PROJECT_ROOT / "ansible/roles/nextcloud_tools/tasks/main.yml"

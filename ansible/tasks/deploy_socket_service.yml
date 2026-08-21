@@ -1,0 +1,47 @@
+---
+# Shared by home_agent and nextcloud_tools: install a restricted Python
+# service, template and restart its systemd unit, and wait for its Unix
+# socket to appear. Included with `role_path`-relative paths so it works
+# from either role regardless of which role happens to be executing.
+#
+# Required vars (set on the `include_tasks` task that includes this file):
+#   socket_service_name           human-readable name used in task labels
+#   socket_service_src             absolute path to the Python file to copy
+#   socket_service_dest            destination path for the copied file
+#   socket_service_unit_template   absolute path to the systemd unit template
+#   socket_service_unit_name       systemd unit file name, e.g. home-tools.service
+#   socket_service_socket_path     Unix socket path to wait for
+#   socket_service_handler         exact handler name to notify
+
+- name: Install restricted {{ socket_service_name }} service
+  ansible.builtin.copy:
+    src: "{{ socket_service_src }}"
+    dest: "{{ socket_service_dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: "{{ socket_service_handler }}"
+
+- name: Install {{ socket_service_name }} systemd unit
+  ansible.builtin.template:
+    src: "{{ socket_service_unit_template }}"
+    dest: "/etc/systemd/system/{{ socket_service_unit_name }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: "{{ socket_service_handler }}"
+
+- name: Apply {{ socket_service_name }} service changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure {{ socket_service_name }} is enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ socket_service_unit_name }}"
+    enabled: true
+    state: started
+
+- name: Wait for restricted {{ socket_service_name }} socket
+  ansible.builtin.wait_for:
+    path: "{{ socket_service_socket_path }}"
+    state: present
+    timeout: 10
