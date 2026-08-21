@@ -1,1 +1,5 @@
 ansible==14.3.0
+# Only needed to run tests/test_tool_clients.py, which imports
+# ansible/roles/home_agent/files/agent/home_agent/{home_tools,nextcloud_tools}.py
+# directly. Must match agent/requirements.txt's pin.
+httpx2==2.12.0

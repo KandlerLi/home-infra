@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODULE_PATH = PROJECT_ROOT / "ansible/roles/home_agent/files/home_tools_service.py"
-SPEC = importlib.util.spec_from_file_location("home_tools_service", MODULE_PATH)
-assert SPEC and SPEC.loader
-home_tools_service = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(home_tools_service)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _load_module import load_module_from_path
+
+home_tools_service = load_module_from_path(
+    "home_tools_service", "ansible/roles/home_agent/files/home_tools_service.py"
+)
 
 
 class HomeToolsServiceTests(unittest.TestCase):

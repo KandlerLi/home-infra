@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import http.client
 import json
-import socket
 from typing import Any
+
+import httpx2
 
 MAX_TOOL_RESPONSE_BYTES = 1024 * 1024
 
@@ -87,22 +87,12 @@ class NextcloudToolsError(RuntimeError):
     """Indicate that the restricted Nextcloud service could not answer."""
 
 
-class UnixHTTPConnection(http.client.HTTPConnection):
-    def __init__(self, socket_path: str, timeout: float = 15.0) -> None:
-        super().__init__("nextcloud-tools", timeout=timeout)
-        self.socket_path = socket_path
-
-    def connect(self) -> None:
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.settimeout(self.timeout)
-        self.sock.connect(self.socket_path)
-
-
 class NextcloudToolsClient:
     """Call only predeclared read-only Nextcloud tool endpoints."""
 
-    def __init__(self, socket_path: str) -> None:
+    def __init__(self, socket_path: str, timeout: float = 15.0) -> None:
         self.socket_path = socket_path
+        self.timeout = timeout
 
     def call(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         path = TOOL_PATHS.get(tool_name)
@@ -114,25 +104,32 @@ class NextcloudToolsClient:
         body = json.dumps(arguments, separators=(",", ":")).encode("utf-8")
         if len(body) > 4096:
             raise NextcloudToolsError("tool arguments exceeded the size limit")
-        connection = UnixHTTPConnection(self.socket_path)
+
+        transport = httpx2.HTTPTransport(uds=self.socket_path)
         try:
-            connection.request(
-                "POST",
-                path,
-                body=body,
-                headers={"Content-Type": "application/json"},
-            )
-            response = connection.getresponse()
-            response_body = response.read(MAX_TOOL_RESPONSE_BYTES + 1)
-            if len(response_body) > MAX_TOOL_RESPONSE_BYTES:
-                raise NextcloudToolsError("tool response exceeded the size limit")
-            if response.status != 200:
-                raise NextcloudToolsError("tool is unavailable")
-            payload = json.loads(response_body)
+            with httpx2.Client(
+                transport=transport,
+                base_url="http://nextcloud-tools",
+                timeout=self.timeout,
+            ) as client:
+                with client.stream(
+                    "POST",
+                    path,
+                    content=body,
+                    headers={"Content-Type": "application/json"},
+                ) as response:
+                    response_body = bytearray()
+                    for chunk in response.iter_bytes():
+                        response_body.extend(chunk)
+                        if len(response_body) > MAX_TOOL_RESPONSE_BYTES:
+                            raise NextcloudToolsError(
+                                "tool response exceeded the size limit"
+                            )
+                    if response.status_code != 200:
+                        raise NextcloudToolsError("tool is unavailable")
+            payload = json.loads(bytes(response_body))
             if not isinstance(payload, dict):
                 raise NextcloudToolsError("tool returned an unexpected response")
             return payload
-        except (OSError, http.client.HTTPException, json.JSONDecodeError) as error:
+        except (httpx2.HTTPError, json.JSONDecodeError) as error:
             raise NextcloudToolsError("tool request failed") from error
-        finally:
-            connection.close()

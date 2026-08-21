@@ -1,21 +1,18 @@
 from __future__ import annotations
 
-import importlib.util
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODULE_PATH = (
-    PROJECT_ROOT
-    / "ansible/roles/nextcloud_tools/files/nextcloud_tools_service.py"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _load_module import load_module_from_path
+
+nextcloud_tools = load_module_from_path(
+    "nextcloud_tools_service",
+    "ansible/roles/nextcloud_tools/files/nextcloud_tools_service.py",
 )
-SPEC = importlib.util.spec_from_file_location("nextcloud_tools_service", MODULE_PATH)
-assert SPEC and SPEC.loader
-nextcloud_tools = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = nextcloud_tools
-SPEC.loader.exec_module(nextcloud_tools)
 
 
 MULTISTATUS = b"""<?xml version="1.0"?>
