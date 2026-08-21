@@ -160,12 +160,22 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
         playbook = (
             PROJECT_ROOT / "ansible/playbooks/nextcloud-tools.yml"
         ).read_text()
+        # Token generation lives in the shared task file both bootstrap and
+        # rotation include, not inline in either playbook.
+        shared_password_tasks = (
+            PROJECT_ROOT
+            / "ansible/tasks/generate_and_validate_nextcloud_app_password.yml"
+        ).read_text()
 
         self.assertIn("BOOTSTRAP_NEXTCLOUD_TOOLS", playbook)
         self.assertIn("--generate-password", playbook)
-        self.assertIn("user:auth-tokens:add", playbook)
-        self.assertIn("--no-interaction", playbook)
+        self.assertIn(
+            "generate_and_validate_nextcloud_app_password.yml", playbook
+        )
+        self.assertIn("user:auth-tokens:add", shared_password_tasks)
+        self.assertIn("--no-interaction", shared_password_tasks)
         self.assertNotIn("--password-from-env", playbook)
+        self.assertNotIn("--password-from-env", shared_password_tasks)
         self.assertIn("no_log: true", playbook)
         self.assertIn("home_agent_force_recreate: true", playbook)
 

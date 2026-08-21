@@ -112,51 +112,17 @@
         - not nextcloud_tools_bootstrap_password_file.stat.exists
         - nextcloud_tools_app_password | trim | length < 16
 
-    - name: Generate limited Nextcloud app password
-      community.docker.docker_container_exec:
-        container: "{{ nextcloud_tools_nextcloud_container }}"
-        user: www-data
-        argv:
-          - php
-          - occ
-          - user:auth-tokens:add
-          - --no-interaction
-          - "--name={{ nextcloud_tools_token_name }}"
-          - "{{ nextcloud_tools_username }}"
-      register: nextcloud_tools_generated_token
-      no_log: true
+    - name: Generate and validate a Nextcloud app password
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/generate_and_validate_nextcloud_app_password.yml"
       when:
         - not nextcloud_tools_bootstrap_password_file.stat.exists
         - nextcloud_tools_app_password | trim | length < 16
-
-    - name: Record generated Nextcloud app password for this apply
-      ansible.builtin.set_fact:
-        nextcloud_tools_bootstrap_app_password: >-
-          {{
-            nextcloud_tools_generated_token.stdout_lines
-            | last
-            | trim
-            | default('')
-          }}
-      no_log: true
-      when: nextcloud_tools_generated_token is not skipped
-
-    - name: Validate generated Nextcloud app password
-      ansible.builtin.assert:
-        that:
-          - nextcloud_tools_bootstrap_app_password | length >= 16
-          - >-
-            nextcloud_tools_bootstrap_app_password
-            is match('^[A-Za-z0-9]{64,128}$')
-        fail_msg: Nextcloud did not return a usable app password.
-      no_log: true
-      when: nextcloud_tools_generated_token is not skipped
 
     - name: Select app password input for the service role
       ansible.builtin.set_fact:
         nextcloud_tools_role_app_password: >-
           {{
-            nextcloud_tools_bootstrap_app_password
+            nextcloud_tools_generated_app_password
             | default(nextcloud_tools_app_password)
           }}
       no_log: true

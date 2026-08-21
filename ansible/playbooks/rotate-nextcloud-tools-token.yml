@@ -43,40 +43,8 @@
           }}
       no_log: true
 
-    - name: Generate replacement limited Nextcloud app password
-      community.docker.docker_container_exec:
-        container: "{{ nextcloud_tools_nextcloud_container }}"
-        user: www-data
-        argv:
-          - php
-          - occ
-          - user:auth-tokens:add
-          - --no-interaction
-          - "--name={{ nextcloud_tools_token_name }}"
-          - "{{ nextcloud_tools_username }}"
-      register: nextcloud_tools_replacement_token
-      no_log: true
-
-    - name: Record replacement Nextcloud app password for this apply
-      ansible.builtin.set_fact:
-        nextcloud_tools_rotated_app_password: >-
-          {{
-            nextcloud_tools_replacement_token.stdout_lines
-            | last
-            | trim
-            | default('')
-          }}
-      no_log: true
-
-    - name: Validate generated replacement app password
-      ansible.builtin.assert:
-        that:
-          - nextcloud_tools_rotated_app_password | length >= 16
-          - >-
-            nextcloud_tools_rotated_app_password
-            is match('^[A-Za-z0-9]{64,128}$')
-        fail_msg: Nextcloud did not return a usable replacement app password.
-      no_log: true
+    - name: Generate and validate a replacement Nextcloud app password
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/generate_and_validate_nextcloud_app_password.yml"
 
     - name: Validate replacement token against loopback WebDAV
       ansible.builtin.uri:
@@ -84,7 +52,7 @@
           http://127.0.0.1:11000/remote.php/dav/files/{{ nextcloud_tools_username }}/
         method: PROPFIND
         url_username: "{{ nextcloud_tools_username }}"
-        url_password: "{{ nextcloud_tools_rotated_app_password }}"
+        url_password: "{{ nextcloud_tools_generated_app_password }}"
         force_basic_auth: true
         headers:
           Host: "{{ nextcloud_tools_http_host }}"
@@ -99,7 +67,7 @@
   roles:
     - role: nextcloud_tools
       nextcloud_tools_enabled: true
-      nextcloud_tools_app_password: "{{ nextcloud_tools_rotated_app_password }}"
+      nextcloud_tools_app_password: "{{ nextcloud_tools_generated_app_password }}"
     - role: home_agent
       home_agent_enabled: true
       home_agent_nextcloud_tools_enabled: true
