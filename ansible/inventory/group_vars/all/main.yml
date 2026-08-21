@@ -15,11 +15,13 @@ shared_ingress_open_webui_enabled: true
 nextcloud_tools_enabled: true
 nextcloud_tools_allowed_root: Shared/AI Workspace
 
-# Deluge: deploy privately first (deluge.yml), validate the loopback UI and
-# downloads landing in Nextcloud, then flip shared_ingress_deluge_enabled to
-# true here only after a successful guarded publish-deluge.yml run.
-deluge_enabled: false
-shared_ingress_deluge_enabled: false
+# Deluge: private deploy, Nextcloud wiring, and the guarded publish-deluge.yml
+# run are all independently verified live (login-bug fix confirmed via a
+# direct JSON-API check, torrent.jkandler.de confirmed to gate on the real
+# Basic Auth credential). Persisted here so a full site.yml converge keeps
+# both enabled instead of tearing the public route back down.
+deluge_enabled: true
+shared_ingress_deluge_enabled: true
 
 # Nextcloud external storage for Deluge's downloads folder, visible only to
 # the personal account below (not a service account) -- confirmed working
