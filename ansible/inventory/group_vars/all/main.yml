@@ -20,3 +20,10 @@ nextcloud_tools_allowed_root: Shared/AI Workspace
 # true here only after a successful guarded publish-deluge.yml run.
 deluge_enabled: false
 shared_ingress_deluge_enabled: false
+
+# Nextcloud external storage for Deluge's downloads folder, visible only to
+# the personal account below (not a service account) -- confirmed working
+# privately (torrent + default-password bug both verified fixed) before
+# wiring this up.
+nextcloud_aio_mount_dir: /mnt/black-hdd/downloads
+nextcloud_aio_mount_applicable_user: admin
