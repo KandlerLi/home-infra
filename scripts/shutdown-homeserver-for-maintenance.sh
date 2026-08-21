@@ -40,13 +40,16 @@ on_exit() {
 
 trap on_exit EXIT
 
+docker_running_container_names() {
+  docker ps --format '{{.Names}}' || die "Could not read Docker container state."
+}
+
 container_is_running() {
   local wanted_name=$1
   local name
   local docker_output
 
-  docker_output=$(docker ps --format '{{.Names}}') \
-    || die "Could not read Docker container state."
+  docker_output=$(docker_running_container_names)
 
   while IFS= read -r name; do
     if [[ "$name" == "$wanted_name" ]]; then
@@ -62,8 +65,7 @@ read_running_aio_children() {
   local docker_output
   running_aio_children=()
 
-  docker_output=$(docker ps --format '{{.Names}}') \
-    || die "Could not read Docker container state."
+  docker_output=$(docker_running_container_names)
 
   while IFS= read -r name; do
     if [[ "$name" == nextcloud-aio-* \
