@@ -208,6 +208,21 @@ class DelugeIngressTests(unittest.TestCase):
         self.assertIn("deluge-request-limit", dynamic)
         self.assertIn("deluge-security-headers", dynamic)
 
+    def test_deluge_rate_limit_tolerates_its_polling_web_ui(self) -> None:
+        # Deluge's web UI is a heavy ExtJS SPA that continuously polls
+        # /json for live torrent/status updates (~every 2 seconds) once
+        # open, on top of firing 14+ static asset requests on a cold load
+        # -- confirmed live with "Too Many Requests" against the agent-style
+        # defaults (average=10/min, burst=5) this route originally
+        # inherited. Needs open_webui-style headroom, not the agent's
+        # lightweight-API values.
+        defaults = (SHARED_INGRESS_ROOT / "defaults/main.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("shared_ingress_deluge_rate_average: 120", defaults)
+        self.assertIn("shared_ingress_deluge_rate_burst: 240", defaults)
+
     def test_deluge_credential_is_independent_of_the_agent_credential(
         self,
     ) -> None:

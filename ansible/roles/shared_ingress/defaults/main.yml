@@ -39,9 +39,15 @@ shared_ingress_deluge_domain: torrent.jkandler.de
 shared_ingress_deluge_upstream: http://127.0.0.1:8112
 shared_ingress_deluge_auth_username: julian
 shared_ingress_deluge_auth_password_hash: ""
-shared_ingress_deluge_rate_average: 10
+# Deluge's web UI is a heavy ExtJS SPA, not a lightweight JSON API like the
+# agent route: a cold load fires 14+ static asset requests at once, and once
+# open it continuously polls /json for live torrent/status updates (roughly
+# every 2 seconds), so the *sustained* rate needs headroom too, not just the
+# initial burst. Matches open_webui's already-validated values rather than
+# the agent's API-only ones.
+shared_ingress_deluge_rate_average: 120
 shared_ingress_deluge_rate_period: 1m
-shared_ingress_deluge_rate_burst: 5
+shared_ingress_deluge_rate_burst: 240
 shared_ingress_deluge_max_request_body_bytes: 1048576
 shared_ingress_deluge_publish_confirmation: ""
 
