@@ -1,0 +1,12 @@
+# GENERATED FILE -- do not hand-edit.
+#
+# Source of truth: bootstrap/repo-infra/config.yml (the `runner: true` key
+# on each repository entry). Regenerate with:
+#
+#   .venv/bin/python scripts/sync_github_runner_repositories.py
+#
+# Then review the diff, commit it, and run the github-runner.yml playbook.
+
+github_runner_github_repositories:
+- id: dyndns
+  repository: dyndns
