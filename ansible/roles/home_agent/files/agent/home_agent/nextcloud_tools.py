@@ -8,12 +8,23 @@ from typing import Any
 import httpx2
 
 MAX_TOOL_RESPONSE_BYTES = 1024 * 1024
+MAX_ARGUMENT_BYTES = 4096
+# propose_nextcloud_write can carry file content; matches the service's own
+# MAX_WRITE_BYTES + JSON overhead allowance (nextcloud_tools_service.py).
+MAX_WRITE_ARGUMENT_BYTES = 256 * 1024 + 4096
 
 TOOL_PATHS = {
     "list_nextcloud_files": "/v1/list",
     "search_nextcloud_files": "/v1/search",
     "read_nextcloud_text_file": "/v1/read",
+    "propose_nextcloud_write": "/v1/propose_write",
+    "confirm_nextcloud_write": "/v1/confirm_write",
 }
+
+# Tools whose execution must be locally verified against the raw human
+# message before being forwarded to the socket -- see agent.py's dispatch
+# loop. Never trust the model's own claim that a human approved something.
+CONFIRMATION_GATED_TOOLS = frozenset({"confirm_nextcloud_write"})
 
 TOOL_DEFINITIONS = [
     {
@@ -80,6 +91,73 @@ TOOL_DEFINITIONS = [
         },
         "strict": True,
     },
+    {
+        "type": "function",
+        "name": "propose_nextcloud_write",
+        "description": (
+            "Propose creating, updating, deleting, or moving one approved "
+            "text file or folder below the approved Nextcloud root. Does "
+            "NOT write anything yet -- it returns a short confirmation code "
+            "and a human-readable summary (a diff for updates). You must "
+            "show that summary and code to the user verbatim and wait for "
+            "them to explicitly respond before calling "
+            "confirm_nextcloud_write. Never call confirm_nextcloud_write "
+            "without the user having done so in their own message."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["create", "update", "delete", "move"],
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Relative path of the file or folder.",
+                },
+                "content": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "New file content for create/update. Omit (null) "
+                        "when creating a folder, or for delete/move."
+                    ),
+                },
+                "destination_path": {
+                    "type": ["string", "null"],
+                    "description": "New relative path. Required for move only.",
+                },
+            },
+            "required": ["operation", "path", "content", "destination_path"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "confirm_nextcloud_write",
+        "description": (
+            "Execute a previously proposed Nextcloud write. Only call this "
+            "after the user has explicitly confirmed, in their own message, "
+            "the exact confirmation code returned by propose_nextcloud_write. "
+            "Calling this without a genuine user confirmation will be "
+            "rejected."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "confirmation_code": {
+                    "type": "string",
+                    "description": (
+                        "The code returned by propose_nextcloud_write, as "
+                        "confirmed by the user."
+                    ),
+                }
+            },
+            "required": ["confirmation_code"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
 ]
 
 
@@ -88,7 +166,7 @@ class NextcloudToolsError(RuntimeError):
 
 
 class NextcloudToolsClient:
-    """Call only predeclared read-only Nextcloud tool endpoints."""
+    """Call only predeclared Nextcloud tool endpoints."""
 
     def __init__(self, socket_path: str, timeout: float = 15.0) -> None:
         self.socket_path = socket_path
@@ -102,7 +180,12 @@ class NextcloudToolsClient:
             raise NextcloudToolsError("invalid tool arguments")
 
         body = json.dumps(arguments, separators=(",", ":")).encode("utf-8")
-        if len(body) > 4096:
+        max_bytes = (
+            MAX_WRITE_ARGUMENT_BYTES
+            if tool_name == "propose_nextcloud_write"
+            else MAX_ARGUMENT_BYTES
+        )
+        if len(body) > max_bytes:
             raise NextcloudToolsError("tool arguments exceeded the size limit")
 
         transport = httpx2.HTTPTransport(uds=self.socket_path)

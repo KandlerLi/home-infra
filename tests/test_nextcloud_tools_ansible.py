@@ -59,15 +59,27 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
         self.assertIn('owner: "{{ nextcloud_tools_service_user }}"', service_tasks)
         self.assertIn('mode: "0400"', service_tasks)
 
-    def test_service_implements_no_webdav_write_methods(self) -> None:
+    def test_writes_use_conflict_safe_conditional_headers(self) -> None:
+        # Superseded 2026-08-21: ADR 0008 deferred writes to "a later ADR
+        # with per-operation confirmation, conflict protection, and safe
+        # auditing" -- that's ADR 0011, now implemented. The invariant
+        # changed from "no write verbs exist" to "every write verb is
+        # conditional and only reachable through the gated propose/confirm
+        # flow" -- see NextcloudWebDAVWriteTests and
+        # ProposeConfirmWriteHandlerTests in test_nextcloud_tools_service.py
+        # for the detailed coverage (conflict headers, extension/size
+        # limits, confirmation-code gating, single-use codes).
         service = (
             PROJECT_ROOT
             / "ansible/roles/nextcloud_tools/files/nextcloud_tools_service.py"
         ).read_text()
 
-        for method in ('"PUT"', '"DELETE"', '"MOVE"', '"COPY"', '"MKCOL"'):
+        for method in ('"PUT"', '"DELETE"', '"MOVE"', '"MKCOL"'):
             with self.subTest(method=method):
-                self.assertNotIn(method, service)
+                self.assertIn(method, service)
+        self.assertIn("If-Match", service)
+        self.assertIn("If-None-Match", service)
+        self.assertIn("Overwrite", service)
 
     def test_service_does_not_unlink_a_replacement_socket_at_shutdown(self) -> None:
         service = (

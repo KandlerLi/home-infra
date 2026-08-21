@@ -134,6 +134,72 @@ class NextcloudToolsClientTests(unittest.TestCase):
                 "list_nextcloud_files", {"path": ""}
             )
 
+    def test_propose_and_confirm_write_tools_are_wired_to_their_endpoints(
+        self,
+    ) -> None:
+        from home_agent import nextcloud_tools
+
+        self.assertEqual(
+            nextcloud_tools.TOOL_PATHS["propose_nextcloud_write"],
+            "/v1/propose_write",
+        )
+        self.assertEqual(
+            nextcloud_tools.TOOL_PATHS["confirm_nextcloud_write"],
+            "/v1/confirm_write",
+        )
+        self.assertIn(
+            "confirm_nextcloud_write", nextcloud_tools.CONFIRMATION_GATED_TOOLS
+        )
+        self.assertNotIn(
+            "propose_nextcloud_write", nextcloud_tools.CONFIRMATION_GATED_TOOLS
+        )
+
+    def test_confirm_write_reaches_the_confirm_endpoint(self) -> None:
+        socket_path = self._serve(
+            200, b'{"operation": "create", "path": "note.txt"}'
+        )
+
+        result = NextcloudToolsClient(socket_path).call(
+            "confirm_nextcloud_write", {"confirmation_code": "AB12CD"}
+        )
+
+        self.assertEqual(result["operation"], "create")
+
+    def test_propose_write_content_bypasses_the_small_argument_cap(self) -> None:
+        # 5000 bytes exceeds the 4096-byte cap other tools use, but must
+        # not be rejected locally for propose_nextcloud_write -- it should
+        # get far enough to attempt a (failing) connection instead.
+        with self.assertRaises(NextcloudToolsError) as raised:
+            NextcloudToolsClient("/nonexistent/socket").call(
+                "propose_nextcloud_write",
+                {
+                    "operation": "create",
+                    "path": "note.txt",
+                    "content": "x" * 5000,
+                    "destination_path": None,
+                },
+            )
+
+        self.assertEqual(str(raised.exception), "tool request failed")
+
+    def test_rejects_oversized_write_content_without_connecting(self) -> None:
+        from home_agent import nextcloud_tools
+
+        with self.assertRaises(NextcloudToolsError) as raised:
+            NextcloudToolsClient("/nonexistent/socket").call(
+                "propose_nextcloud_write",
+                {
+                    "operation": "create",
+                    "path": "note.txt",
+                    "content": "x" * nextcloud_tools.MAX_WRITE_ARGUMENT_BYTES,
+                    "destination_path": None,
+                },
+            )
+
+        self.assertEqual(
+            str(raised.exception), "tool arguments exceeded the size limit"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

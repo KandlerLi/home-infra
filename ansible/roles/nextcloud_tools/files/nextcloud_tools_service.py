@@ -9,11 +9,14 @@ import logging
 import os
 import posixpath
 import re
+import secrets
 import socket
 import socketserver
+import time
 import xml.etree.ElementTree as ET
 from collections import deque
 from dataclasses import dataclass
+from difflib import unified_diff
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -39,6 +42,14 @@ MAX_READ_BYTES = int(os.environ.get("NEXTCLOUD_MAX_READ_BYTES", str(256 * 1024))
 MAX_RESULTS = int(os.environ.get("NEXTCLOUD_MAX_RESULTS", "50"))
 MAX_SCAN_ENTRIES = int(os.environ.get("NEXTCLOUD_MAX_SCAN_ENTRIES", "500"))
 MAX_SCAN_DEPTH = int(os.environ.get("NEXTCLOUD_MAX_SCAN_DEPTH", "4"))
+MAX_WRITE_BYTES = int(os.environ.get("NEXTCLOUD_MAX_WRITE_BYTES", str(256 * 1024)))
+MAX_SUMMARY_CHARS = int(os.environ.get("NEXTCLOUD_MAX_SUMMARY_CHARS", "4000"))
+PENDING_WRITE_TTL_SECONDS = int(
+    os.environ.get("NEXTCLOUD_PENDING_WRITE_TTL_SECONDS", "600")
+)
+MAX_PENDING_WRITES = int(os.environ.get("NEXTCLOUD_MAX_PENDING_WRITES", "20"))
+CONFIRMATION_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
+CONFIRMATION_CODE_LENGTH = 6
 
 DAV = "DAV:"
 NC = "http://nextcloud.org/ns"
@@ -109,6 +120,66 @@ class FileEntry:
             "permissions": self.permissions,
             "has_preview": self.has_preview,
         }
+
+
+@dataclass(frozen=True)
+class PendingWrite:
+    operation: str
+    path: str
+    destination_path: str | None
+    content: str | None
+    expected_etag: str | None
+    created_at: float
+
+
+class PendingWriteStore:
+    """Bounded, expiring, single-use store for proposed Nextcloud writes.
+
+    Lives in-process memory only (this service is a single, non-replicated
+    systemd unit) -- a restart drops pending proposals, which is fine: the
+    model just re-proposes. Codes are short and human-typeable because the
+    real confirmation boundary is a human echoing one back in chat, not the
+    code's unguessability (see agent.py's raw-user-message check).
+    """
+
+    def __init__(self, ttl_seconds: int, max_entries: int) -> None:
+        self.ttl_seconds = ttl_seconds
+        self.max_entries = max_entries
+        self._entries: dict[str, PendingWrite] = {}
+
+    def _purge_expired(self, now: float) -> None:
+        expired = [
+            code
+            for code, entry in self._entries.items()
+            if now - entry.created_at > self.ttl_seconds
+        ]
+        for code in expired:
+            del self._entries[code]
+
+    def add(self, entry: PendingWrite) -> str:
+        now = time.monotonic()
+        self._purge_expired(now)
+        if len(self._entries) >= self.max_entries:
+            oldest_code = min(
+                self._entries, key=lambda code: self._entries[code].created_at
+            )
+            del self._entries[oldest_code]
+        code = self._generate_code()
+        while code in self._entries:
+            code = self._generate_code()
+        self._entries[code] = entry
+        return code
+
+    def pop(self, code: str) -> PendingWrite | None:
+        self._purge_expired(time.monotonic())
+        return self._entries.pop(code, None)
+
+    @staticmethod
+    def _generate_code() -> str:
+        return "".join(
+            secrets.choice(CONFIRMATION_CODE_ALPHABET)
+            for _ in range(CONFIRMATION_CODE_LENGTH)
+        )
 
 
 def normalize_relative_path(value: Any, *, allow_empty: bool = True) -> str:
@@ -307,6 +378,122 @@ class NextcloudWebDAV:
             "truncated": truncated,
         }
 
+    def exists(self, relative_path: str) -> bool:
+        """Check existence without conflating "not found" with a real error."""
+        relative_path = normalize_relative_path(relative_path, allow_empty=False)
+        status, _, _ = self._request(
+            "PROPFIND",
+            relative_path,
+            body=PROPFIND_BODY,
+            headers={"Content-Type": "application/xml", "Depth": "0"},
+        )
+        if status == 404:
+            return False
+        if status == 207:
+            return True
+        raise ToolUnavailable(f"Nextcloud existence check returned HTTP {status}")
+
+    def _absolute_url(self, relative_path: str) -> str:
+        return f"http://{self.http_host}{self._webdav_path(relative_path)}"
+
+    def create_file(self, relative_path: str, content: str) -> FileEntry:
+        relative_path = normalize_relative_path(relative_path, allow_empty=False)
+        extension = PurePosixPath(relative_path).suffix.lower()
+        if extension not in READABLE_EXTENSIONS:
+            raise InvalidToolRequest("file type is not approved for writing")
+        body = content.encode("utf-8")
+        if len(body) > MAX_WRITE_BYTES:
+            raise InvalidToolRequest("content exceeds the write size limit")
+        status, _, _ = self._request(
+            "PUT",
+            relative_path,
+            body=body,
+            headers={
+                "Content-Type": "text/plain; charset=utf-8",
+                "If-None-Match": "*",
+            },
+        )
+        if status == 412:
+            raise ToolUnavailable("Nextcloud write conflict: file already exists")
+        if status not in (200, 201, 204):
+            raise ToolUnavailable(f"Nextcloud file create returned HTTP {status}")
+        return self.stat(relative_path)
+
+    def mkcol(self, relative_path: str) -> FileEntry:
+        relative_path = normalize_relative_path(relative_path, allow_empty=False)
+        status, _, _ = self._request("MKCOL", relative_path)
+        if status == 405:
+            raise ToolUnavailable("Nextcloud write conflict: folder already exists")
+        if status not in (200, 201):
+            raise ToolUnavailable(f"Nextcloud folder create returned HTTP {status}")
+        return self.stat(relative_path)
+
+    def update_file(
+        self, relative_path: str, content: str, expected_etag: str | None
+    ) -> FileEntry:
+        relative_path = normalize_relative_path(relative_path, allow_empty=False)
+        extension = PurePosixPath(relative_path).suffix.lower()
+        if extension not in READABLE_EXTENSIONS:
+            raise InvalidToolRequest("file type is not approved for writing")
+        body = content.encode("utf-8")
+        if len(body) > MAX_WRITE_BYTES:
+            raise InvalidToolRequest("content exceeds the write size limit")
+        headers = {"Content-Type": "text/plain; charset=utf-8"}
+        if expected_etag:
+            headers["If-Match"] = expected_etag
+        status, _, _ = self._request("PUT", relative_path, body=body, headers=headers)
+        if status == 412:
+            raise ToolUnavailable(
+                "Nextcloud write conflict: file changed since it was proposed"
+            )
+        if status not in (200, 201, 204):
+            raise ToolUnavailable(f"Nextcloud file update returned HTTP {status}")
+        return self.stat(relative_path)
+
+    def delete(self, relative_path: str, expected_etag: str | None) -> None:
+        relative_path = normalize_relative_path(relative_path, allow_empty=False)
+        entry = self.stat(relative_path)
+        if entry.kind == "folder" and self.list_directory(relative_path):
+            raise InvalidToolRequest(
+                "folder is not empty; delete its contents first"
+            )
+        headers = {}
+        if expected_etag:
+            headers["If-Match"] = expected_etag
+        status, _, _ = self._request("DELETE", relative_path, headers=headers)
+        if status == 412:
+            raise ToolUnavailable(
+                "Nextcloud write conflict: item changed since it was proposed"
+            )
+        if status not in (200, 204):
+            raise ToolUnavailable(f"Nextcloud delete returned HTTP {status}")
+
+    def move(
+        self,
+        relative_path: str,
+        destination_path: str,
+        expected_etag: str | None,
+    ) -> FileEntry:
+        relative_path = normalize_relative_path(relative_path, allow_empty=False)
+        destination_path = normalize_relative_path(destination_path, allow_empty=False)
+        destination_extension = PurePosixPath(destination_path).suffix.lower()
+        if destination_extension and destination_extension not in READABLE_EXTENSIONS:
+            raise InvalidToolRequest("destination file type is not approved")
+        headers = {
+            "Destination": self._absolute_url(destination_path),
+            "Overwrite": "F",
+        }
+        if expected_etag:
+            headers["If-Match"] = expected_etag
+        status, _, _ = self._request("MOVE", relative_path, headers=headers)
+        if status == 412:
+            raise ToolUnavailable(
+                "Nextcloud write conflict: source changed or destination exists"
+            )
+        if status not in (200, 201, 204):
+            raise ToolUnavailable(f"Nextcloud move returned HTTP {status}")
+        return self.stat(destination_path)
+
 
 def parse_multistatus(body: bytes, decoded_root_path: str) -> list[FileEntry]:
     """Parse only the approved WebDAV metadata fields."""
@@ -365,7 +552,166 @@ def parse_multistatus(body: bytes, decoded_root_path: str) -> list[FileEntry]:
     return entries
 
 
-def handle_tool(path: str, payload: Any, client: NextcloudWebDAV) -> dict[str, Any]:
+def truncate_summary(text: str) -> str:
+    if len(text) <= MAX_SUMMARY_CHARS:
+        return text
+    return text[:MAX_SUMMARY_CHARS] + "\n... (truncated)"
+
+
+def propose_write(
+    payload: dict[str, Any], client: NextcloudWebDAV, pending_writes: PendingWriteStore
+) -> dict[str, Any]:
+    if set(payload) - {"operation", "path", "content", "destination_path"}:
+        raise InvalidToolRequest("unexpected arguments")
+    operation = payload.get("operation")
+    if operation not in {"create", "update", "delete", "move"}:
+        raise InvalidToolRequest("operation must be create, update, delete, or move")
+    relative_path = normalize_relative_path(payload.get("path"), allow_empty=False)
+    content = payload.get("content")
+    destination_path = payload.get("destination_path")
+
+    if content is not None and operation not in {"create", "update"}:
+        raise InvalidToolRequest("content is only valid for create or update")
+    if content is not None and not isinstance(content, str):
+        raise InvalidToolRequest("content must be a string")
+    if operation == "move":
+        if not isinstance(destination_path, str):
+            raise InvalidToolRequest("move requires destination_path")
+        destination_path = normalize_relative_path(destination_path, allow_empty=False)
+    elif destination_path is not None:
+        raise InvalidToolRequest("destination_path is only valid for move")
+
+    expected_etag: str | None = None
+
+    if operation == "create":
+        if client.exists(relative_path):
+            raise InvalidToolRequest("path already exists; use update instead")
+        if content is None:
+            summary = f"Create empty folder at {relative_path!r}."
+        else:
+            if len(content.encode("utf-8")) > MAX_WRITE_BYTES:
+                raise InvalidToolRequest("content exceeds the write size limit")
+            summary = f"Create file at {relative_path!r} ({len(content)} characters)."
+    elif operation == "update":
+        if not isinstance(content, str):
+            raise InvalidToolRequest("update requires content")
+        if len(content.encode("utf-8")) > MAX_WRITE_BYTES:
+            raise InvalidToolRequest("content exceeds the write size limit")
+        current = client.read_text_file(relative_path)
+        expected_etag = current["etag"]
+        diff = "\n".join(
+            unified_diff(
+                current["content"].splitlines(),
+                content.splitlines(),
+                fromfile=relative_path,
+                tofile=relative_path,
+                lineterm="",
+            )
+        )
+        summary = (
+            f"Update {relative_path!r}:\n{diff}"
+            if diff
+            else f"Update {relative_path!r} (no content change)."
+        )
+    elif operation == "delete":
+        entry = client.stat(relative_path)
+        expected_etag = entry.etag
+        if entry.kind == "folder" and client.list_directory(relative_path):
+            raise InvalidToolRequest(
+                "folder is not empty; delete its contents first"
+            )
+        summary = f"Delete {entry.kind} at {relative_path!r}."
+    else:  # move
+        entry = client.stat(relative_path)
+        expected_etag = entry.etag
+        summary = f"Move {relative_path!r} to {destination_path!r}."
+
+    code = pending_writes.add(
+        PendingWrite(
+            operation=operation,
+            path=relative_path,
+            destination_path=destination_path,
+            content=content,
+            expected_etag=expected_etag,
+            created_at=time.monotonic(),
+        )
+    )
+    LOGGER.info(
+        "Nextcloud write proposed: operation=%s path=%s code=%s",
+        operation,
+        relative_path,
+        code,
+    )
+    return {
+        "confirmation_code": code,
+        "operation": operation,
+        "path": relative_path,
+        "summary": truncate_summary(summary),
+        "expires_in_seconds": pending_writes.ttl_seconds,
+    }
+
+
+def confirm_write(
+    payload: dict[str, Any], client: NextcloudWebDAV, pending_writes: PendingWriteStore
+) -> dict[str, Any]:
+    if set(payload) != {"confirmation_code"}:
+        raise InvalidToolRequest("confirm requires exactly one confirmation_code")
+    code = payload["confirmation_code"]
+    if not isinstance(code, str) or not code:
+        raise InvalidToolRequest("confirmation_code is invalid")
+
+    pending = pending_writes.pop(code)
+    if pending is None:
+        LOGGER.info("Nextcloud write confirm failed: reason=not_found_or_expired")
+        raise InvalidToolRequest(
+            "confirmation code is unknown or expired; propose the write again"
+        )
+
+    try:
+        if pending.operation == "create":
+            entry = (
+                client.mkcol(pending.path)
+                if pending.content is None
+                else client.create_file(pending.path, pending.content)
+            )
+        elif pending.operation == "update":
+            entry = client.update_file(
+                pending.path, pending.content, pending.expected_etag
+            )
+        elif pending.operation == "delete":
+            client.delete(pending.path, pending.expected_etag)
+            entry = None
+        else:  # move
+            entry = client.move(
+                pending.path, pending.destination_path, pending.expected_etag
+            )
+    except ToolUnavailable as error:
+        LOGGER.info(
+            "Nextcloud write confirm failed: operation=%s path=%s reason=%s",
+            pending.operation,
+            pending.path,
+            error,
+        )
+        raise
+
+    LOGGER.info(
+        "Nextcloud write confirmed: operation=%s path=%s",
+        pending.operation,
+        pending.path,
+    )
+    return {
+        "operation": pending.operation,
+        "path": pending.path,
+        "result": entry.as_dict() if entry is not None else None,
+    }
+
+
+def handle_tool(
+    path: str,
+    payload: Any,
+    client: NextcloudWebDAV,
+    pending_writes: PendingWriteStore,
+) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise InvalidToolRequest("request must be an object")
     if path == "/v1/list":
@@ -385,6 +731,10 @@ def handle_tool(path: str, payload: Any, client: NextcloudWebDAV) -> dict[str, A
             raise InvalidToolRequest("read requires exactly one path")
         file_path = normalize_relative_path(payload["path"], allow_empty=False)
         return client.read_text_file(file_path)
+    if path == "/v1/propose_write":
+        return propose_write(payload, client, pending_writes)
+    if path == "/v1/confirm_write":
+        return confirm_write(payload, client, pending_writes)
     raise InvalidToolRequest("unknown tool")
 
 
@@ -408,12 +758,21 @@ class NextcloudToolsRequestHandler(BaseHTTPRequestHandler):
         except ValueError:
             self._send_json(400, {"error": "invalid_content_length"})
             return
-        if content_length <= 0 or content_length > MAX_REQUEST_BYTES:
+        # propose_write can carry up to MAX_WRITE_BYTES of file content, far
+        # beyond the small fixed-shape arguments every other tool takes.
+        max_bytes = (
+            MAX_WRITE_BYTES + 4096
+            if self.path == "/v1/propose_write"
+            else MAX_REQUEST_BYTES
+        )
+        if content_length <= 0 or content_length > max_bytes:
             self._send_json(413, {"error": "invalid_request_size"})
             return
         try:
             payload = json.loads(self.rfile.read(content_length))
-            result = handle_tool(self.path, payload, self.server.client)
+            result = handle_tool(
+                self.path, payload, self.server.client, self.server.pending_writes
+            )
         except (UnicodeDecodeError, json.JSONDecodeError, InvalidToolRequest):
             self._send_json(400, {"error": "invalid_request"})
             return
@@ -445,6 +804,7 @@ class NextcloudToolsRequestHandler(BaseHTTPRequestHandler):
 class ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
     client: NextcloudWebDAV
+    pending_writes: PendingWriteStore
 
 
 def read_app_password(path: str) -> str:
@@ -466,11 +826,13 @@ def main() -> None:
         read_app_password(APP_PASSWORD_FILE),
         ALLOWED_ROOT,
     )
+    pending_writes = PendingWriteStore(PENDING_WRITE_TTL_SECONDS, MAX_PENDING_WRITES)
     socket_path = Path(SOCKET_PATH)
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     socket_path.unlink(missing_ok=True)
     with ThreadingUnixServer(str(socket_path), NextcloudToolsRequestHandler) as server:
         server.client = client
+        server.pending_writes = pending_writes
         os.chmod(socket_path, 0o660)
         server.serve_forever()
 
