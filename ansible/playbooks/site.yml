@@ -8,6 +8,7 @@
     - base
     - storage
     - docker
+    - deluge
     - nextcloud_aio
     - nextcloud_tools
     - home_agent

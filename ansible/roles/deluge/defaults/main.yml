@@ -1,0 +1,20 @@
+---
+deluge_enabled: false
+deluge_force_recreate: false
+
+deluge_container_name: deluge
+deluge_image: linuxserver/deluge:2.2.0-ls381
+deluge_restart_policy: unless-stopped
+
+deluge_service_user: deluge
+deluge_service_group: deluge
+deluge_downloads_dir: /mnt/black-hdd/downloads
+deluge_config_dir: /mnt/black-hdd/deluge-config
+
+deluge_web_bind_address: 127.0.0.1
+deluge_web_port: 8112
+deluge_peer_port: 6881
+
+deluge_memory_limit: 512M
+deluge_cpu_limit: 1.0
+deluge_pids_limit: 256

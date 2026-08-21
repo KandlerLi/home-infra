@@ -6,6 +6,22 @@ nextcloud_aio_config_volume: nextcloud_aio_mastercontainer
 
 nextcloud_aio_data_dir: /mnt/black-hdd/nextcloud
 
+# Bind-mounts this host directory into the Nextcloud app container at the
+# same path via AIO's NEXTCLOUD_MOUNT, making it eligible for Nextcloud's
+# "Local" external storage backend. Empty disables the mount entirely.
+# Not covered by AIO's built-in backup -- see docs/storage.md.
+nextcloud_aio_mount_dir: ""
+nextcloud_aio_mount_point_name: Downloads
+# Nextcloud username (your own personal account, not a service account) the
+# mount is made visible to. Deliberately has no default other than empty --
+# a wrong guess here would grant an unintended account visibility into the
+# host downloads folder. The mount is created either way once
+# nextcloud_aio_mount_dir is set; only the "make it visible" step is skipped
+# until this is set.
+nextcloud_aio_mount_applicable_user: ""
+nextcloud_aio_nextcloud_container: >-
+  {{ nextcloud_tools_nextcloud_container | default('nextcloud-aio-nextcloud') }}
+
 nextcloud_aio_restart_policy: always
 
 nextcloud_aio_ports:

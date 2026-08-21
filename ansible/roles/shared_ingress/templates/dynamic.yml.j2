@@ -45,6 +45,17 @@ http:
         certResolver: letsencrypt
 {% endif %}
 {% endif %}
+{% if shared_ingress_deluge_enabled | bool %}
+    deluge:
+      rule: "Host(`{{ shared_ingress_deluge_domain }}`)"
+      entryPoints:
+        - websecure
+      service: deluge
+      middlewares:
+        - deluge-chain
+      tls:
+        certResolver: letsencrypt
+{% endif %}
 
   services:
     nextcloud:
@@ -65,6 +76,13 @@ http:
         servers:
           - url: "{{ shared_ingress_open_webui_upstream }}"
 {% endif %}
+{% endif %}
+{% if shared_ingress_deluge_enabled | bool %}
+    deluge:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "{{ shared_ingress_deluge_upstream }}"
 {% endif %}
 
   middlewares:
@@ -126,4 +144,35 @@ http:
           - open-webui-request-limit
           - agent-security-headers
 {% endif %}
+{% endif %}
+{% if shared_ingress_deluge_enabled | bool %}
+    deluge-auth:
+      basicAuth:
+        usersFile: /etc/traefik/deluge-users
+        realm: Home Infrastructure
+        removeHeader: true
+    deluge-rate-limit:
+      rateLimit:
+        average: {{ shared_ingress_deluge_rate_average }}
+        period: {{ shared_ingress_deluge_rate_period }}
+        burst: {{ shared_ingress_deluge_rate_burst }}
+    deluge-request-limit:
+      buffering:
+        maxRequestBodyBytes: {{ shared_ingress_deluge_max_request_body_bytes }}
+        memRequestBodyBytes: {{ shared_ingress_deluge_max_request_body_bytes }}
+    deluge-security-headers:
+      headers:
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: no-referrer
+        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
+        stsSeconds: 31536000
+        stsIncludeSubdomains: false
+    deluge-chain:
+      chain:
+        middlewares:
+          - deluge-auth
+          - deluge-rate-limit
+          - deluge-request-limit
+          - deluge-security-headers
 {% endif %}

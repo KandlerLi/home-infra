@@ -1,0 +1,142 @@
+---
+- name: Configure Deluge
+  when: deluge_enabled | bool
+  block:
+    - name: Validate Deluge configuration
+      ansible.builtin.assert:
+        that:
+          - deluge_image is match('^linuxserver/deluge:')
+          - deluge_web_bind_address == "127.0.0.1"
+          - deluge_web_port | int >= 1024
+          - deluge_web_port | int <= 65535
+          - deluge_downloads_dir != deluge_config_dir
+        fail_msg: >-
+          Keep the Deluge web UI bound to loopback only and the downloads
+          and config directories distinct (only downloads should ever be
+          exposed to Nextcloud via NEXTCLOUD_MOUNT).
+      no_log: true
+
+    - name: Create Deluge service group
+      ansible.builtin.group:
+        name: "{{ deluge_service_group }}"
+        system: true
+        state: present
+
+    - name: Create Deluge service account
+      ansible.builtin.user:
+        name: "{{ deluge_service_user }}"
+        group: "{{ deluge_service_group }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+      register: deluge_service_account
+
+    - name: Read Deluge service account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ deluge_service_user }}"
+
+    - name: Read Deluge service group
+      ansible.builtin.getent:
+        database: group
+        key: "{{ deluge_service_group }}"
+
+    - name: Record Deluge runtime identity
+      ansible.builtin.set_fact:
+        deluge_uid: "{{ ansible_facts.getent_passwd[deluge_service_user][1] }}"
+        deluge_gid: "{{ ansible_facts.getent_group[deluge_service_group][1] }}"
+
+    - name: Create Deluge directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ deluge_service_user }}"
+        group: "{{ deluge_service_group }}"
+        mode: "0750"
+      loop:
+        - "{{ deluge_downloads_dir }}"
+        - "{{ deluge_config_dir }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Pull pinned Deluge image
+      community.docker.docker_image:
+        name: "{{ deluge_image }}"
+        source: pull
+        state: present
+      register: deluge_image_pull
+
+    - name: Ensure Deluge container is running
+      community.docker.docker_container:
+        name: "{{ deluge_container_name }}"
+        image: "{{ deluge_image }}"
+        state: started
+        recreate: "{{ deluge_image_pull.changed or deluge_force_recreate | bool }}"
+        restart_policy: "{{ deluge_restart_policy }}"
+        # No read_only: true or cap_drop here, unlike home_agent/
+        # shared_ingress: the linuxserver/deluge image's s6-overlay init
+        # starts as root, remaps to PUID/PGID via chown/setuid (needs
+        # CAP_CHOWN/CAP_SETUID/CAP_SETGID -- dropping ALL would break that
+        # step), and writes supervision state outside the mounted volumes.
+        # no-new-privileges is still safe: it only blocks privilege
+        # escalation via setuid binaries, not the PUID-based remap.
+        security_opts:
+          - no-new-privileges:true
+        env:
+          PUID: "{{ deluge_uid }}"
+          PGID: "{{ deluge_gid }}"
+          TZ: Etc/UTC
+        memory: "{{ deluge_memory_limit }}"
+        cpus: "{{ deluge_cpu_limit }}"
+        pids_limit: "{{ deluge_pids_limit }}"
+        published_ports:
+          - "{{ deluge_web_bind_address }}:{{ deluge_web_port }}:8112"
+          - "{{ deluge_peer_port }}:{{ deluge_peer_port }}/tcp"
+          - "{{ deluge_peer_port }}:{{ deluge_peer_port }}/udp"
+        volumes:
+          - "{{ deluge_config_dir }}:/config"
+          - "{{ deluge_downloads_dir }}:/downloads"
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+      register: deluge_container
+
+    - name: Wait for the Deluge web UI to come up
+      ansible.builtin.wait_for:
+        host: "{{ deluge_web_bind_address }}"
+        port: "{{ deluge_web_port }}"
+        timeout: 60
+      when: not ansible_check_mode
+
+    - name: Wait for Deluge's web.conf to be generated on first boot
+      ansible.builtin.wait_for:
+        path: "{{ deluge_config_dir }}/.config/deluge/web.conf"
+        timeout: 30
+      register: deluge_web_conf_wait
+      when: not ansible_check_mode
+
+    - name: Disable Deluge's own login prompt
+      # Traefik Basic Auth is the sole intended gate for this service (see
+      # shared_ingress's deluge-auth middleware) -- this depends entirely on
+      # the web UI never being reachable except via 127.0.0.1 behind that
+      # gate. Deleting pwd_sha1 from web.conf is Deluge's own documented
+      # mechanism for disabling its login screen. The exact path below was
+      # not verified against a live container at write time; if the
+      # preceding wait_for fails, find the real path with
+      # `docker exec deluge find /config -name web.conf` and fix this task.
+      ansible.builtin.lineinfile:
+        path: "{{ deluge_config_dir }}/.config/deluge/web.conf"
+        regexp: '^\s*"pwd_sha1":'
+        state: absent
+      register: deluge_web_conf_edit
+      when: not ansible_check_mode
+
+    - name: Restart Deluge after disabling its login prompt
+      community.docker.docker_container:
+        name: "{{ deluge_container_name }}"
+        state: started
+        restart: true
+      when:
+        - not ansible_check_mode
+        - deluge_web_conf_edit.changed | default(false)

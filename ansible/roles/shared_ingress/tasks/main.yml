@@ -30,9 +30,18 @@
           - >-
             not shared_ingress_agent_enabled | bool
             or shared_ingress_agent_auth_password_hash | length >= 20
+          - shared_ingress_deluge_upstream == "http://127.0.0.1:8112"
+          - shared_ingress_deluge_rate_average | int > 0
+          - shared_ingress_deluge_rate_burst | int > 0
+          - >-
+            not shared_ingress_deluge_enabled | bool
+            or shared_ingress_deluge_auth_username | length > 0
+          - >-
+            not shared_ingress_deluge_enabled | bool
+            or shared_ingress_deluge_auth_password_hash | length >= 20
         fail_msg: >-
-          Configure the ACME and agent authentication values before enabling
-          public agent routing. Keep both upstreams bound to host loopback.
+          Configure the ACME and agent/deluge authentication values before
+          enabling public routing. Keep every upstream bound to host loopback.
       no_log: true
 
     - name: Inspect current shared ingress routes
@@ -41,7 +50,9 @@
       register: shared_ingress_current_routes
       failed_when: false
       changed_when: false
-      when: shared_ingress_open_webui_enabled | bool
+      when: >-
+        shared_ingress_open_webui_enabled | bool
+        or shared_ingress_deluge_enabled | bool
 
     - name: Require confirmation for initial Open WebUI publication
       ansible.builtin.assert:
@@ -72,6 +83,35 @@
         - shared_ingress_open_webui_health.json.status | default(false) | bool
       when:
         - shared_ingress_open_webui_enabled | bool
+        - not ansible_check_mode
+
+    - name: Require confirmation for initial Deluge publication
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              shared_ingress_current_routes.content | default('')
+              | b64decode
+            ) is search('service: deluge')
+            or shared_ingress_deluge_publish_confirmation
+               == "PUBLISH_DELUGE"
+        fail_msg: >-
+          Pass deluge_publish_confirmation=PUBLISH_DELUGE only after the
+          loopback web UI and downloaded-file placement have been tested.
+      when: shared_ingress_deluge_enabled | bool
+
+    - name: Verify Deluge before publishing it
+      ansible.builtin.uri:
+        url: "{{ shared_ingress_deluge_upstream }}/"
+        method: GET
+        return_content: false
+        status_code: 200
+      register: shared_ingress_deluge_health
+      retries: 10
+      delay: 2
+      until: shared_ingress_deluge_health.status == 200
+      when:
+        - shared_ingress_deluge_enabled | bool
         - not ansible_check_mode
 
     - name: Create shared ingress directories
@@ -133,6 +173,17 @@
       no_log: true
       register: shared_ingress_users_file
       when: shared_ingress_agent_enabled | bool
+
+    - name: Install Deluge authentication file
+      ansible.builtin.template:
+        src: deluge-users.j2
+        dest: "{{ shared_ingress_config_dir }}/deluge-users"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      register: shared_ingress_deluge_users_file
+      when: shared_ingress_deluge_enabled | bool
 
     - name: Pull pinned Traefik image
       community.docker.docker_image:
@@ -207,7 +258,8 @@
             recreate: >-
               {{ shared_ingress_static_config.changed
                  or shared_ingress_dynamic_config.changed
-                 or shared_ingress_users_file.changed | default(false) }}
+                 or shared_ingress_users_file.changed | default(false)
+                 or shared_ingress_deluge_users_file.changed | default(false) }}
             restart_policy: "{{ shared_ingress_restart_policy }}"
             network_mode: host
             read_only: true

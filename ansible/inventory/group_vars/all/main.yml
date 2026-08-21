@@ -14,3 +14,9 @@ open_webui_enabled: true
 shared_ingress_open_webui_enabled: true
 nextcloud_tools_enabled: true
 nextcloud_tools_allowed_root: Shared/AI Workspace
+
+# Deluge: deploy privately first (deluge.yml), validate the loopback UI and
+# downloads landing in Nextcloud, then flip shared_ingress_deluge_enabled to
+# true here only after a successful guarded publish-deluge.yml run.
+deluge_enabled: false
+shared_ingress_deluge_enabled: false

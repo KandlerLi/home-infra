@@ -94,9 +94,20 @@
          | ternary(nextcloud_aio_reverse_proxy_ports, nextcloud_aio_ports) }}
     comparisons:
       published_ports: strict
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "{{ nextcloud_aio_config_volume }}:/mnt/docker-aio-config"
+      volumes: strict
+      env: strict
+    volumes: >-
+      {{
+        [
+          "/var/run/docker.sock:/var/run/docker.sock:ro",
+          nextcloud_aio_config_volume ~ ":/mnt/docker-aio-config"
+        ]
+        + (
+            [nextcloud_aio_mount_dir ~ ":" ~ nextcloud_aio_mount_dir]
+            if nextcloud_aio_mount_dir | length > 0
+            else []
+          )
+      }}
     env: >-
       {{ {'NEXTCLOUD_DATADIR': nextcloud_aio_data_dir}
          | combine(
@@ -118,4 +129,95 @@
                      {}
                    )
                )
+           )
+         | combine(
+             {'NEXTCLOUD_MOUNT': nextcloud_aio_mount_dir}
+             if nextcloud_aio_mount_dir | length > 0
+             else {}
            ) }}
+
+# The occ commands below were not verified against a live AIO instance at
+# write time (files_external:list's exact JSON shape and files_external:
+# create's exact positional-argument acceptance can vary by Nextcloud
+# version). If any task here fails, run the equivalent commands by hand
+# inside the nextcloud-aio-nextcloud container to find the actual shape
+# and fix this file -- do not silently skip past a failure here.
+- name: Manage local external storage for the mounted downloads folder
+  when: nextcloud_aio_mount_dir | length > 0
+  block:
+    - name: List existing external storage mounts
+      community.docker.docker_container_exec:
+        container: "{{ nextcloud_aio_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - files_external:list
+          - --output=json
+      register: nextcloud_aio_external_storage_list
+      changed_when: false
+
+    - name: Find the downloads mount, if it already exists
+      ansible.builtin.set_fact:
+        nextcloud_aio_downloads_mount: >-
+          {{
+            (nextcloud_aio_external_storage_list.stdout | from_json)
+            | selectattr(
+                'mount_point', 'search', nextcloud_aio_mount_point_name ~ '$'
+              )
+            | list
+          }}
+
+    - name: Create local external storage for the downloads folder
+      community.docker.docker_container_exec:
+        container: "{{ nextcloud_aio_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - files_external:create
+          - "{{ nextcloud_aio_mount_point_name }}"
+          - local
+          - "null::null"
+          - --config
+          - "datadir={{ nextcloud_aio_mount_dir }}"
+      when: nextcloud_aio_downloads_mount | length == 0
+
+    - name: Re-list external storage mounts to find the mount id
+      community.docker.docker_container_exec:
+        container: "{{ nextcloud_aio_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - files_external:list
+          - --output=json
+      register: nextcloud_aio_external_storage_list_final
+      changed_when: false
+      when: nextcloud_aio_mount_applicable_user | length > 0
+
+    - name: Record the downloads mount id
+      ansible.builtin.set_fact:
+        nextcloud_aio_downloads_mount_id: >-
+          {{
+            (nextcloud_aio_external_storage_list_final.stdout | from_json)
+            | selectattr(
+                'mount_point', 'search', nextcloud_aio_mount_point_name ~ '$'
+              )
+            | map(attribute='mount_id')
+            | first
+          }}
+      when: nextcloud_aio_mount_applicable_user | length > 0
+
+    - name: Make the downloads mount visible to the configured account
+      community.docker.docker_container_exec:
+        container: "{{ nextcloud_aio_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - files_external:applicable
+          - "{{ nextcloud_aio_downloads_mount_id }}"
+          - --add-user
+          - "{{ nextcloud_aio_mount_applicable_user }}"
+      when: nextcloud_aio_mount_applicable_user | length > 0

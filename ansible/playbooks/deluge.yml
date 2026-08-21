@@ -1,0 +1,9 @@
+---
+- name: Configure private Deluge torrent client
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: deluge
+      deluge_enabled: true
