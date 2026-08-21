@@ -59,6 +59,60 @@
       loop_control:
         label: "{{ item }}"
 
+    - name: Check whether Deluge's web.conf already exists
+      ansible.builtin.stat:
+        path: "{{ deluge_config_dir }}/web.conf"
+      register: deluge_web_conf_stat
+
+    # Deluge has no "no login required" mode: its own auth.py source
+    # (deluge/ui/web/auth.py, check_password()) returns False for every
+    # password when pwd_sha1 is missing from config, which permanently
+    # locks out login rather than bypassing it. Traefik Basic Auth is still
+    # the primary public gate, but Deluge's own login can only be set, not
+    # disabled -- so it must have a real, strong password too. Pre-seed
+    # web.conf before first start rather than waiting for Deluge to create
+    # its own default: it doesn't write web.conf to disk until something
+    # triggers a config save (a password change, in the normal UI flow),
+    # so a fresh container never generates one on its own.
+    - name: Set Deluge's own web UI password
+      when: not deluge_web_conf_stat.stat.exists
+      no_log: true
+      block:
+        - name: Validate the Deluge web UI password is configured
+          ansible.builtin.assert:
+            that:
+              - deluge_web_password | trim | length >= 16
+              - deluge_web_password | trim != "CHANGE_ME"
+            fail_msg: >-
+              Configure deluge_web_password through SOPS before the first
+              deploy.
+
+        - name: Generate a random salt for the Deluge web UI password
+          ansible.builtin.set_fact:
+            deluge_web_pwd_salt: >-
+              {{
+                lookup('ansible.builtin.password', '/dev/null', length=40, chars=['hexdigits'])
+                | lower
+              }}
+
+        - name: Compute the Deluge web UI password hash
+          # Matches deluge/ui/web/auth.py's Auth._change_password() exactly:
+          # sha1(salt); sha1.update(password) == sha1(salt + password),
+          # since SHA1 produces the same digest for sequential updates as
+          # for the concatenated input in one call. Verified locally against
+          # Python's hashlib before use.
+          ansible.builtin.set_fact:
+            deluge_web_pwd_sha1: "{{ (deluge_web_pwd_salt ~ deluge_web_password) | hash('sha1') }}"
+
+        - name: Install Deluge's web.conf with the configured password
+          ansible.builtin.template:
+            src: web.conf.j2
+            dest: "{{ deluge_config_dir }}/web.conf"
+            owner: "{{ deluge_service_user }}"
+            group: "{{ deluge_service_group }}"
+            mode: "0600"
+          register: deluge_web_conf_installed
+
     - name: Pull pinned Deluge image
       community.docker.docker_image:
         name: "{{ deluge_image }}"
@@ -71,7 +125,10 @@
         name: "{{ deluge_container_name }}"
         image: "{{ deluge_image }}"
         state: started
-        recreate: "{{ deluge_image_pull.changed or deluge_force_recreate | bool }}"
+        recreate: >-
+          {{ deluge_image_pull.changed
+             or deluge_web_conf_installed.changed | default(false)
+             or deluge_force_recreate | bool }}
         restart_policy: "{{ deluge_restart_policy }}"
         # No read_only: true or cap_drop here, unlike home_agent/
         # shared_ingress: the linuxserver/deluge image's s6-overlay init
@@ -108,35 +165,3 @@
         port: "{{ deluge_web_port }}"
         timeout: 60
       when: not ansible_check_mode
-
-    - name: Wait for Deluge's web.conf to be generated on first boot
-      ansible.builtin.wait_for:
-        path: "{{ deluge_config_dir }}/.config/deluge/web.conf"
-        timeout: 30
-      register: deluge_web_conf_wait
-      when: not ansible_check_mode
-
-    - name: Disable Deluge's own login prompt
-      # Traefik Basic Auth is the sole intended gate for this service (see
-      # shared_ingress's deluge-auth middleware) -- this depends entirely on
-      # the web UI never being reachable except via 127.0.0.1 behind that
-      # gate. Deleting pwd_sha1 from web.conf is Deluge's own documented
-      # mechanism for disabling its login screen. The exact path below was
-      # not verified against a live container at write time; if the
-      # preceding wait_for fails, find the real path with
-      # `docker exec deluge find /config -name web.conf` and fix this task.
-      ansible.builtin.lineinfile:
-        path: "{{ deluge_config_dir }}/.config/deluge/web.conf"
-        regexp: '^\s*"pwd_sha1":'
-        state: absent
-      register: deluge_web_conf_edit
-      when: not ansible_check_mode
-
-    - name: Restart Deluge after disabling its login prompt
-      community.docker.docker_container:
-        name: "{{ deluge_container_name }}"
-        state: started
-        restart: true
-      when:
-        - not ansible_check_mode
-        - deluge_web_conf_edit.changed | default(false)

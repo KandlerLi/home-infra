@@ -49,6 +49,60 @@ class DelugeRoleTests(unittest.TestCase):
 
         self.assertIn("deluge_downloads_dir != deluge_config_dir", tasks)
 
+    def test_web_ui_password_is_required_not_left_default(self) -> None:
+        # Deluge has no "no login required" mode -- deluge/ui/web/auth.py's
+        # check_password() returns False for every password when pwd_sha1
+        # is missing, which locks out login rather than bypassing it. So a
+        # real password must be set and validated, the same way
+        # home_agent_openai_api_key is.
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn('deluge_web_password: ""', defaults)
+        self.assertIn("deluge_web_password | trim | length >= 16", tasks)
+        self.assertIn('deluge_web_password | trim != "CHANGE_ME"', tasks)
+        self.assertNotIn("Disable Deluge's own login", tasks)
+
+    def test_web_conf_password_hash_matches_deluges_own_algorithm(self) -> None:
+        # deluge/ui/web/auth.py's Auth._change_password():
+        #   salt = sha1(random); s = sha1(salt); s.update(password)
+        # sha1.update(a); sha1.update(b) == sha1(a + b) for the same digest,
+        # so (salt ~ password) | hash('sha1') must reproduce that exactly.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "deluge_web_pwd_sha1: \"{{ (deluge_web_pwd_salt ~ deluge_web_password)"
+            " | hash('sha1') }}\"",
+            tasks,
+        )
+
+    def test_web_conf_template_renders_as_two_valid_json_objects(self) -> None:
+        # Deluge's config loader (deluge/config.py) requires exactly this
+        # shape: a {"file": ..., "format": ...} header immediately followed
+        # by the actual config object, found via brace-matching (not a
+        # naive split), each parsed independently as JSON.
+        import json
+
+        from jinja2 import Environment, FileSystemLoader
+
+        env = Environment(
+            loader=FileSystemLoader(str(ROLE_ROOT / "templates"))
+        )
+        rendered = env.get_template("web.conf.j2").render(
+            deluge_web_pwd_salt="a" * 40,
+            deluge_web_pwd_sha1="b" * 40,
+        )
+
+        split_at = rendered.index("}{") + 1
+        header = json.loads(rendered[:split_at])
+        body = json.loads(rendered[split_at:])
+
+        self.assertEqual(header, {"file": 1, "format": 1})
+        self.assertEqual(body["pwd_salt"], "a" * 40)
+        self.assertEqual(body["pwd_sha1"], "b" * 40)
+        self.assertEqual(body["port"], 8112)
+        self.assertEqual(body["sessions"], {})
+
 
 class DelugeIngressTests(unittest.TestCase):
     def test_deluge_route_requires_its_own_basic_auth_and_resource_limits(
