@@ -101,6 +101,31 @@
               Configure deluge_web_password through SOPS before the first
               deploy.
 
+        - name: Check whether the Deluge container already exists
+          community.docker.docker_container_info:
+            name: "{{ deluge_container_name }}"
+          register: deluge_container_info_before_repair
+
+        # A running deluge-web process holds its own in-memory copy of
+        # web.conf and periodically autosaves it (Config.save() -- e.g. via
+        # Auth's session-cleanup timer scheduling a save on any config
+        # mutation). If that process is still alive while the next task
+        # writes a fresh web.conf, its next autosave silently overwrites the
+        # new file with its own stale in-memory state (still holding the
+        # default password) before the container is ever recreated. This
+        # was confirmed live: web.conf.bak held the correct, freshly
+        # generated password, timestamped seconds before the
+        # default-holding web.conf that replaced it -- and both writes
+        # happened before the recreated container's own start time,
+        # proving the *previous* container's still-alive process, not the
+        # new one, clobbered the fix during Docker's stop grace period.
+        # Stopping it first, before writing, closes that race.
+        - name: Stop Deluge before rewriting its web.conf
+          community.docker.docker_container:
+            name: "{{ deluge_container_name }}"
+            state: stopped
+          when: deluge_container_info_before_repair.exists
+
         - name: Generate a random salt for the Deluge web UI password
           ansible.builtin.set_fact:
             deluge_web_pwd_salt: >-

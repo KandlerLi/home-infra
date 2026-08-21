@@ -165,6 +165,29 @@ class DelugeRoleTests(unittest.TestCase):
         self.assertIn("2ce1a410bcdcc53064129b6d950f2e9fee4edc1e", tasks)
         self.assertIn("deluge_web_conf_slurp.content | b64decode", tasks)
 
+    def test_stops_the_old_container_before_rewriting_web_conf(self) -> None:
+        # A still-running deluge-web process holds its own in-memory copy of
+        # web.conf and periodically autosaves it. If that process is still
+        # alive while the password-repair template task writes a fresh
+        # web.conf, its next autosave silently overwrites the fix with its
+        # own stale (default-password) state before the container is ever
+        # recreated -- confirmed live via web.conf.bak's timestamp and
+        # content sitting *before* the file that clobbered it, both before
+        # the recreated container's own start time. The old container must
+        # be stopped before the file is rewritten, not just recreated after.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        stop_index = tasks.index("Stop Deluge before rewriting its web.conf")
+        install_index = tasks.index("Install Deluge's web.conf with the configured password")
+        self.assertLess(
+            stop_index,
+            install_index,
+            "the container must be stopped before web.conf is rewritten,"
+            " or the old process can autosave over the fix",
+        )
+        self.assertIn("community.docker.docker_container_info", tasks)
+        self.assertIn("state: stopped", tasks)
+
 
 class DelugeIngressTests(unittest.TestCase):
     def test_deluge_route_requires_its_own_basic_auth_and_resource_limits(
