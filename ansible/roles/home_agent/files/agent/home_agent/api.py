@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .agent import OpenAIResponsesProvider
+from .audio import MAX_AUDIO_BYTES, OpenAIAudioTranscriber
 from .home_tools import HomeToolsClient
 from .nextcloud_tools import NextcloudToolsClient
 
@@ -49,8 +50,15 @@ def create_provider() -> OpenAIResponsesProvider:
     )
 
 
+def create_transcriber() -> OpenAIAudioTranscriber:
+    key_path = os.environ.get("OPENAI_API_KEY_FILE", "/run/secrets/openai_api_key")
+    model = os.environ.get("HOME_AGENT_STT_MODEL", "whisper-1")
+    return OpenAIAudioTranscriber(api_key=read_secret(key_path), model=model)
+
+
 class AgentHTTPServer(ThreadingHTTPServer):
     provider: OpenAIResponsesProvider
+    transcriber: OpenAIAudioTranscriber
 
 
 class AgentRequestHandler(BaseHTTPRequestHandler):
@@ -84,6 +92,8 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
             self._handle_legacy_chat()
         elif path == "/v1/chat/completions":
             self._handle_chat_completions()
+        elif path == "/v1/audio/transcriptions":
+            self._handle_audio_transcriptions()
         else:
             self._send_json(404, {"error": "not_found"})
 
@@ -158,6 +168,32 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 ],
             },
         )
+
+    def _handle_audio_transcriptions(self) -> None:
+        content_type = self.headers.get("Content-Type", "")
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._send_openai_error(400, "invalid_content_length")
+            return
+        if content_length <= 0 or content_length > MAX_AUDIO_BYTES:
+            self._send_openai_error(413, "invalid_request_size")
+            return
+
+        body = self.rfile.read(content_length)
+        try:
+            result = self.server.transcriber.transcribe(body, content_type)
+        except Exception as error:  # noqa: BLE001
+            self._log_provider_failure(error)
+            self._send_openai_error(502, "agent_unavailable")
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(result)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(result)
 
     def _read_json_request(self, max_request_bytes: int) -> Any | None:
         content_length_header = self.headers.get("Content-Length", "0")
@@ -290,6 +326,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     server = AgentHTTPServer(("0.0.0.0", 8000), AgentRequestHandler)
     server.provider = create_provider()
+    server.transcriber = create_transcriber()
     server.serve_forever()
 
 

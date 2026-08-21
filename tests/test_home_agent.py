@@ -213,10 +213,20 @@ class FakeProvider:
         return "The homeserver is healthy."
 
 
+class FakeTranscriber:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def transcribe(self, body: bytes, content_type: str) -> bytes:
+        self.calls.append((body, content_type))
+        return b'{"text": "hello world"}'
+
+
 class HomeAgentAPITests(unittest.TestCase):
     def setUp(self) -> None:
         self.server = AgentHTTPServer(("127.0.0.1", 0), AgentRequestHandler)
         self.server.provider = FakeProvider()
+        self.server.transcriber = FakeTranscriber()
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
@@ -295,6 +305,52 @@ class HomeAgentAPITests(unittest.TestCase):
 
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body), {"answer": "The homeserver is healthy."})
+
+    def test_audio_transcriptions_relays_multipart_bodies(self) -> None:
+        body = (
+            b"--X\r\n"
+            b'Content-Disposition: form-data; name="file"; filename="a.webm"\r\n'
+            b"Content-Type: audio/webm\r\n\r\n"
+            b"FAKEAUDIO\r\n"
+            b"--X--\r\n"
+        )
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_address[1], timeout=2
+        )
+        connection.request(
+            "POST",
+            "/v1/audio/transcriptions",
+            body=body,
+            headers={"Content-Type": "multipart/form-data; boundary=X"},
+        )
+        response = connection.getresponse()
+        response_body = response.read()
+        connection.close()
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(json.loads(response_body), {"text": "hello world"})
+        self.assertEqual(len(self.server.transcriber.calls), 1)
+
+    def test_audio_transcriptions_rejects_uploads_over_the_size_limit(self) -> None:
+        # The claimed Content-Length alone must be enough to reject before
+        # ever reading the body -- the connection sends only one byte.
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_address[1], timeout=2
+        )
+        connection.request(
+            "POST",
+            "/v1/audio/transcriptions",
+            body=b"x",
+            headers={
+                "Content-Type": "multipart/form-data; boundary=X",
+                "Content-Length": str(25 * 1024 * 1024 + 1),
+            },
+        )
+        response = connection.getresponse()
+        connection.close()
+
+        self.assertEqual(response.status, 413)
+        self.assertEqual(self.server.transcriber.calls, [])
 
 
 if __name__ == "__main__":

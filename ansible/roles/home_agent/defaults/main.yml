@@ -9,6 +9,7 @@ home_agent_build_dir: /opt/home-agent
 home_agent_config_dir: /etc/home-agent
 
 home_agent_model: gpt-5.4-mini
+home_agent_stt_model: whisper-1
 home_agent_bind_address: 127.0.0.1
 home_agent_port: 8090
 home_agent_restart_policy: unless-stopped

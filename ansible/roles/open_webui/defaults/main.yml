@@ -23,3 +23,7 @@ open_webui_frontend_network_name: home-agent-frontend
 open_webui_provider_base_url: http://home-agent:8000/v1
 open_webui_provider_model: home-agent
 open_webui_provider_placeholder_key: home-agent-internal
+# Cosmetic only: home-agent's own HOME_AGENT_STT_MODEL always wins over
+# whatever model name is in the request it receives, the same way chat
+# ignores this container's stated "model" and uses HOME_AGENT_MODEL.
+open_webui_stt_model: whisper-1

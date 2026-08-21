@@ -245,6 +245,7 @@
           {{
             {
               'HOME_AGENT_MODEL': home_agent_model,
+              'HOME_AGENT_STT_MODEL': home_agent_stt_model,
               'HOME_TOOLS_SOCKET': '/run/home-tools/home-tools.sock',
               'OPENAI_API_KEY_FILE': '/run/secrets/openai_api_key',
               'PYTHONDONTWRITEBYTECODE': '1'

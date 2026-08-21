@@ -66,6 +66,27 @@ class OpenWebUITests(unittest.TestCase):
         for setting in disabled_settings:
             self.assertIn(f'{setting}: "False"', tasks)
 
+    def test_speech_to_text_routes_through_home_agent_not_local_whisper(self) -> None:
+        # ADR 0012: local Whisper needs a Hugging Face Hub download this
+        # container's OFFLINE_MODE deliberately blocks (no egress by
+        # design). Routing STT through home-agent -- the one component
+        # with real internet access -- sidesteps that rather than loosening
+        # the network hardening OFFLINE_MODE/no-masquerade provide.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("AUDIO_STT_ENGINE: openai", tasks)
+        self.assertIn(
+            "AUDIO_STT_OPENAI_API_BASE_URL: \"{{ open_webui_provider_base_url }}\"",
+            tasks,
+        )
+        self.assertIn(
+            "AUDIO_STT_OPENAI_API_KEY: \"{{ open_webui_provider_placeholder_key }}\"",
+            tasks,
+        )
+        self.assertIn('OFFLINE_MODE: "True"', tasks)
+        self.assertIn("open_webui_stt_model: whisper-1", defaults)
+
     def test_dedicated_playbook_keeps_model_access_in_home_agent(self) -> None:
         playbook = (
             PROJECT_ROOT / "ansible/playbooks/open-webui.yml"
