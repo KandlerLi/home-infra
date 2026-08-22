@@ -24,7 +24,6 @@ import json
 import math
 import os
 import re
-import shutil
 import sys
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
@@ -92,7 +91,7 @@ def clean_text(value: Any) -> str:
 
 def clean_amount(value: Any, *, row_description: str) -> float:
     if value is None or value == "":
-        raise ValueError(f"Kein Betrag bei {row_description}")
+        raise ValueError(f"Missing amount for {row_description}")
     if isinstance(value, str):
         normalized = value.strip().replace("€", "").replace(" ", "")
         if "," in normalized and "." in normalized:
@@ -103,17 +102,20 @@ def clean_amount(value: Any, *, row_description: str) -> float:
     try:
         amount = float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"Ungültiger Betrag bei {row_description}: {value!r}") from exc
+        raise ValueError(f"Invalid amount for {row_description}: {value!r}") from exc
     if not math.isfinite(amount) or amount <= 0:
-        raise ValueError(f"Betrag muss größer als 0 sein bei {row_description}: {amount}")
+        raise ValueError(f"Amount must be greater than 0 for {row_description}: {amount}")
     return round(amount, 2)
 
 
+# The workbook's sheet/tab names ("Einnahmen"/"Ausgaben") and its budget
+# row name ("Budget") are the real template's literal structure, not our
+# own UI text -- they must match the actual spreadsheet, not be translated.
 def read_workbook(workbook_path: Path) -> tuple[list[IncomeRow], list[CostRow]]:
     wb = load_workbook(workbook_path, data_only=False)
     missing = {"Einnahmen", "Ausgaben"} - set(wb.sheetnames)
     if missing:
-        raise ValueError(f"Fehlende Tabellenblätter: {', '.join(sorted(missing))}")
+        raise ValueError(f"Missing worksheet(s): {', '.join(sorted(missing))}")
 
     income_sheet = wb["Einnahmen"]
     cost_sheet = wb["Ausgaben"]
@@ -127,8 +129,8 @@ def read_workbook(workbook_path: Path) -> tuple[list[IncomeRow], list[CostRow]]:
         if not name and (amount_value is None or amount_value == ""):
             continue
         if not name:
-            raise ValueError(f"Einnahmen, Zeile {row}: Name fehlt")
-        amount = clean_amount(amount_value, row_description=f"Einnahmen, Zeile {row} ({name})")
+            raise ValueError(f"'Einnahmen' sheet, row {row}: name is missing")
+        amount = clean_amount(amount_value, row_description=f"'Einnahmen' row {row} ({name})")
         incomes.append(IncomeRow(name=name, amount=amount))
 
     costs: list[CostRow] = []
@@ -141,20 +143,20 @@ def read_workbook(workbook_path: Path) -> tuple[list[IncomeRow], list[CostRow]]:
         if not category and not subcategory and (amount_value is None or amount_value == ""):
             continue
         if not category:
-            raise ValueError(f"Ausgaben, Zeile {row}: Kategorie fehlt")
+            raise ValueError(f"'Ausgaben' sheet, row {row}: category is missing")
 
         # "Budget" is calculated automatically from income minus real expenses.
         # A legacy Budget row in the workbook is therefore ignored completely.
         if category.casefold() == "budget":
             continue
 
-        amount = clean_amount(amount_value, row_description=f"Ausgaben, Zeile {row} ({category})")
+        amount = clean_amount(amount_value, row_description=f"'Ausgaben' row {row} ({category})")
         costs.append(CostRow(category=category, subcategory=subcategory, amount=amount))
 
     if not incomes:
-        raise ValueError("Keine aktiven Einnahmen gefunden")
+        raise ValueError("No active income rows found")
     if not costs:
-        raise ValueError("Keine aktiven Ausgaben gefunden")
+        raise ValueError("No active expense rows found")
     return incomes, costs
 
 
@@ -197,6 +199,10 @@ def build_payload(incomes: Iterable[IncomeRow], costs: Iterable[CostRow]):
         if has_named_subcategory:
             used_names: set[str] = set()
             for row in rows:
+                # "Sonstiges" ("Miscellaneous") stays German: it becomes a
+                # real label on the generated Sankey diagram, alongside the
+                # user's own German category names -- translating just this
+                # one fallback would look inconsistent on the chart itself.
                 sub_name = row.subcategory or "Sonstiges"
                 original_name = sub_name
                 suffix = 2
@@ -207,8 +213,8 @@ def build_payload(incomes: Iterable[IncomeRow], costs: Iterable[CostRow]):
 
                 if not row.subcategory:
                     warnings.append(
-                        f"Kategorie '{category}': Leere Unterkategorie wurde "
-                        "als 'Sonstiges' exportiert."
+                        f"Category '{category}': blank subcategory was "
+                        "exported as 'Sonstiges'."
                     )
                 positions.append({"n": sub_name, "v": row.amount})
 
@@ -236,9 +242,9 @@ def build_payload(incomes: Iterable[IncomeRow], costs: Iterable[CostRow]):
         )
     elif budget < 0:
         warnings.append(
-            f"Ausgaben übersteigen die Einnahmen um {abs(budget):.2f} €. "
-            "Ein negatives Budget kann im Finanzfluss-Diagramm nicht "
-            "als normale Ausgabenkategorie dargestellt werden."
+            f"Expenses exceed income by {abs(budget):.2f} €. A negative "
+            "budget can't be shown in the Finanzfluss diagram as a normal "
+            "expense category."
         )
 
     return income_payload, cost_payload, income_total, expense_total, budget, warnings
@@ -250,6 +256,9 @@ def make_url(income_payload: list[dict[str, Any]], cost_payload: list[dict[str, 
 
 
 def _accept_cookies_and_prepare(page) -> None:
+    # These button labels stay German -- they're finanzfluss.de's own real
+    # UI text, not ours to translate; matching English labels would just
+    # never find a button on the (German) site.
     for label in ("Alle akzeptieren", "Akzeptieren", "Zustimmen", "Einverstanden"):
         try:
             locator = page.get_by_role("button", name=re.compile(label, re.IGNORECASE)).first
@@ -285,8 +294,8 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
         from playwright.sync_api import sync_playwright
     except ImportError:
         return (
-            "Playwright fehlt. Installiere es mit 'pip install playwright' und danach "
-            "'playwright install chromium'."
+            "Playwright is missing. Install it with 'pip install playwright', "
+            "then run 'playwright install chromium'."
         )
 
     def decode_export_payload(content_type: str, body: bytes) -> dict[str, str]:
@@ -330,33 +339,22 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
         except Exception:
             pass
 
-        raise ValueError(f"Unbekanntes Export-POST-Format: {content_type or '(kein Content-Type)'}")
+        raise ValueError(f"Unknown export POST format: {content_type or '(no Content-Type)'}")
 
     browser = None
     context = None
 
     try:
         with sync_playwright() as playwright:
-            # --no-sandbox unconditionally, not just as a root fallback: this
-            # browser only ever visits one fixed, self-generated
-            # finanzfluss.de URL, never arbitrary content, so the sandbox
-            # buys little here -- and skipping it avoids Chromium's
-            # namespace/setuid sandbox setup ever fighting with the systemd
-            # unit's own hardening (NoNewPrivileges, restricted namespaces).
-            try:
-                browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
-            except Exception as launch_error:
-                system_chromium = (
-                    shutil.which("chromium")
-                    or shutil.which("chromium-browser")
-                    or shutil.which("google-chrome")
-                )
-                if not system_chromium or "Executable doesn't exist" not in str(launch_error):
-                    raise
-
-                browser = playwright.chromium.launch(
-                    headless=True, executable_path=system_chromium, args=["--no-sandbox"]
-                )
+            # --no-sandbox: this browser only ever visits one fixed,
+            # self-generated finanzfluss.de URL, never arbitrary content, so
+            # the sandbox buys little here -- and skipping it avoids
+            # Chromium's namespace/setuid sandbox setup ever fighting with
+            # the systemd unit's own hardening (NoNewPrivileges, restricted
+            # namespaces). Ansible always runs `playwright install chromium`
+            # during provisioning, so there's no system-browser fallback to
+            # fall back to here.
+            browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
 
             context = browser.new_context(viewport={"width": 1600, "height": 1200}, device_scale_factor=1)
 
@@ -381,11 +379,10 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
                     post_data = request.post_data or ""
                     body = post_data.encode("utf-8")
 
-                captured["url"] = request.url
                 captured["headers"] = dict(request.headers)
                 captured["body"] = body
 
-                print(f"Highcharts-Export-Request abgefangen: {request.method} {request.url}")
+                print(f"Intercepted Highcharts export request: {request.method} {request.url}")
 
                 # Prevent the call to the public server (and therefore the 429).
                 route.abort()
@@ -402,7 +399,7 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
             if not menu_button.count():
                 menu_button = page.locator(".highcharts-exporting-group").first
             if not menu_button.count():
-                return "Highcharts-Hamburger-Menü wurde nicht gefunden."
+                return "Highcharts hamburger menu was not found."
 
             menu_button.click(timeout=5_000)
 
@@ -419,10 +416,10 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
                     break
 
             if png_item is None:
-                return f"Der PNG-Menüpunkt wurde nicht gefunden. Menüeinträge: {menu_texts}"
+                return f"PNG menu item not found. Menu entries: {menu_texts}"
 
             label = (png_item.text_content() or "").strip()
-            print(f"Highcharts-Menü: klicke '{label}' …")
+            print(f"Highcharts menu: clicking '{label}' …")
             png_item.click(timeout=5_000)
 
             # The route handler runs asynchronously relative to the click.
@@ -432,7 +429,7 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
                 page.wait_for_timeout(100)
 
             if captured.get("body") is None:
-                return "Der PNG-Menüpunkt wurde geklickt, aber es wurde kein Highcharts-Export-POST erkannt."
+                return "PNG menu item was clicked, but no Highcharts export POST was detected."
 
             headers = captured.get("headers", {})
             content_type = headers.get("content-type", "")
@@ -449,13 +446,13 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
                 scale = 2.0
 
             if export_type and "png" not in export_type.lower():
-                return f"Der abgefangene Export war kein PNG: type={export_type!r}"
+                return f"Intercepted export wasn't a PNG: type={export_type!r}"
 
             if not svg or "<svg" not in svg:
-                return f"Export-Request wurde abgefangen, enthält aber kein SVG. Felder: {sorted(payload.keys())}"
+                return f"Export request was intercepted but contains no SVG. Fields: {sorted(payload.keys())}"
 
-            print(f"Exportdaten: {len(svg) / 1024:.1f} KiB SVG, Scale {scale:g}, Filename {filename!r}")
-            print("Rendere abgefangenes Export-SVG in separater Browser-Seite …")
+            print(f"Export data: {len(svg) / 1024:.1f} KiB SVG, scale {scale:g}, filename {filename!r}")
+            print("Rendering the intercepted export SVG on a separate browser page …")
 
             # The real export click may navigate/destroy the Finanzfluss page
             # (for example because Highcharts submits a form to the export server).
@@ -491,7 +488,7 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
                     }
 
                     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-                        return { ok: false, error: 'SVG-Größe konnte nicht bestimmt werden: ' + width + 'x' + height };
+                        return { ok: false, error: 'Could not determine SVG size: ' + width + 'x' + height };
                     }
 
                     const serialized = new XMLSerializer().serializeToString(documentSvg);
@@ -502,7 +499,7 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
                         const image = new Image();
                         await new Promise((resolve, reject) => {
                             image.onload = resolve;
-                            image.onerror = () => reject(new Error('Highcharts-Export-SVG konnte nicht geladen werden'));
+                            image.onerror = () => reject(new Error('Could not load the Highcharts export SVG'));
                             image.src = blobUrl;
                         });
 
@@ -515,14 +512,14 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
 
                         const ctx = canvas.getContext('2d');
                         if (!ctx) {
-                            return { ok: false, error: 'Kein Canvas-2D-Kontext' };
+                            return { ok: false, error: 'No 2D canvas context' };
                         }
 
                         ctx.drawImage(image, 0, 0, outputWidth, outputHeight);
                         const dataUrl = canvas.toDataURL('image/png');
 
                         if (!dataUrl.startsWith('data:image/png;base64,')) {
-                            return { ok: false, error: 'Keine PNG-Data-URL erzeugt' };
+                            return { ok: false, error: 'No PNG data URL was produced' };
                         }
 
                         return { ok: true, base64: dataUrl.split(',', 2)[1], width: outputWidth, height: outputHeight };
@@ -535,27 +532,27 @@ def download_png_via_menu(url: str, output_path: Path) -> str | None:
 
             if not rasterized.get("ok"):
                 return (
-                    "Lokales Rendern des echten Highcharts-Export-SVG ist fehlgeschlagen: "
-                    f"{rasterized.get('error', 'unbekannter Fehler')}"
+                    "Local rendering of the real Highcharts export SVG failed: "
+                    f"{rasterized.get('error', 'unknown error')}"
                 )
 
             png_data = base64.b64decode(rasterized["base64"])
             if not png_data.startswith(b"\x89PNG\r\n\x1a\n"):
-                return "Die erzeugten Daten sind keine gültige PNG-Datei."
+                return "The generated data is not a valid PNG file."
 
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(png_data)
 
             print(
-                f"PNG aus echtem Highcharts-Export gespeichert: {output_path} "
+                f"Saved PNG from the real Highcharts export: {output_path} "
                 f"({rasterized['width']}x{rasterized['height']}, {len(png_data) / 1024:.1f} KiB)"
             )
             return None
 
     except Exception as exc:
         if "Executable doesn't exist" in str(exc):
-            return "Playwright-Browser fehlt. Führe einmal 'playwright install chromium' aus."
-        return f"PNG konnte nicht erzeugt werden: {str(exc).splitlines()[0]}"
+            return "Playwright's browser is missing. Run 'playwright install chromium' once."
+        return f"Could not produce the PNG: {str(exc).splitlines()[0]}"
 
     finally:
         if context is not None:
@@ -601,7 +598,7 @@ class NextcloudWebDAV:
         if response.status_code == 404:
             return None
         if response.status_code != 207:
-            raise RuntimeError(f"ETag-Abfrage fehlgeschlagen ({response.status_code}): {remote_path}")
+            raise RuntimeError(f"ETag lookup failed ({response.status_code}): {remote_path}")
         root = ET.fromstring(response.content)
         etag_element = root.find(f".//{{{DAV}}}getetag")
         return etag_element.text if etag_element is not None else None
@@ -612,12 +609,12 @@ class NextcloudWebDAV:
             current = f"{current}/{part}"
             response = self.session.request("MKCOL", self._url(current), timeout=30)
             if response.status_code not in {201, 405}:
-                raise RuntimeError(f"Nextcloud-Ordner konnte nicht angelegt werden ({response.status_code}): {current}")
+                raise RuntimeError(f"Could not create Nextcloud folder ({response.status_code}): {current}")
 
     def download(self, remote_path: str, local_path: Path) -> None:
         response = self.session.get(self._url(remote_path), timeout=120)
         if response.status_code != 200:
-            raise RuntimeError(f"Download fehlgeschlagen ({response.status_code}): {remote_path}\n{response.text[:300]}")
+            raise RuntimeError(f"Download failed ({response.status_code}): {remote_path}\n{response.text[:300]}")
         local_path.write_bytes(response.content)
 
     def upload(self, local_path: Path, remote_path: str) -> None:
@@ -627,7 +624,7 @@ class NextcloudWebDAV:
         with local_path.open("rb") as handle:
             response = self.session.put(self._url(remote_path), data=handle, timeout=180)
         if response.status_code not in {200, 201, 204}:
-            raise RuntimeError(f"Upload fehlgeschlagen ({response.status_code}): {remote_path}\n{response.text[:300]}")
+            raise RuntimeError(f"Upload failed ({response.status_code}): {remote_path}\n{response.text[:300]}")
 
 
 def load_cached_etag(state_path: Path) -> str | None:
@@ -652,14 +649,14 @@ def main() -> int:
 
     etag = webdav.etag(remote_workbook)
     if etag is None:
-        print(f"Arbeitsmappe nicht gefunden: {remote_workbook}", file=sys.stderr)
+        print(f"Workbook not found: {remote_workbook}", file=sys.stderr)
         return 1
 
     if etag == load_cached_etag(STATE_FILE):
-        print("Arbeitsmappe unverändert, nichts zu tun.")
+        print("Workbook unchanged, nothing to do.")
         return 0
 
-    print(f"Arbeitsmappe geändert (ETag {etag}), lade {remote_workbook} …")
+    print(f"Workbook changed (ETag {etag}), downloading {remote_workbook} …")
     temporary_workbook = OUTPUT_DIR / f".{Path(WORKBOOK_NAME).stem}.download{Path(WORKBOOK_NAME).suffix}"
     try:
         webdav.download(remote_workbook, temporary_workbook)
@@ -679,19 +676,19 @@ def main() -> int:
 
     if png_path.exists():
         remote_png = f"{REMOTE_DIR}/{png_path.name}"
-        print(f"Lade {png_path.name} nach Nextcloud hoch …")
+        print(f"Uploading {png_path.name} to Nextcloud …")
         webdav.upload(png_path, remote_png)
         # Only remember this ETag once a fresh PNG has actually been
         # uploaded -- a failed export leaves the cache stale so the next
         # (1-minute-later) tick retries automatically.
         save_cached_etag(STATE_FILE, etag)
 
-    print(f"Einnahmen: {income_total:.2f} €")
-    print(f"Ausgaben:  {expense_total:.2f} €")
-    print(f"Budget:    {budget:.2f} €")
+    print(f"Income:   {income_total:.2f} €")
+    print(f"Expenses: {expense_total:.2f} €")
+    print(f"Budget:   {budget:.2f} €")
 
     if warnings:
-        print("Warnungen:")
+        print("Warnings:")
         for warning in warnings:
             print(f"- {warning}")
 
@@ -704,5 +701,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         raise SystemExit(130)
     except Exception as exc:
-        print(f"Fehler: {exc}", file=sys.stderr)
+        print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(1)

@@ -162,7 +162,7 @@ class FinanzflussExportScriptTests(unittest.TestCase):
 
         self.assertLess(budget, 0)
         self.assertFalse(any(entry["n"] == "Budget" for entry in cost_payload))
-        self.assertTrue(any("übersteigen" in warning for warning in warnings))
+        self.assertTrue(any("exceed" in warning for warning in warnings))
 
     def test_etag_skip_avoids_touching_playwright(self) -> None:
         # load_cached_etag/save_cached_etag are the whole mechanism that
