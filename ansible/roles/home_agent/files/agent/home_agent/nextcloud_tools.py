@@ -18,6 +18,9 @@ TOOL_PATHS = {
     "search_nextcloud_files": "/v1/search",
     "read_nextcloud_text_file": "/v1/read",
     "write_nextcloud_file": "/v1/write",
+    "list_shopping_lists": "/v1/shopping/lists",
+    "list_shopping_list_items": "/v1/shopping/items",
+    "update_shopping_list": "/v1/shopping/write",
 }
 
 TOOL_DEFINITIONS = [
@@ -119,6 +122,87 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["operation", "path", "content", "destination_path"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "list_shopping_lists",
+        "description": (
+            "List the names of Nextcloud Shopping List lists shared with "
+            "the agent. Use this when the user has more than one list and "
+            "it's unclear which one they mean."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "list_shopping_list_items",
+        "description": (
+            "List the items currently on one Nextcloud Shopping List, "
+            "including whether each is checked off. This never changes "
+            "the list."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "list": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "List title. Omit (null) if the user has only one "
+                        "shopping list."
+                    ),
+                }
+            },
+            "required": ["list"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "update_shopping_list",
+        "description": (
+            "Add an item to a Nextcloud Shopping List, mark an existing "
+            "item bought/not bought, or remove an item. This writes "
+            "immediately -- tell the user what you did after it succeeds, "
+            "don't ask for permission first unless the request was "
+            "ambiguous about which item or list was meant."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["add", "check", "uncheck", "remove"],
+                },
+                "list": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "List title. Omit (null) if the user has only one "
+                        "shopping list."
+                    ),
+                },
+                "item": {
+                    "type": "string",
+                    "description": "Item name, e.g. 'milk'.",
+                },
+                "quantity": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "Optional free-text quantity, e.g. '2' or '1 dozen'. "
+                        "Only valid for add; omit (null) otherwise."
+                    ),
+                },
+            },
+            "required": ["operation", "list", "item", "quantity"],
             "additionalProperties": False,
         },
         "strict": True,

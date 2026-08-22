@@ -175,6 +175,32 @@ class NextcloudToolsClientTests(unittest.TestCase):
 
         self.assertEqual(str(raised.exception), "tool request failed")
 
+    def test_shopping_list_tools_are_wired_to_their_endpoints(self) -> None:
+        from home_agent import nextcloud_tools
+
+        self.assertEqual(
+            nextcloud_tools.TOOL_PATHS["list_shopping_lists"], "/v1/shopping/lists"
+        )
+        self.assertEqual(
+            nextcloud_tools.TOOL_PATHS["list_shopping_list_items"],
+            "/v1/shopping/items",
+        )
+        self.assertEqual(
+            nextcloud_tools.TOOL_PATHS["update_shopping_list"], "/v1/shopping/write"
+        )
+
+    def test_update_shopping_list_reaches_the_write_endpoint(self) -> None:
+        socket_path = self._serve(
+            200, b'{"operation": "add", "list": "Groceries", "item": "Milk"}'
+        )
+
+        result = NextcloudToolsClient(socket_path).call(
+            "update_shopping_list",
+            {"operation": "add", "list": None, "item": "Milk", "quantity": None},
+        )
+
+        self.assertEqual(result["operation"], "add")
+
     def test_rejects_oversized_write_content_without_connecting(self) -> None:
         from home_agent import nextcloud_tools
 

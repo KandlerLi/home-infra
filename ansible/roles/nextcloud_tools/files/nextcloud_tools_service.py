@@ -1,4 +1,4 @@
-"""Expose bounded, read-only Nextcloud WebDAV operations over a Unix socket."""
+"""Expose bounded Nextcloud WebDAV file and Shopping List operations over a Unix socket."""
 
 from __future__ import annotations
 
@@ -42,6 +42,15 @@ MAX_SCAN_ENTRIES = int(os.environ.get("NEXTCLOUD_MAX_SCAN_ENTRIES", "500"))
 MAX_SCAN_DEPTH = int(os.environ.get("NEXTCLOUD_MAX_SCAN_DEPTH", "4"))
 MAX_WRITE_BYTES = int(os.environ.get("NEXTCLOUD_MAX_WRITE_BYTES", str(256 * 1024)))
 MAX_SUMMARY_CHARS = int(os.environ.get("NEXTCLOUD_MAX_SUMMARY_CHARS", "4000"))
+MAX_ITEM_NAME_CHARS = int(os.environ.get("NEXTCLOUD_MAX_ITEM_NAME_CHARS", "200"))
+MAX_QUANTITY_CHARS = int(os.environ.get("NEXTCLOUD_MAX_QUANTITY_CHARS", "32"))
+
+# Scope for the Shopping List app is enforced entirely by Nextcloud's own
+# list sharing (the dedicated account only ever sees lists shared with it),
+# unlike WebDAV, which needs the ALLOWED_ROOT restriction above because an
+# account's DAV namespace always exposes its whole home directory tree. So
+# there is no allowed-list config to add here -- see ADR 0014.
+SHOPPING_LIST_APP_ID = "shopping_list"
 
 DAV = "DAV:"
 NC = "http://nextcloud.org/ns"
@@ -138,6 +147,41 @@ def require_string(payload: dict[str, Any], key: str, *, max_length: int) -> str
     return value.strip()
 
 
+def _basic_auth_header(username: str, app_password: str) -> str:
+    encoded = base64.b64encode(f"{username}:{app_password}".encode("utf-8")).decode(
+        "ascii"
+    )
+    return f"Basic {encoded}"
+
+
+def _send_http_request(
+    host: str,
+    port: int,
+    timeout: float,
+    method: str,
+    request_path: str,
+    headers: dict[str, str],
+    body: bytes | None,
+    max_bytes: int,
+) -> tuple[int, dict[str, str], bytes]:
+    """Send one request and read a size-capped response, wrapping transport errors."""
+    connection = http.client.HTTPConnection(host, port, timeout=timeout)
+    try:
+        connection.request(method, request_path, body=body, headers=headers)
+        response = connection.getresponse()
+        response_headers = {key.lower(): value for key, value in response.getheaders()}
+        response_body = response.read(max_bytes + 1)
+        if len(response_body) > max_bytes:
+            raise ToolUnavailable("Nextcloud response exceeded the size limit")
+        return response.status, response_headers, response_body
+    except (OSError, http.client.HTTPException) as error:
+        raise ToolUnavailable(
+            f"Nextcloud request failed ({type(error).__name__})"
+        ) from error
+    finally:
+        connection.close()
+
+
 class NextcloudWebDAV:
     """Minimal WebDAV client fixed to one user and one allowed root folder."""
 
@@ -178,39 +222,24 @@ class NextcloudWebDAV:
         headers: dict[str, str] | None = None,
         max_bytes: int = MAX_RESPONSE_BYTES,
     ) -> tuple[int, dict[str, str], bytes]:
-        authorization = base64.b64encode(
-            f"{self.username}:{self.app_password}".encode("utf-8")
-        ).decode("ascii")
         request_headers = {
-            "Authorization": f"Basic {authorization}",
+            "Authorization": _basic_auth_header(self.username, self.app_password),
             "Connection": "close",
             "Host": self.http_host,
             "User-Agent": "home-infra-nextcloud-tools/1",
         }
         if headers:
             request_headers.update(headers)
-        connection = http.client.HTTPConnection(
-            self.host, self.port, timeout=self.timeout
+        return _send_http_request(
+            self.host,
+            self.port,
+            self.timeout,
+            method,
+            self._webdav_path(relative_path),
+            request_headers,
+            body,
+            max_bytes,
         )
-        try:
-            connection.request(
-                method,
-                self._webdav_path(relative_path),
-                body=body,
-                headers=request_headers,
-            )
-            response = connection.getresponse()
-            response_headers = {key.lower(): value for key, value in response.getheaders()}
-            response_body = response.read(max_bytes + 1)
-            if len(response_body) > max_bytes:
-                raise ToolUnavailable("Nextcloud response exceeded the size limit")
-            return response.status, response_headers, response_body
-        except (OSError, http.client.HTTPException) as error:
-            raise ToolUnavailable(
-                f"Nextcloud request failed ({type(error).__name__})"
-            ) from error
-        finally:
-            connection.close()
 
     def list_directory(self, relative_path: str) -> list[FileEntry]:
         relative_path = normalize_relative_path(relative_path)
@@ -484,6 +513,316 @@ def parse_multistatus(body: bytes, decoded_root_path: str) -> list[FileEntry]:
     return entries
 
 
+class NextcloudShoppingList:
+    """Minimal OCS JSON client for the Shopping List app, fixed to one user."""
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        http_host: str,
+        username: str,
+        app_password: str,
+        *,
+        timeout: float = 10.0,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.http_host = http_host
+        self.username = username
+        self.app_password = app_password
+        self.timeout = timeout
+        self._base_path = f"/ocs/v2.php/apps/{SHOPPING_LIST_APP_ID}/api/v1"
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+        max_bytes: int = MAX_RESPONSE_BYTES,
+    ) -> Any:
+        headers = {
+            "Authorization": _basic_auth_header(self.username, self.app_password),
+            "Connection": "close",
+            "Host": self.http_host,
+            "User-Agent": "home-infra-nextcloud-tools/1",
+            "OCS-APIREQUEST": "true",
+            "Accept": "application/json",
+        }
+        body = None
+        if json_body is not None:
+            body = json.dumps(json_body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        separator = "&" if "?" in path else "?"
+        request_path = f"{self._base_path}{path}{separator}format=json"
+        status, _, response_body = _send_http_request(
+            self.host,
+            self.port,
+            self.timeout,
+            method,
+            request_path,
+            headers,
+            body,
+            max_bytes,
+        )
+        if status == 403:
+            raise ToolUnavailable(
+                "Nextcloud shopping list write was forbidden "
+                "(check the list share's edit permission)"
+            )
+        if status == 404:
+            raise ToolUnavailable("Nextcloud shopping list or item was not found")
+        if status not in (200, 201, 204):
+            raise ToolUnavailable(
+                f"Nextcloud shopping list request returned HTTP {status}"
+            )
+        if status == 204 or not response_body:
+            return None
+        try:
+            envelope = json.loads(response_body)
+            return envelope["ocs"]["data"]
+        except (json.JSONDecodeError, KeyError, TypeError) as error:
+            raise ToolUnavailable(
+                "Nextcloud shopping list returned invalid data"
+            ) from error
+
+    def list_lists(self) -> list[dict[str, Any]]:
+        data = self._request("GET", "/lists")
+        if not isinstance(data, list):
+            raise ToolUnavailable(
+                "Nextcloud returned an unexpected list of shopping lists"
+            )
+        return data
+
+    def list_items(self, list_id: int) -> list[dict[str, Any]]:
+        data = self._request("GET", f"/lists/{list_id}/items")
+        if not isinstance(data, list):
+            raise ToolUnavailable(
+                "Nextcloud returned an unexpected list of shopping list items"
+            )
+        return data
+
+    def create_item(
+        self, list_id: int, name: str, quantity: str | None
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"name": name}
+        if quantity is not None:
+            body["quantity"] = quantity
+        data = self._request("POST", f"/lists/{list_id}/items", json_body=body)
+        if not isinstance(data, dict):
+            raise ToolUnavailable("Nextcloud returned an unexpected shopping list item")
+        return data
+
+    def set_item_checked(
+        self, list_id: int, item_id: int, checked: bool
+    ) -> dict[str, Any]:
+        data = self._request(
+            "PUT",
+            f"/lists/{list_id}/items/{item_id}/check",
+            json_body={"checked": checked},
+        )
+        if not isinstance(data, dict):
+            raise ToolUnavailable("Nextcloud returned an unexpected shopping list item")
+        return data
+
+    def delete_item(self, list_id: int, item_id: int) -> None:
+        self._request("DELETE", f"/lists/{list_id}/items/{item_id}")
+
+
+def resolve_shopping_list(
+    client: NextcloudShoppingList, name: Any
+) -> tuple[int, str]:
+    """Resolve a caller-supplied list name to (id, title), or the sole list."""
+    if name is not None and not isinstance(name, str):
+        raise InvalidToolRequest("list must be a string")
+    lists = client.list_lists()
+    titles = [
+        (entry.get("id"), entry.get("title", ""))
+        for entry in lists
+        if isinstance(entry, dict)
+    ]
+
+    if name:
+        name = name.strip()
+        if not name or len(name) > MAX_ITEM_NAME_CHARS:
+            raise InvalidToolRequest("list is invalid")
+        matches = [
+            (list_id, title)
+            for list_id, title in titles
+            if isinstance(title, str) and title.casefold() == name.casefold()
+        ]
+        if not matches:
+            available = ", ".join(repr(title) for _, title in titles[:MAX_RESULTS])
+            raise InvalidToolRequest(
+                f"no shopping list named {name!r} is shared with the agent"
+                + (f"; available: {available}" if available else "")
+            )
+        list_id, title = matches[0]
+    elif not titles:
+        raise InvalidToolRequest("no shopping lists are shared with the agent yet")
+    elif len(titles) > 1:
+        available = ", ".join(repr(title) for _, title in titles[:MAX_RESULTS])
+        raise InvalidToolRequest(
+            f"multiple shopping lists are shared with the agent; "
+            f"specify list: {available}"
+        )
+    else:
+        list_id, title = titles[0]
+
+    if not isinstance(list_id, int):
+        raise ToolUnavailable("Nextcloud returned a shopping list without an id")
+    return list_id, title
+
+
+def resolve_shopping_list_item(
+    client: NextcloudShoppingList, list_id: int, name: str
+) -> dict[str, Any]:
+    """Resolve a caller-supplied item name to one item on the list."""
+    items = client.list_items(list_id)
+    candidates = [
+        entry
+        for entry in items
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+    ]
+    folded = name.casefold()
+
+    exact = [entry for entry in candidates if entry["name"].casefold() == folded]
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        raise InvalidToolRequest(f"multiple items named {name!r} are on the list")
+
+    partial = [entry for entry in candidates if folded in entry["name"].casefold()]
+    if len(partial) == 1:
+        return partial[0]
+    if len(partial) > 1:
+        names = ", ".join(repr(entry["name"]) for entry in partial[:MAX_RESULTS])
+        raise InvalidToolRequest(f"multiple items match {name!r}: {names}")
+
+    available = ", ".join(repr(entry["name"]) for entry in candidates[:MAX_RESULTS])
+    raise InvalidToolRequest(
+        f"no item named {name!r} was found on the list"
+        + (f"; items on the list: {available}" if available else "")
+    )
+
+
+def list_shopping_lists(
+    payload: dict[str, Any], client: NextcloudShoppingList
+) -> dict[str, Any]:
+    if payload:
+        raise InvalidToolRequest("unexpected arguments")
+    lists = client.list_lists()
+    result = [
+        {"title": entry.get("title")}
+        for entry in lists
+        if isinstance(entry, dict)
+    ]
+    return {"lists": result[:MAX_RESULTS]}
+
+
+def list_shopping_list_items(
+    payload: dict[str, Any], client: NextcloudShoppingList
+) -> dict[str, Any]:
+    if set(payload) - {"list"}:
+        raise InvalidToolRequest("unexpected arguments")
+    list_id, list_title = resolve_shopping_list(client, payload.get("list"))
+    items = client.list_items(list_id)
+
+    entries = []
+    truncated = False
+    for entry in items:
+        if not isinstance(entry, dict):
+            continue
+        if len(entries) >= MAX_RESULTS:
+            truncated = True
+            break
+        entries.append(
+            {
+                "name": entry.get("name"),
+                "quantity": entry.get("quantity"),
+                "unit": entry.get("unit"),
+                "checked": bool(entry.get("checked")),
+            }
+        )
+    return {"list": list_title, "items": entries, "truncated": truncated}
+
+
+def update_shopping_list(
+    payload: dict[str, Any], client: NextcloudShoppingList
+) -> dict[str, Any]:
+    """Validate and execute one shopping-list item change immediately.
+
+    Mirrors write_file() below: no confirmation round-trip (ADR 0013/0014),
+    just bounded validation, name resolution, the write, and audit logging.
+    """
+    if set(payload) - {"operation", "list", "item", "quantity"}:
+        raise InvalidToolRequest("unexpected arguments")
+    operation = payload.get("operation")
+    if operation not in {"add", "check", "uncheck", "remove"}:
+        raise InvalidToolRequest("operation must be add, check, uncheck, or remove")
+    item_name = require_string(payload, "item", max_length=MAX_ITEM_NAME_CHARS)
+
+    quantity = payload.get("quantity")
+    if quantity is not None:
+        if operation != "add":
+            raise InvalidToolRequest("quantity is only valid for add")
+        if (
+            not isinstance(quantity, str)
+            or not quantity.strip()
+            or len(quantity) > MAX_QUANTITY_CHARS
+        ):
+            raise InvalidToolRequest("quantity is invalid")
+        quantity = quantity.strip()
+
+    list_id, list_title = resolve_shopping_list(client, payload.get("list"))
+
+    try:
+        if operation == "add":
+            client.create_item(list_id, item_name, quantity)
+            resolved_name = item_name
+            summary = f"Added {item_name!r} to {list_title!r}."
+        else:
+            item = resolve_shopping_list_item(client, list_id, item_name)
+            item_id = item.get("id")
+            resolved_name = item.get("name", item_name)
+            if not isinstance(item_id, int):
+                raise ToolUnavailable(
+                    "Nextcloud returned a shopping list item without an id"
+                )
+            if operation == "check":
+                client.set_item_checked(list_id, item_id, True)
+                summary = f"Marked {resolved_name!r} as bought on {list_title!r}."
+            elif operation == "uncheck":
+                client.set_item_checked(list_id, item_id, False)
+                summary = f"Marked {resolved_name!r} as not bought on {list_title!r}."
+            else:  # remove
+                client.delete_item(list_id, item_id)
+                summary = f"Removed {resolved_name!r} from {list_title!r}."
+    except ToolUnavailable as error:
+        LOGGER.info(
+            "Nextcloud shopping list write failed: operation=%s list=%s item=%s reason=%s",
+            operation,
+            list_title,
+            item_name,
+            error,
+        )
+        raise
+
+    LOGGER.info(
+        "Nextcloud shopping list write completed: operation=%s list=%s item=%s",
+        operation,
+        list_title,
+        item_name,
+    )
+    return {
+        "operation": operation,
+        "list": list_title,
+        "item": resolved_name,
+        "summary": summary,
+    }
+
+
 def truncate_summary(text: str) -> str:
     if len(text) <= MAX_SUMMARY_CHARS:
         return text
@@ -585,9 +924,26 @@ def write_file(payload: dict[str, Any], client: NextcloudWebDAV) -> dict[str, An
     }
 
 
-def handle_tool(path: str, payload: Any, client: NextcloudWebDAV) -> dict[str, Any]:
+def handle_tool(
+    path: str,
+    payload: Any,
+    client: NextcloudWebDAV,
+    shopping_list_client: NextcloudShoppingList | None = None,
+) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise InvalidToolRequest("request must be an object")
+    if path == "/v1/shopping/lists":
+        if shopping_list_client is None:
+            raise ToolUnavailable("Shopping list tool is unavailable")
+        return list_shopping_lists(payload, shopping_list_client)
+    if path == "/v1/shopping/items":
+        if shopping_list_client is None:
+            raise ToolUnavailable("Shopping list tool is unavailable")
+        return list_shopping_list_items(payload, shopping_list_client)
+    if path == "/v1/shopping/write":
+        if shopping_list_client is None:
+            raise ToolUnavailable("Shopping list tool is unavailable")
+        return update_shopping_list(payload, shopping_list_client)
     if path == "/v1/list":
         if set(payload) - {"path"}:
             raise InvalidToolRequest("unexpected arguments")
@@ -640,7 +996,12 @@ class NextcloudToolsRequestHandler(BaseHTTPRequestHandler):
             return
         try:
             payload = json.loads(self.rfile.read(content_length))
-            result = handle_tool(self.path, payload, self.server.client)
+            result = handle_tool(
+                self.path,
+                payload,
+                self.server.client,
+                self.server.shopping_list_client,
+            )
         except (UnicodeDecodeError, json.JSONDecodeError, InvalidToolRequest):
             self._send_json(400, {"error": "invalid_request"})
             return
@@ -672,6 +1033,7 @@ class NextcloudToolsRequestHandler(BaseHTTPRequestHandler):
 class ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
     client: NextcloudWebDAV
+    shopping_list_client: NextcloudShoppingList
 
 
 def read_app_password(path: str) -> str:
@@ -685,19 +1047,28 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     if ENDPOINT_HOST != "127.0.0.1":
         raise RuntimeError("Nextcloud endpoint must remain on loopback")
+    app_password = read_app_password(APP_PASSWORD_FILE)
     client = NextcloudWebDAV(
         ENDPOINT_HOST,
         ENDPOINT_PORT,
         HTTP_HOST,
         USERNAME,
-        read_app_password(APP_PASSWORD_FILE),
+        app_password,
         ALLOWED_ROOT,
+    )
+    shopping_list_client = NextcloudShoppingList(
+        ENDPOINT_HOST,
+        ENDPOINT_PORT,
+        HTTP_HOST,
+        USERNAME,
+        app_password,
     )
     socket_path = Path(SOCKET_PATH)
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     socket_path.unlink(missing_ok=True)
     with ThreadingUnixServer(str(socket_path), NextcloudToolsRequestHandler) as server:
         server.client = client
+        server.shopping_list_client = shopping_list_client
         os.chmod(socket_path, 0o660)
         server.serve_forever()
 

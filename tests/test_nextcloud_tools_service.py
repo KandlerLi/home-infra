@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -107,6 +108,44 @@ def _webdav_client() -> "nextcloud_tools.NextcloudWebDAV":
         "unused-app-password",
         "AI Workspace",
     )
+
+
+def _shopping_list_client() -> "nextcloud_tools.NextcloudShoppingList":
+    return nextcloud_tools.NextcloudShoppingList(
+        "127.0.0.1",
+        11000,
+        "nextcloud.jkandler.de",
+        "agent",
+        "unused-app-password",
+    )
+
+
+class FakeShoppingListClient:
+    def __init__(self) -> None:
+        self.lists_result = [{"id": 1, "title": "Groceries"}]
+        self.items_result = [
+            {"id": 10, "name": "Milk", "quantity": "1", "unit": None, "checked": False}
+        ]
+        self.creates: list = []
+        self.checks: list = []
+        self.deletes: list = []
+
+    def list_lists(self):
+        return self.lists_result
+
+    def list_items(self, list_id: int):
+        return self.items_result
+
+    def create_item(self, list_id: int, name: str, quantity):
+        self.creates.append((list_id, name, quantity))
+        return {"id": 99, "name": name}
+
+    def set_item_checked(self, list_id: int, item_id: int, checked: bool):
+        self.checks.append((list_id, item_id, checked))
+        return {"id": item_id, "checked": checked}
+
+    def delete_item(self, list_id: int, item_id: int) -> None:
+        self.deletes.append((list_id, item_id))
 
 
 class NextcloudToolsServiceTests(unittest.TestCase):
@@ -413,6 +452,282 @@ class WriteFileHandlerTests(unittest.TestCase):
 
         self.assertEqual(client.moves, [("note.txt", "renamed.txt", "etag-safe")])
         self.assertEqual(result["operation"], "move")
+
+
+class NextcloudShoppingListRequestTests(unittest.TestCase):
+    """OCS JSON envelope handling, independent of any specific route."""
+
+    def test_successful_request_returns_the_ocs_data_payload(self) -> None:
+        client = _shopping_list_client()
+        body = b'{"ocs":{"meta":{"statuscode":200},"data":[{"id":1,"title":"Groceries"}]}}'
+
+        with patch.object(
+            nextcloud_tools, "_send_http_request", return_value=(200, {}, body)
+        ):
+            data = client.list_lists()
+
+        self.assertEqual(data, [{"id": 1, "title": "Groceries"}])
+
+    def test_forbidden_status_maps_to_a_clear_permission_error(self) -> None:
+        client = _shopping_list_client()
+
+        with patch.object(
+            nextcloud_tools, "_send_http_request", return_value=(403, {}, b"{}")
+        ):
+            with self.assertRaises(nextcloud_tools.ToolUnavailable) as raised:
+                client.list_lists()
+
+        self.assertIn("forbidden", str(raised.exception))
+
+    def test_not_found_status_maps_to_a_clear_error(self) -> None:
+        client = _shopping_list_client()
+
+        with patch.object(
+            nextcloud_tools, "_send_http_request", return_value=(404, {}, b"{}")
+        ):
+            with self.assertRaises(nextcloud_tools.ToolUnavailable) as raised:
+                client.list_lists()
+
+        self.assertIn("not found", str(raised.exception))
+
+    def test_malformed_envelope_is_rejected(self) -> None:
+        client = _shopping_list_client()
+
+        with patch.object(
+            nextcloud_tools, "_send_http_request", return_value=(200, {}, b"not json")
+        ):
+            with self.assertRaises(nextcloud_tools.ToolUnavailable) as raised:
+                client.list_lists()
+
+        self.assertIn("invalid data", str(raised.exception))
+
+    def test_create_item_sends_a_json_body_to_the_items_path(self) -> None:
+        client = _shopping_list_client()
+        captured: dict = {}
+
+        def fake_send(host, port, timeout, method, request_path, headers, body, max_bytes):
+            captured["request_path"] = request_path
+            captured["body"] = body
+            return (
+                201,
+                {},
+                b'{"ocs":{"meta":{"statuscode":201},"data":{"id":5,"name":"Milk"}}}',
+            )
+
+        with patch.object(nextcloud_tools, "_send_http_request", side_effect=fake_send):
+            item = client.create_item(1, "Milk", "2")
+
+        self.assertEqual(item, {"id": 5, "name": "Milk"})
+        self.assertIn("/lists/1/items", captured["request_path"])
+        self.assertEqual(json.loads(captured["body"]), {"name": "Milk", "quantity": "2"})
+
+
+class ShoppingListResolutionTests(unittest.TestCase):
+    def test_resolves_the_sole_list_when_none_is_named(self) -> None:
+        client = FakeShoppingListClient()
+
+        list_id, title = nextcloud_tools.resolve_shopping_list(client, None)
+
+        self.assertEqual((list_id, title), (1, "Groceries"))
+
+    def test_rejects_when_no_lists_are_shared(self) -> None:
+        client = FakeShoppingListClient()
+        client.lists_result = []
+
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.resolve_shopping_list(client, None)
+
+    def test_rejects_ambiguous_selection_among_multiple_lists(self) -> None:
+        client = FakeShoppingListClient()
+        client.lists_result = [
+            {"id": 1, "title": "Groceries"},
+            {"id": 2, "title": "Hardware store"},
+        ]
+
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.resolve_shopping_list(client, None)
+
+    def test_resolves_an_explicit_list_name_case_insensitively(self) -> None:
+        client = FakeShoppingListClient()
+        client.lists_result = [
+            {"id": 1, "title": "Groceries"},
+            {"id": 2, "title": "Hardware store"},
+        ]
+
+        list_id, title = nextcloud_tools.resolve_shopping_list(client, "groceries")
+
+        self.assertEqual((list_id, title), (1, "Groceries"))
+
+    def test_rejects_an_unknown_list_name(self) -> None:
+        client = FakeShoppingListClient()
+
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.resolve_shopping_list(client, "Nonexistent")
+
+    def test_resolves_an_exact_item_name_match(self) -> None:
+        client = FakeShoppingListClient()
+
+        item = nextcloud_tools.resolve_shopping_list_item(client, 1, "milk")
+
+        self.assertEqual(item["id"], 10)
+
+    def test_resolves_a_unique_substring_item_match(self) -> None:
+        client = FakeShoppingListClient()
+        client.items_result = [
+            {"id": 10, "name": "Oat Milk", "quantity": None, "unit": None, "checked": False}
+        ]
+
+        item = nextcloud_tools.resolve_shopping_list_item(client, 1, "milk")
+
+        self.assertEqual(item["id"], 10)
+
+    def test_rejects_an_item_name_with_no_match(self) -> None:
+        client = FakeShoppingListClient()
+
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.resolve_shopping_list_item(client, 1, "eggs")
+
+    def test_rejects_an_ambiguous_item_name(self) -> None:
+        # Neither item is an exact match for "milk", so both substring
+        # matches are genuinely ambiguous (an exact match, if one existed,
+        # would short-circuit this and win instead).
+        client = FakeShoppingListClient()
+        client.items_result = [
+            {"id": 10, "name": "Oat Milk", "quantity": None, "unit": None, "checked": False},
+            {
+                "id": 11,
+                "name": "Chocolate Milk",
+                "quantity": None,
+                "unit": None,
+                "checked": False,
+            },
+        ]
+
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.resolve_shopping_list_item(client, 1, "milk")
+
+
+class ShoppingListHandlerTests(unittest.TestCase):
+    """/v1/shopping/* executes immediately, matching /v1/write (ADR 0013/0014)."""
+
+    def test_list_shopping_lists_returns_bounded_titles(self) -> None:
+        result = nextcloud_tools.list_shopping_lists({}, FakeShoppingListClient())
+
+        self.assertEqual(result["lists"], [{"title": "Groceries"}])
+
+    def test_list_shopping_lists_rejects_unexpected_arguments(self) -> None:
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.list_shopping_lists({"list": "Groceries"}, FakeShoppingListClient())
+
+    def test_list_shopping_list_items_reports_checked_state(self) -> None:
+        result = nextcloud_tools.list_shopping_list_items({}, FakeShoppingListClient())
+
+        self.assertEqual(result["list"], "Groceries")
+        self.assertEqual(result["items"][0]["name"], "Milk")
+        self.assertFalse(result["items"][0]["checked"])
+
+    def test_add_creates_the_item_immediately(self) -> None:
+        client = FakeShoppingListClient()
+
+        result = nextcloud_tools.update_shopping_list(
+            {"operation": "add", "list": None, "item": "Eggs", "quantity": None}, client
+        )
+
+        self.assertEqual(client.creates, [(1, "Eggs", None)])
+        self.assertEqual(result["operation"], "add")
+        self.assertIn("Eggs", result["summary"])
+
+    def test_add_passes_through_an_explicit_quantity(self) -> None:
+        client = FakeShoppingListClient()
+
+        nextcloud_tools.update_shopping_list(
+            {"operation": "add", "list": None, "item": "Milk", "quantity": "2"}, client
+        )
+
+        self.assertEqual(client.creates, [(1, "Milk", "2")])
+
+    def test_quantity_is_rejected_for_non_add_operations(self) -> None:
+        client = FakeShoppingListClient()
+
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.update_shopping_list(
+                {"operation": "check", "list": None, "item": "Milk", "quantity": "2"}, client
+            )
+
+    def test_check_marks_the_resolved_item_bought(self) -> None:
+        client = FakeShoppingListClient()
+
+        result = nextcloud_tools.update_shopping_list(
+            {"operation": "check", "list": None, "item": "milk", "quantity": None}, client
+        )
+
+        self.assertEqual(client.checks, [(1, 10, True)])
+        self.assertIn("Milk", result["summary"])
+
+    def test_uncheck_marks_the_resolved_item_not_bought(self) -> None:
+        client = FakeShoppingListClient()
+
+        nextcloud_tools.update_shopping_list(
+            {"operation": "uncheck", "list": None, "item": "milk", "quantity": None}, client
+        )
+
+        self.assertEqual(client.checks, [(1, 10, False)])
+
+    def test_remove_deletes_the_resolved_item(self) -> None:
+        client = FakeShoppingListClient()
+
+        result = nextcloud_tools.update_shopping_list(
+            {"operation": "remove", "list": None, "item": "milk", "quantity": None}, client
+        )
+
+        self.assertEqual(client.deletes, [(1, 10)])
+        self.assertIn("Milk", result["summary"])
+
+    def test_rejects_an_unknown_operation(self) -> None:
+        client = FakeShoppingListClient()
+
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.update_shopping_list(
+                {"operation": "rename", "list": None, "item": "Milk", "quantity": None}, client
+            )
+
+    def test_rejects_an_oversized_item_name(self) -> None:
+        client = FakeShoppingListClient()
+
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.update_shopping_list(
+                {
+                    "operation": "add",
+                    "list": None,
+                    "item": "x" * (nextcloud_tools.MAX_ITEM_NAME_CHARS + 1),
+                    "quantity": None,
+                },
+                client,
+            )
+
+    def test_handle_tool_dispatches_the_three_shopping_routes(self) -> None:
+        client = FakeShoppingListClient()
+
+        listed = nextcloud_tools.handle_tool(
+            "/v1/shopping/lists", {}, FakeClient(), client
+        )
+        items = nextcloud_tools.handle_tool(
+            "/v1/shopping/items", {}, FakeClient(), client
+        )
+        written = nextcloud_tools.handle_tool(
+            "/v1/shopping/write",
+            {"operation": "add", "list": None, "item": "Eggs", "quantity": None},
+            FakeClient(),
+            client,
+        )
+
+        self.assertEqual(listed["lists"], [{"title": "Groceries"}])
+        self.assertEqual(items["list"], "Groceries")
+        self.assertEqual(written["operation"], "add")
+
+    def test_handle_tool_rejects_shopping_routes_without_a_client(self) -> None:
+        with self.assertRaises(nextcloud_tools.ToolUnavailable):
+            nextcloud_tools.handle_tool("/v1/shopping/lists", {}, FakeClient())
 
 
 if __name__ == "__main__":

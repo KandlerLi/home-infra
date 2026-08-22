@@ -159,6 +159,42 @@ class HomeAgentTests(unittest.TestCase):
             ],
         )
 
+    def test_update_shopping_list_dispatches_through_the_generic_nextcloud_path(
+        self,
+    ) -> None:
+        # No shopping-list-specific wiring in agent.py -- any name in
+        # NEXTCLOUD_TOOL_PATHS already routes through nextcloud_tools.call().
+        responses = FakeResponses()
+        responses.responses[0].output[0].name = "update_shopping_list"
+        responses.responses[0].output[0].arguments = (
+            '{"operation":"add","list":null,"item":"Milk","quantity":null}'
+        )
+        nextcloud_tools = FakeNextcloudTools()
+        provider = OpenAIResponsesProvider(
+            api_key="unused-test-key",
+            model="test-model",
+            home_tools=FakeHomeTools(),
+            nextcloud_tools=nextcloud_tools,
+            client=SimpleNamespace(responses=responses),
+        )
+
+        provider.respond("Put milk on my shopping list.")
+
+        self.assertEqual(
+            nextcloud_tools.calls,
+            [
+                (
+                    "update_shopping_list",
+                    {
+                        "operation": "add",
+                        "list": None,
+                        "item": "Milk",
+                        "quantity": None,
+                    },
+                )
+            ],
+        )
+
     def test_conversation_ignores_external_system_instructions(self) -> None:
         messages = normalize_conversation(
             [
