@@ -48,16 +48,28 @@
 
     - name: Create Deluge directories
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ item.path }}"
         state: directory
         owner: "{{ deluge_service_user }}"
         group: "{{ deluge_service_group }}"
-        mode: "0750"
+        mode: "{{ item.mode }}"
       loop:
-        - "{{ deluge_downloads_dir }}"
-        - "{{ deluge_config_dir }}"
+        # downloads is 0755, not 0750: Nextcloud's external storage mount
+        # reads this directory as its own container's runtime uid
+        # (www-data, confirmed live to not be in the deluge group), so
+        # "other" needs read+execute to traverse and list it -- this is
+        # the one directory the deluge role's own comment above says is
+        # meant to be exposed to Nextcloud. Deluge's own default umask
+        # already makes the per-torrent subfolders/files it creates
+        # world-readable, so this top-level directory was the only thing
+        # actually blocking visibility. config stays 0750 (private
+        # session state/password hash, never meant to be shared).
+        - path: "{{ deluge_downloads_dir }}"
+          mode: "0755"
+        - path: "{{ deluge_config_dir }}"
+          mode: "0750"
       loop_control:
-        label: "{{ item }}"
+        label: "{{ item.path }}"
 
     - name: Read Deluge's web.conf, if it exists
       ansible.builtin.slurp:

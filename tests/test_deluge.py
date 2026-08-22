@@ -49,6 +49,28 @@ class DelugeRoleTests(unittest.TestCase):
 
         self.assertIn("deluge_downloads_dir != deluge_config_dir", tasks)
 
+    def test_downloads_directory_is_world_readable_but_config_is_not(self) -> None:
+        # Confirmed live: Nextcloud's external storage mount reads this
+        # path as its own container's runtime uid (www-data, not a member
+        # of the deluge group), so with the downloads directory at 0750
+        # ("other" gets no permissions at all) it got EACCES and showed an
+        # empty folder even though Deluge had already written real files
+        # into 0755 per-torrent subfolders underneath -- the top-level
+        # directory itself was the only thing blocking visibility.
+        # deluge_config_dir holds session state/password hashes and must
+        # stay private, so only downloads gets the wider mode.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        downloads_index = tasks.index("path: \"{{ deluge_downloads_dir }}\"")
+        config_index = tasks.index(
+            "path: \"{{ deluge_config_dir }}\"", downloads_index
+        )
+        downloads_block = tasks[downloads_index:config_index]
+        config_block = tasks[config_index : config_index + 200]
+
+        self.assertIn('mode: "0755"', downloads_block)
+        self.assertIn('mode: "0750"', config_block)
+
     def test_web_ui_password_is_required_not_left_default(self) -> None:
         # Deluge has no "no login required" mode -- deluge/ui/web/auth.py's
         # check_password() returns False for every password when pwd_sha1
