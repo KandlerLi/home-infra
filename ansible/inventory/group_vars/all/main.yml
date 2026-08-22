@@ -29,3 +29,11 @@ shared_ingress_deluge_enabled: true
 # wiring this up.
 nextcloud_aio_mount_dir: /mnt/black-hdd/downloads
 nextcloud_aio_mount_applicable_user: admin
+sankey_export_enabled: true
+# Nextcloud shares don't preserve the sharer's own path for the recipient
+# -- confirmed live via `occ share:list --recipient=sankey-export`, which
+# shows source-path "/admin/files/Documents/Finanzen" but target-path
+# "/Shared/Finanzen". The dedicated account's WebDAV root therefore sees
+# it at Shared/Finanzen, not Documents/Finanzen (same Shared/ prefix
+# nextcloud_tools_allowed_root already has to account for above).
+sankey_export_remote_dir: Shared/Finanzen
