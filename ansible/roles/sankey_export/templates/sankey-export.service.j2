@@ -1,0 +1,52 @@
+[Unit]
+Description=Finanzfluss Sankey export
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User={{ sankey_export_service_user }}
+Group={{ sankey_export_service_group }}
+WorkingDirectory={{ sankey_export_install_dir }}
+TimeoutStartSec={{ sankey_export_run_timeout }}
+
+Environment="SANKEY_EXPORT_ENDPOINT_HOST={{ sankey_export_endpoint_host }}"
+Environment="SANKEY_EXPORT_ENDPOINT_PORT={{ sankey_export_endpoint_port }}"
+Environment="SANKEY_EXPORT_HTTP_HOST={{ sankey_export_http_host }}"
+Environment="SANKEY_EXPORT_USERNAME={{ sankey_export_username }}"
+Environment="SANKEY_EXPORT_APP_PASSWORD_FILE={{ sankey_export_app_password_path }}"
+Environment="SANKEY_EXPORT_REMOTE_DIR={{ sankey_export_remote_dir }}"
+Environment="SANKEY_EXPORT_WORKBOOK_NAME={{ sankey_export_workbook_name }}"
+Environment="SANKEY_EXPORT_OUTPUT_DIR={{ sankey_export_output_dir }}"
+Environment="SANKEY_EXPORT_STATE_FILE={{ sankey_export_state_dir }}/last-etag"
+# Playwright downloads its own Chromium under this venv; keep its cache
+# inside the state dir so it survives across runs instead of re-downloading.
+Environment="PLAYWRIGHT_BROWSERS_PATH={{ sankey_export_state_dir }}/playwright"
+
+ExecStart={{ sankey_export_install_dir }}/.venv/bin/python {{ sankey_export_install_dir }}/finanzfluss_export.py
+
+MemoryMax={{ sankey_export_memory_limit }}
+CPUQuota={{ (sankey_export_cpu_limit | float * 100) | int }}%
+TasksMax={{ sankey_export_pids_limit }}
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ReadWritePaths={{ sankey_export_state_dir }}
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

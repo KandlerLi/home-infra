@@ -1,0 +1,154 @@
+---
+- name: Bootstrap the Finanzfluss Sankey exporter's dedicated Nextcloud account
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  vars:
+    sankey_export_bootstrap_confirmation: ""
+
+  pre_tasks:
+    - name: Require confirmation for initial Sankey export bootstrap
+      ansible.builtin.assert:
+        that:
+          - >-
+            sankey_export_bootstrap_confirmation
+            == 'BOOTSTRAP_SANKEY_EXPORT'
+        fail_msg: >-
+          Initial Nextcloud account and token creation requires the exact
+          confirmation BOOTSTRAP_SANKEY_EXPORT.
+
+    - name: Validate Sankey export bootstrap identity
+      ansible.builtin.assert:
+        that:
+          - sankey_export_username is match('^[A-Za-z0-9_@-]{1,64}$')
+          - sankey_export_account_display_name | length >= 3
+          - sankey_export_account_display_name | length <= 64
+          - sankey_export_token_name is match('^[A-Za-z0-9_.@-]{3,64}$')
+        fail_msg: Configure a bounded dedicated Nextcloud identity.
+
+    - name: Inspect Nextcloud AIO application container
+      community.docker.docker_container_info:
+        name: "{{ sankey_export_nextcloud_container }}"
+      register: sankey_export_nextcloud_container_info
+
+    - name: Require a running Nextcloud AIO application container
+      ansible.builtin.assert:
+        that:
+          - sankey_export_nextcloud_container_info.exists
+          - sankey_export_nextcloud_container_info.container.State.Running
+        fail_msg: Nextcloud must be running before bootstrapping the Sankey export user.
+
+    - name: Check dedicated Nextcloud account
+      community.docker.docker_container_exec:
+        container: "{{ sankey_export_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - user:info
+          - --output=json
+          - "{{ sankey_export_username }}"
+      register: sankey_export_account_check
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Validate dedicated account lookup result
+      ansible.builtin.assert:
+        that:
+          - sankey_export_account_check.rc in [0, 1]
+        fail_msg: Could not safely inspect the dedicated Nextcloud account.
+      no_log: true
+
+    - name: Create dedicated non-admin Nextcloud account
+      community.docker.docker_container_exec:
+        container: "{{ sankey_export_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - user:add
+          - --generate-password
+          - --no-interaction
+          - "--display-name={{ sankey_export_account_display_name }}"
+          - "{{ sankey_export_username }}"
+      when: sankey_export_account_check.rc == 1
+      no_log: true
+
+    - name: Check existing host-side app password file
+      ansible.builtin.stat:
+        path: "{{ sankey_export_app_password_path }}"
+      register: sankey_export_bootstrap_password_file
+
+    - name: List existing dedicated-account tokens
+      community.docker.docker_container_exec:
+        container: "{{ sankey_export_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - user:auth-tokens:list
+          - "{{ sankey_export_username }}"
+      register: sankey_export_existing_token_list
+      changed_when: false
+      no_log: true
+      when:
+        - not sankey_export_bootstrap_password_file.stat.exists
+        - sankey_export_app_password | trim | length < 16
+
+    - name: Refuse to orphan an existing managed app password
+      ansible.builtin.assert:
+        that:
+          - >-
+            sankey_export_token_name
+            not in sankey_export_existing_token_list.stdout
+        fail_msg: >-
+          A managed token exists but its host-side password file is missing.
+          Revoke it manually via occ user:auth-tokens:delete before
+          re-bootstrapping, or restore the host-side file from backup.
+      no_log: true
+      when:
+        - not sankey_export_bootstrap_password_file.stat.exists
+        - sankey_export_app_password | trim | length < 16
+
+    # Reuses the exact same shared task file nextcloud-tools.yml uses, with
+    # its nextcloud_tools_* variable names shadowed for this account instead
+    # -- see its own header comment; it already generates via `occ
+    # user:auth-tokens:add`, extracts, and validates the result, which is
+    # identical work for any dedicated Nextcloud service account.
+    - name: Generate and validate a Nextcloud app password
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/generate_and_validate_nextcloud_app_password.yml"
+      vars:
+        nextcloud_tools_nextcloud_container: "{{ sankey_export_nextcloud_container }}"
+        nextcloud_tools_token_name: "{{ sankey_export_token_name }}"
+        nextcloud_tools_username: "{{ sankey_export_username }}"
+      when:
+        - not sankey_export_bootstrap_password_file.stat.exists
+        - sankey_export_app_password | trim | length < 16
+
+    - name: Select app password input for the service role
+      ansible.builtin.set_fact:
+        sankey_export_role_app_password: >-
+          {{
+            nextcloud_tools_generated_app_password
+            | default(sankey_export_app_password)
+          }}
+      no_log: true
+
+  roles:
+    - role: sankey_export
+      sankey_export_enabled: true
+      sankey_export_app_password: "{{ sankey_export_role_app_password }}"
+
+  post_tasks:
+    - name: Verify the Sankey export timer is active
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - sankey-export.timer
+      register: sankey_export_timer_status
+      changed_when: false
+      failed_when: sankey_export_timer_status.stdout.strip() != "active"
+      when: not ansible_check_mode

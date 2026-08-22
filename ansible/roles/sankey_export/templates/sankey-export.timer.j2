@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodically check the Finanzfluss workbook and export a new Sankey PNG if it changed
+
+[Timer]
+OnBootSec={{ sankey_export_poll_interval }}
+OnUnitActiveSec={{ sankey_export_poll_interval }}
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

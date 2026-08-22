@@ -1,0 +1,32 @@
+---
+sankey_export_enabled: false
+
+sankey_export_service_user: sankey-export
+sankey_export_service_group: sankey-export
+sankey_export_install_dir: /usr/local/lib/sankey-export
+sankey_export_config_dir: /etc/sankey-export
+sankey_export_app_password_path: /etc/sankey-export/app-password
+sankey_export_state_dir: /var/lib/sankey-export
+sankey_export_output_dir: /var/lib/sankey-export/out
+
+sankey_export_endpoint_host: 127.0.0.1
+sankey_export_endpoint_port: 11000
+sankey_export_http_host: nextcloud.jkandler.de
+sankey_export_nextcloud_container: nextcloud-aio-nextcloud
+sankey_export_username: sankey-export
+sankey_export_account_display_name: Sankey Export
+sankey_export_token_name: sankey-export
+sankey_export_app_password: ""
+
+sankey_export_remote_dir: Documents/Finanzen
+sankey_export_workbook_name: Finanzfluss_Nextcloud.xlsx
+
+# A cheap PROPFIND-only check runs this often; the expensive Playwright
+# export only runs on the (rare) tick where the workbook's ETag actually
+# changed. See ansible/roles/sankey_export/files/finanzfluss_export.py.
+sankey_export_poll_interval: 1min
+
+sankey_export_memory_limit: 768M
+sankey_export_cpu_limit: 1.0
+sankey_export_pids_limit: 128
+sankey_export_run_timeout: 120s

@@ -3,3 +3,10 @@ ansible==14.3.0
 # ansible/roles/home_agent/files/agent/home_agent/{home_tools,nextcloud_tools}.py
 # directly. Must match agent/requirements.txt's pin.
 httpx2==2.12.0
+# Only needed to run tests/test_sankey_export.py, which imports
+# ansible/roles/sankey_export/files/finanzfluss_export.py directly. Must
+# match that role's own requirements.txt pins. playwright itself isn't
+# needed here: the script only imports it lazily, inside the one function
+# that actually launches a browser, which the tests never call.
+openpyxl==3.1.5
+requests==2.34.2
