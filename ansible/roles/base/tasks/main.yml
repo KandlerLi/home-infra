@@ -38,3 +38,17 @@
     groups:
       - www-data
     append: true
+
+# Found live during a homeserver audit: iperf3 had been apt-installed for a
+# one-off bandwidth test, and Debian's package enables its systemd service
+# unconditionally on install -- so it had been running as an unauthenticated
+# server on *all* interfaces (not loopback) for a month, entirely outside
+# this repo. Purging it (not just disabling the service) means a future
+# `apt install iperf3` for a real test can't silently reintroduce the same
+# exposure -- reinstalling it is a deliberate, visible action either way.
+- name: Ensure the iperf3 bandwidth-test server is not installed
+  ansible.builtin.apt:
+    name: iperf3
+    state: absent
+    purge: true
+    autoremove: true
