@@ -39,6 +39,9 @@
       - github_runner_github_repositories is not string
       - github_runner_github_repositories | length > 0
       - >-
+        github_runner_downloads_repository
+        in (github_runner_github_repositories | map(attribute='repository'))
+      - >-
         github_runner_github_token
         | default('')
         | length >= 50
@@ -47,10 +50,12 @@
         | default('')
         is match('^github_pat_[A-Za-z0-9_]+$')
     fail_msg: >-
-      GitHub owner, a non-empty repository configuration list, and a valid
-      fine-grained personal access token must be configured before runners
-      can be registered. The token must have access to every configured
-      repository with Administration: write.
+      GitHub owner, a non-empty repository configuration list, a
+      github_runner_downloads_repository that's actually one of the
+      configured repositories, and a valid fine-grained personal access
+      token must be configured before runners can be registered. The
+      token must have access to every configured repository with
+      Administration: write.
 
 - name: Validate each GitHub runner repository
   ansible.builtin.include_tasks: validate_repository.yml
@@ -87,7 +92,7 @@
   check_mode: false
   ansible.builtin.uri:
     url: >-
-      https://api.github.com/repos/{{ github_runner_github_owner }}/{{ (github_runner_github_repositories | first).repository }}/actions/runners/downloads
+      https://api.github.com/repos/{{ github_runner_github_owner }}/{{ github_runner_downloads_repository }}/actions/runners/downloads
     method: GET
     headers:
       Accept: application/vnd.github+json

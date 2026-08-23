@@ -5,6 +5,15 @@ github_runner_github_owner: CHANGE_ME
 github_runner_github_repositories: []
 github_runner_github_token: ""
 github_runner_github_api_version: "2026-03-10"
+# The runner-application download catalog (which binary to install) is the
+# same regardless of which repository you ask -- it's not actually
+# repo-specific data, the API just requires a repo-scoped token to read
+# it. Query a long-established repository explicitly rather than
+# whichever entry happens to sort first in github_runner_github_repositories:
+# a brand-new repository can return an empty catalog until GitHub finishes
+# provisioning Actions for it, which a positional "first" pick would hit
+# every time a new repository happened to sort earliest.
+github_runner_downloads_repository: dyndns
 
 github_runner_vm_name: github-runner
 github_runner_vm_memory_mb: 2048
