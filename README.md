@@ -304,13 +304,16 @@ python3 -m unittest discover -s tests -v
 ## Continuous integration
 
 A GitHub Actions workflow (`.github/workflows/checks.yml`) runs an Ansible
-syntax check and the full unit test suite on every push to `main`, on a
-GitHub-hosted runner. It's checks-only, deliberately: it never applies
-anything and never touches the real homeserver, since that has no public
-API to reach safely the way `dyndns`/`website`'s AWS deploys do. Applying
-changes still always means running `ansible-playbook site.yml
---ask-become-pass` yourself, on your own machine, over the local network,
-exactly as before.
+syntax check and the full unit test suite on every push to `main`, on the
+self-hosted home runner (`[self-hosted, home, debian]`). It's checks-only,
+deliberately: it never applies anything and never touches the real
+homeserver, since that has no public API to reach safely the way
+`dyndns`/`website`'s AWS deploys do. Applying changes still always means
+running `ansible-playbook site.yml --ask-become-pass` yourself, on your
+own machine, over the local network, exactly as before. Unlike
+`website`'s deploy pipeline, running these particular checks on the home
+runner has no real availability tradeoff — nothing here ever needs to run
+while the homeserver itself is down.
 
 ## Hardware maintenance shutdown
 
