@@ -301,6 +301,17 @@ Run the local unit tests with:
 python3 -m unittest discover -s tests -v
 ```
 
+## Continuous integration
+
+A GitHub Actions workflow (`.github/workflows/checks.yml`) runs an Ansible
+syntax check and the full unit test suite on every push to `main`, on a
+GitHub-hosted runner. It's checks-only, deliberately: it never applies
+anything and never touches the real homeserver, since that has no public
+API to reach safely the way `dyndns`/`website`'s AWS deploys do. Applying
+changes still always means running `ansible-playbook site.yml
+--ask-become-pass` yourself, on your own machine, over the local network,
+exactly as before.
+
 ## Hardware maintenance shutdown
 
 The guarded shutdown helper stops the Nextcloud AIO application containers,
