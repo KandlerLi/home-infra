@@ -51,6 +51,17 @@ class GithubRunnerTests(unittest.TestCase):
             tasks,
         )
 
+    def test_aws_cli_is_installed_on_the_runner_vm(self) -> None:
+        # Found live: website's apply.yml runs `aws s3 sync`/`aws
+        # cloudfront create-invalidation` directly, which GitHub-hosted
+        # runners have preinstalled but this VM never needed before
+        # website moved onto the self-hosted runner.
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("awscli", tasks)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,12 @@
 - name: Install GitHub runner operating system packages
   ansible.builtin.apt:
     name:
+      # Found live: website's apply.yml runs `aws s3 sync`/`aws cloudfront
+      # create-invalidation` directly as shell steps, unlike dyndns/
+      # aws-budget which only ever use terraform. GitHub-hosted runners
+      # have the AWS CLI preinstalled; this VM never needed it before
+      # website moved onto it.
+      - awscli
       - ca-certificates
       - curl
       - git
