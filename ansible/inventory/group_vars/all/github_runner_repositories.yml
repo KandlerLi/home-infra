@@ -12,3 +12,5 @@ github_runner_github_repositories:
   repository: aws-budget
 - id: dyndns
   repository: dyndns
+- id: website
+  repository: website
