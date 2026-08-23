@@ -8,5 +8,7 @@
 # Then review the diff, commit it, and run the github-runner.yml playbook.
 
 github_runner_github_repositories:
+- id: aws-budget
+  repository: aws-budget
 - id: dyndns
   repository: dyndns
