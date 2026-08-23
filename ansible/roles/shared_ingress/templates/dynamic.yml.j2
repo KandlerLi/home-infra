@@ -56,6 +56,17 @@ http:
       tls:
         certResolver: letsencrypt
 {% endif %}
+{% if shared_ingress_apex_redirect_enabled | bool %}
+    apex-redirect:
+      rule: "Host(`{{ shared_ingress_apex_domain }}`)"
+      entryPoints:
+        - websecure
+      service: noop@internal
+      middlewares:
+        - apex-redirect
+      tls:
+        certResolver: letsencrypt
+{% endif %}
 
   services:
     nextcloud:
@@ -175,4 +186,11 @@ http:
           - deluge-rate-limit
           - deluge-request-limit
           - deluge-security-headers
+{% endif %}
+{% if shared_ingress_apex_redirect_enabled | bool %}
+    apex-redirect:
+      redirectRegex:
+        regex: '^https://{{ shared_ingress_apex_domain | regex_escape }}/(.*)'
+        replacement: 'https://{{ shared_ingress_apex_redirect_target_host }}/${1}'
+        permanent: true
 {% endif %}

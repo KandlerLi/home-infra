@@ -65,6 +65,23 @@ class SharedIngressTests(unittest.TestCase):
         self.assertIn("PUBLISH_OPEN_WEBUI", tasks)
         self.assertIn("open_webui_publish_confirmation", publish_playbook)
 
+    def test_apex_redirect_is_opt_in_and_targets_www(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        dynamic = (ROLE_ROOT / "templates/dynamic.yml.j2").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("shared_ingress_apex_redirect_enabled: false", defaults)
+        self.assertIn("shared_ingress_apex_domain: jkandler.de", defaults)
+        self.assertIn(
+            "shared_ingress_apex_redirect_target_host: www.jkandler.de",
+            defaults,
+        )
+        self.assertIn("apex-redirect:", dynamic)
+        self.assertIn("redirectRegex:", dynamic)
+        self.assertIn("service: noop@internal", dynamic)
+        self.assertIn("permanent: true", dynamic)
+
     def test_cutover_has_a_human_confirmation_sentinel(self) -> None:
         nextcloud_tasks = (
             PROJECT_ROOT / "ansible/roles/nextcloud_aio/tasks/main.yml"

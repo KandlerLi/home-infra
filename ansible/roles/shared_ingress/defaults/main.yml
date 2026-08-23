@@ -14,6 +14,14 @@ shared_ingress_nextcloud_domain: nextcloud.jkandler.de
 shared_ingress_nextcloud_upstream: http://127.0.0.1:11000
 shared_ingress_nextcloud_read_timeout: 3610s
 
+# Redirects the bare apex to the static site's www host. No DNS/AWS changes
+# involved -- the apex A record stays exactly as the dyndns repo manages it;
+# this just gives Traefik a router + its own Let's Encrypt cert for the
+# apex hostname so it doesn't 404 for anyone who visits without "www".
+shared_ingress_apex_redirect_enabled: false
+shared_ingress_apex_domain: jkandler.de
+shared_ingress_apex_redirect_target_host: www.jkandler.de
+
 shared_ingress_agent_enabled: false
 shared_ingress_agent_domain: ai.jkandler.de
 shared_ingress_agent_upstream: http://127.0.0.1:8090

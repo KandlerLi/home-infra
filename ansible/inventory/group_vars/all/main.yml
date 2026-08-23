@@ -7,6 +7,7 @@ shared_ingress_acme_email: "julian.kandler@outlook.com"
 nextcloud_aio_reverse_proxy_enabled: true
 shared_ingress_enabled: true
 shared_ingress_start: true
+shared_ingress_apex_redirect_enabled: true
 shared_ingress_agent_enabled: true
 home_agent_enabled: true
 home_agent_frontend_network_enabled: true
