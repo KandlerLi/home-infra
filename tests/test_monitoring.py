@@ -131,6 +131,32 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn("relabel_configs", blackbox_job)
         self.assertNotIn("relabel_configs", parsed)
 
+    def test_authenticated_targets_are_probed_with_the_401_tolerant_module(self) -> None:
+        # torrent.jkandler.de and ai.jkandler.de sit behind Traefik Basic
+        # Auth, and no plaintext credential for either is available to
+        # this role (only the bcrypt hash shared_ingress uses) -- probing
+        # them with the plain http_2xx module would permanently alert,
+        # since blackbox_exporter never sends the required Authorization
+        # header and always gets 401. Confirmed live: both fired
+        # ServiceUnreachable continuously until this module was added.
+        rendered_prometheus = render("prometheus.yml.j2")
+        parsed_prometheus = yaml.safe_load(rendered_prometheus)
+        rendered_blackbox = render("blackbox.yml.j2")
+        parsed_blackbox = yaml.safe_load(rendered_blackbox)
+
+        auth_job = next(
+            job
+            for job in parsed_prometheus["scrape_configs"]
+            if job["job_name"] == "blackbox_http_authenticated"
+        )
+        self.assertEqual(auth_job["params"]["module"], ["http_2xx_or_401"])
+        for target in ["https://ai.jkandler.de/healthz", "https://torrent.jkandler.de/"]:
+            with self.subTest(target=target):
+                self.assertIn(target, auth_job["static_configs"][0]["targets"])
+
+        self.assertIn(401, parsed_blackbox["modules"]["http_2xx_or_401"]["http"]["valid_status_codes"])
+        self.assertIn(200, parsed_blackbox["modules"]["http_2xx_or_401"]["http"]["valid_status_codes"])
+
     def test_prometheus_forwards_firing_alerts_to_alertmanager(self) -> None:
         rendered = render("prometheus.yml.j2")
         parsed = yaml.safe_load(rendered)

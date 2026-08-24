@@ -64,11 +64,22 @@ monitoring_blackbox_exporter_pids_limit: 32
 # same way any other service outage would.
 monitoring_probe_targets:
   - https://nextcloud.jkandler.de/
-  - https://ai.jkandler.de/healthz
-  - https://torrent.jkandler.de/
   - https://www.jkandler.de/
   - http://jkandler.de/
   - http://127.0.0.1:8082/ping
+
+# ai.jkandler.de and torrent.jkandler.de sit behind Traefik Basic Auth
+# (shared_ingress_agent_auth_password_hash / _deluge_auth_password_hash),
+# and only the bcrypt hash is stored anywhere in this repo -- the
+# plaintext lives solely in Julian's password manager, so blackbox has no
+# credential to send. Probed with the http_2xx_or_401 module instead:
+# 401 still proves DNS/TLS/Traefik/the upstream are all up and correctly
+# gating access, so real outages (timeouts, 5xx, connection refused)
+# still alert -- it just can't distinguish "healthy behind auth" from "up
+# but broken behind auth" the way an unauthenticated 2xx check can.
+monitoring_probe_targets_authenticated:
+  - https://ai.jkandler.de/healthz
+  - https://torrent.jkandler.de/
 
 monitoring_prometheus_container_name: prometheus
 monitoring_prometheus_image_name: prom/prometheus

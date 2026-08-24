@@ -9,3 +9,17 @@ modules:
       preferred_ip_protocol: ip4
       tls_config:
         insecure_skip_verify: false
+
+  # For targets behind Traefik Basic Auth where no plaintext credential
+  # is available to this role (see monitoring_probe_targets_authenticated
+  # in defaults/main.yml) -- treats 401 as reachable, not just 2xx.
+  http_2xx_or_401:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      valid_status_codes: [200, 401]
+      follow_redirects: true
+      preferred_ip_protocol: ip4
+      tls_config:
+        insecure_skip_verify: false
