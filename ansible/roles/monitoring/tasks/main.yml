@@ -168,15 +168,20 @@
         - container-health.json
         - service-reachability.json
 
-    # Contains the SES SMTP password and the ntfy topic name, so 0600 --
-    # same reasoning as shared_ingress's own users file for Basic Auth.
+    # Contains the SES SMTP password and the ntfy topic name, so owner-only
+    # read access -- same reasoning as the Grafana admin password file
+    # above. Must be owned by the container's own dedicated user, not
+    # root: the container runs as monitoring_alertmanager_uid (non-root),
+    # so a root-owned 0600 file is unreadable to it -- confirmed live via
+    # "open /etc/alertmanager/alertmanager.yml: permission denied" on the
+    # first real deploy.
     - name: Install Alertmanager configuration
       ansible.builtin.template:
         src: alertmanager.yml.j2
         dest: "{{ monitoring_config_dir }}/alertmanager.yml"
-        owner: root
-        group: root
-        mode: "0600"
+        owner: "{{ monitoring_alertmanager_container_user }}"
+        group: "{{ monitoring_alertmanager_container_user }}"
+        mode: "0400"
       register: monitoring_alertmanager_config
       no_log: true
 
@@ -268,6 +273,26 @@
           - --listen_ip={{ monitoring_bind_address }}
           - --port={{ monitoring_cadvisor_port }}
           - --disable_metrics=percpu,sched,tcp,udp,resctrl,cpu_topology,advtcp,hugetlb,referenced_memory
+        # Overrides the image's own baked-in HEALTHCHECK, which probes
+        # "localhost" -- with network_mode: host, the container's
+        # /etc/hosts is the host's own, resolving "localhost" to both
+        # 127.0.0.1 and ::1. cAdvisor only binds the IPv4 address above,
+        # so BusyBox wget's IPv6-first attempt against ::1 gets refused
+        # and it never falls back to IPv4, reporting unhealthy even
+        # though the service itself is fine -- confirmed live (the same
+        # wget against 127.0.0.1 directly succeeds instantly). Probing
+        # the bind address explicitly, like Grafana's healthcheck below
+        # already does, sidesteps the ambiguity entirely.
+        healthcheck:
+          test:
+            - CMD
+            - wget
+            - --spider
+            - --quiet
+            - http://{{ monitoring_bind_address }}:{{ monitoring_cadvisor_port }}/healthz
+          interval: 30s
+          timeout: 5s
+          retries: 5
         log_driver: json-file
         log_options:
           max-size: 10m
