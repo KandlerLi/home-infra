@@ -38,3 +38,10 @@ sankey_export_enabled: true
 # it at Shared/Finanzen, not Documents/Finanzen (same Shared/ prefix
 # nextcloud_tools_allowed_root already has to account for above).
 sankey_export_remote_dir: Shared/Finanzen
+
+# Prometheus/Grafana/Alertmanager monitoring stack (ADR 0019). Needs
+# monitoring_grafana_admin_password, monitoring_ntfy_topic,
+# monitoring_ses_smtp_username, and monitoring_ses_smtp_password set via
+# sops before a site.yml run against this flag will pass its own
+# validate checks.
+monitoring_enabled: true
