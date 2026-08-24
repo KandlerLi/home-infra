@@ -412,7 +412,7 @@
           GF_SECURITY_ADMIN_USER: "{{ monitoring_grafana_admin_user }}"
           GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
           GF_SERVER_HTTP_ADDR: "{{ monitoring_bind_address }}"
-          GF_SERVER_HTTP_PORT: "{{ monitoring_grafana_port }}"
+          GF_SERVER_HTTP_PORT: "{{ monitoring_grafana_port | string }}"
           GF_SERVER_ROOT_URL: "http://{{ monitoring_bind_address }}:{{ monitoring_grafana_port }}/"
           GF_ANALYTICS_REPORTING_ENABLED: "false"
           GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
