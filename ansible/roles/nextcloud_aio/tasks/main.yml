@@ -221,3 +221,27 @@
           - --add-user
           - "{{ nextcloud_aio_mount_applicable_user }}"
       when: nextcloud_aio_mount_applicable_user | length > 0
+
+    # Nextcloud caches per-file permissions (including whether the delete
+    # button shows up at all) in its own database from the last scan of
+    # this mount -- it does not re-check the real filesystem live on every
+    # page load. Files here are written and deleted by Deluge entirely
+    # outside Nextcloud's awareness, and host-side permission changes to
+    # this directory (like the deluge role's own ACL grant) don't trigger
+    # a rescan on their own either. Confirmed live: after fixing the host
+    # ACL so www-data could actually delete, Nextcloud's UI still showed
+    # no delete option -- even from a fresh, uncached browser profile --
+    # until this mount was explicitly rescanned. Run every apply, not just
+    # once: it's cheap, and it's the only thing keeping this mount's cache
+    # from drifting from what Deluge does to the files underneath it.
+    - name: Rescan the downloads mount so Nextcloud's permission cache is current
+      community.docker.docker_container_exec:
+        container: "{{ nextcloud_aio_nextcloud_container }}"
+        user: www-data
+        argv:
+          - php
+          - occ
+          - files:scan
+          - --path=/{{ nextcloud_aio_mount_applicable_user }}/files/{{ nextcloud_aio_mount_point_name }}
+      when: nextcloud_aio_mount_applicable_user | length > 0
+      changed_when: false

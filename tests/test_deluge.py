@@ -371,6 +371,31 @@ class NextcloudAioMountTests(unittest.TestCase):
         self.assertIn("files_external:applicable", tasks)
         self.assertIn("nextcloud_aio_mount_applicable_user | length > 0", tasks)
 
+    def test_downloads_mount_is_rescanned_so_delete_permission_is_current(
+        self,
+    ) -> None:
+        # Confirmed live: fixing the host ACL alone wasn't enough --
+        # Nextcloud's UI kept showing no delete option (checked from a
+        # fresh, uncached browser profile) until this mount was explicitly
+        # rescanned, since Nextcloud caches per-file permissions from the
+        # last scan rather than checking the filesystem live.
+        tasks = (NEXTCLOUD_AIO_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        applicable_index = tasks.index("Make the downloads mount visible")
+        rescan_index = tasks.index("files:scan", applicable_index)
+        self.assertGreater(
+            rescan_index,
+            applicable_index,
+            "the rescan must run after the mount is registered/made visible",
+        )
+
+        rescan_block = tasks[applicable_index:]
+        self.assertIn(
+            "--path=/{{ nextcloud_aio_mount_applicable_user }}"
+            "/files/{{ nextcloud_aio_mount_point_name }}",
+            rescan_block,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
