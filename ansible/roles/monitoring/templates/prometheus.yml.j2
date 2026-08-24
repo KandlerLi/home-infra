@@ -1,0 +1,48 @@
+global:
+  scrape_interval: {{ monitoring_prometheus_scrape_interval }}
+  evaluation_interval: {{ monitoring_prometheus_scrape_interval }}
+
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 127.0.0.1:{{ monitoring_alertmanager_port }}
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - 127.0.0.1:{{ monitoring_prometheus_port }}
+
+  - job_name: node_exporter
+    static_configs:
+      - targets:
+          - 127.0.0.1:{{ monitoring_node_exporter_port }}
+
+  - job_name: cadvisor
+    static_configs:
+      - targets:
+          - 127.0.0.1:{{ monitoring_cadvisor_port }}
+
+  # blackbox_exporter's own multi-target pattern: each real target is
+  # passed as a "target" query param on a single /probe endpoint, not
+  # scraped directly -- the exporter does the actual probing per request.
+  - job_name: blackbox_http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+{% for target in monitoring_probe_targets %}
+          - {{ target }}
+{% endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 127.0.0.1:{{ monitoring_blackbox_exporter_port }}

@@ -15,6 +15,7 @@
     - home_agent
     - open_webui
     - shared_ingress
+    - monitoring
 
 - name: Configure GitHub Actions runner
   ansible.builtin.import_playbook: github-runner.yml

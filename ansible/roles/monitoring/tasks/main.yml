@@ -1,0 +1,457 @@
+---
+- name: Configure monitoring
+  when: monitoring_enabled | bool
+  block:
+    - name: Validate monitoring configuration
+      ansible.builtin.assert:
+        that:
+          - monitoring_bind_address == "127.0.0.1"
+          - monitoring_grafana_admin_password | trim | length >= 16
+          - monitoring_grafana_admin_password | trim != "CHANGE_ME"
+          - monitoring_ntfy_topic | trim | length >= 20
+          - monitoring_ntfy_topic | trim != "CHANGE_ME"
+          - monitoring_ses_smtp_username | trim | length > 0
+          - monitoring_ses_smtp_username | trim != "CHANGE_ME"
+          - monitoring_ses_smtp_password | trim | length > 0
+          - monitoring_ses_smtp_password | trim != "CHANGE_ME"
+          - monitoring_probe_targets | length > 0
+        fail_msg: >-
+          Configure monitoring_grafana_admin_password, monitoring_ntfy_topic,
+          and the SES SMTP credentials (from infra/ses-relay's outputs)
+          through SOPS before the first deploy.
+      no_log: true
+
+    - name: Create Prometheus service account
+      ansible.builtin.user:
+        name: "{{ monitoring_prometheus_container_user }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Read Prometheus service account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ monitoring_prometheus_container_user }}"
+
+    - name: Record Prometheus runtime identity
+      ansible.builtin.set_fact:
+        monitoring_prometheus_uid: >-
+          {{ ansible_facts.getent_passwd[monitoring_prometheus_container_user][1] }}
+
+    - name: Create Grafana service account
+      ansible.builtin.user:
+        name: "{{ monitoring_grafana_container_user }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Read Grafana service account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ monitoring_grafana_container_user }}"
+
+    - name: Record Grafana runtime identity
+      ansible.builtin.set_fact:
+        monitoring_grafana_uid: >-
+          {{ ansible_facts.getent_passwd[monitoring_grafana_container_user][1] }}
+
+    - name: Create Alertmanager service account
+      ansible.builtin.user:
+        name: "{{ monitoring_alertmanager_container_user }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Read Alertmanager service account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ monitoring_alertmanager_container_user }}"
+
+    - name: Record Alertmanager runtime identity
+      ansible.builtin.set_fact:
+        monitoring_alertmanager_uid: >-
+          {{ ansible_facts.getent_passwd[monitoring_alertmanager_container_user][1] }}
+
+    - name: Create monitoring directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.owner }}"
+        mode: "0750"
+      loop:
+        - path: "{{ monitoring_config_dir }}/blackbox"
+          owner: root
+        - path: "{{ monitoring_config_dir }}/grafana/provisioning/datasources"
+          owner: root
+        - path: "{{ monitoring_config_dir }}/grafana/provisioning/dashboards"
+          owner: root
+        - path: "{{ monitoring_config_dir }}/grafana/dashboards"
+          owner: root
+        - path: "{{ monitoring_data_dir }}/prometheus"
+          owner: "{{ monitoring_prometheus_container_user }}"
+        - path: "{{ monitoring_data_dir }}/grafana"
+          owner: "{{ monitoring_grafana_container_user }}"
+        - path: "{{ monitoring_data_dir }}/alertmanager"
+          owner: "{{ monitoring_alertmanager_container_user }}"
+        - path: "{{ monitoring_data_dir }}/secrets"
+          owner: "{{ monitoring_grafana_container_user }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    # Grafana's own docker image supports the "_FILE" env-var suffix
+    # convention specifically so a secret doesn't have to sit in plain
+    # env (visible to anyone with `docker inspect` access) -- the same
+    # reasoning home_agent's OPENAI_API_KEY_FILE already follows for its
+    # own secret, rather than passing it as a raw env var.
+    - name: Install Grafana admin password file
+      ansible.builtin.copy:
+        content: "{{ monitoring_grafana_admin_password }}"
+        dest: "{{ monitoring_data_dir }}/secrets/grafana_admin_password"
+        owner: "{{ monitoring_grafana_container_user }}"
+        group: "{{ monitoring_grafana_container_user }}"
+        mode: "0400"
+      no_log: true
+
+    - name: Install Prometheus scrape configuration
+      ansible.builtin.template:
+        src: prometheus.yml.j2
+        dest: "{{ monitoring_config_dir }}/prometheus.yml"
+        owner: root
+        group: root
+        mode: "0644"
+      register: monitoring_prometheus_config
+
+    - name: Install Prometheus alert rules
+      ansible.builtin.template:
+        src: alert_rules.yml.j2
+        dest: "{{ monitoring_config_dir }}/alert_rules.yml"
+        owner: root
+        group: root
+        mode: "0644"
+      register: monitoring_alert_rules_config
+
+    - name: Install blackbox_exporter configuration
+      ansible.builtin.template:
+        src: blackbox.yml.j2
+        dest: "{{ monitoring_config_dir }}/blackbox/blackbox.yml"
+        owner: root
+        group: root
+        mode: "0644"
+      register: monitoring_blackbox_config
+
+    - name: Install Grafana datasource provisioning
+      ansible.builtin.template:
+        src: grafana_datasources.yml.j2
+        dest: "{{ monitoring_config_dir }}/grafana/provisioning/datasources/prometheus.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install Grafana dashboard provider config
+      ansible.builtin.template:
+        src: grafana_dashboards_provider.yml.j2
+        dest: "{{ monitoring_config_dir }}/grafana/provisioning/dashboards/dashboards.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install Grafana dashboards
+      ansible.builtin.copy:
+        src: "dashboards/{{ item }}"
+        dest: "{{ monitoring_config_dir }}/grafana/dashboards/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - host-health.json
+        - container-health.json
+        - service-reachability.json
+
+    # Contains the SES SMTP password and the ntfy topic name, so 0600 --
+    # same reasoning as shared_ingress's own users file for Basic Auth.
+    - name: Install Alertmanager configuration
+      ansible.builtin.template:
+        src: alertmanager.yml.j2
+        dest: "{{ monitoring_config_dir }}/alertmanager.yml"
+        owner: root
+        group: root
+        mode: "0600"
+      register: monitoring_alertmanager_config
+      no_log: true
+
+    - name: Pull pinned monitoring images
+      community.docker.docker_image:
+        name: "{{ item }}"
+        source: pull
+        state: present
+      loop:
+        - "{{ monitoring_node_exporter_image }}"
+        - "{{ monitoring_cadvisor_image }}"
+        - "{{ monitoring_blackbox_exporter_image }}"
+        - "{{ monitoring_prometheus_image }}"
+        - "{{ monitoring_alertmanager_image }}"
+        - "{{ monitoring_grafana_image }}"
+      loop_control:
+        label: "{{ item }}"
+
+    # network_mode: host, the same precedent shared_ingress already
+    # established -- accurate host filesystem/network stats need it, and
+    # loopback-published ports alone can't provide it.
+    - name: Ensure node_exporter container is running
+      community.docker.docker_container:
+        name: "{{ monitoring_node_exporter_container_name }}"
+        image: "{{ monitoring_node_exporter_image }}"
+        state: started
+        restart_policy: "{{ monitoring_restart_policy }}"
+        network_mode: host
+        pid: host
+        read_only: true
+        cap_drop:
+          - ALL
+        security_opts:
+          - no-new-privileges:true
+        memory: "{{ monitoring_node_exporter_memory_limit }}"
+        cpus: "{{ monitoring_node_exporter_cpu_limit }}"
+        pids_limit: "{{ monitoring_node_exporter_pids_limit }}"
+        volumes:
+          - /:/host:ro,rslave
+          - /proc:/host/proc:ro
+          - /sys:/host/sys:ro
+        command:
+          - --path.rootfs=/host
+          - --path.procfs=/host/proc
+          - --path.sysfs=/host/sys
+          - --web.listen-address={{ monitoring_bind_address }}:{{ monitoring_node_exporter_port }}
+          - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+
+    # Read-only docker.sock access, precedented by nextcloud_aio's own
+    # master container already doing exactly this -- not a new exception.
+    # Runs as the image's own default (root inside the container), unlike
+    # every other role's dedicated unprivileged account: a restricted uid
+    # can't read /var/lib/docker or the cgroup hierarchy this needs
+    # either. --docker_only=true keeps it scoped to container metrics,
+    # not the whole host's raw process tree.
+    - name: Ensure cAdvisor container is running
+      community.docker.docker_container:
+        name: "{{ monitoring_cadvisor_container_name }}"
+        image: "{{ monitoring_cadvisor_image }}"
+        state: started
+        restart_policy: "{{ monitoring_restart_policy }}"
+        # network_mode: host, matching every other container in this role
+        # -- not just node_exporter -- so Prometheus's own scrape configs
+        # can uniformly address everything as 127.0.0.1:<port>. Mixing
+        # host and bridge networking here would mean 127.0.0.1 inside a
+        # bridge-networked container resolves to *its own* loopback, not
+        # the host's, silently breaking scrapes between containers.
+        network_mode: host
+        privileged: false
+        cap_drop:
+          - ALL
+        security_opts:
+          - no-new-privileges:true
+        memory: "{{ monitoring_cadvisor_memory_limit }}"
+        cpus: "{{ monitoring_cadvisor_cpu_limit }}"
+        pids_limit: "{{ monitoring_cadvisor_pids_limit }}"
+        volumes:
+          - /:/rootfs:ro
+          - /var/run:/var/run:ro
+          - /sys:/sys:ro
+          - /var/lib/docker:/var/lib/docker:ro
+          - /var/run/docker.sock:/var/run/docker.sock:ro
+        command:
+          - --docker_only=true
+          - --listen_ip={{ monitoring_bind_address }}
+          - --port={{ monitoring_cadvisor_port }}
+          - --disable_metrics=percpu,sched,tcp,udp,resctrl,cpu_topology,advtcp,hugetlb,referenced_memory
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+
+    - name: Ensure blackbox_exporter container is running
+      community.docker.docker_container:
+        name: "{{ monitoring_blackbox_exporter_container_name }}"
+        image: "{{ monitoring_blackbox_exporter_image }}"
+        state: started
+        recreate: "{{ monitoring_blackbox_config.changed }}"
+        restart_policy: "{{ monitoring_restart_policy }}"
+        network_mode: host
+        read_only: true
+        cap_drop:
+          - ALL
+        security_opts:
+          - no-new-privileges:true
+        memory: "{{ monitoring_blackbox_exporter_memory_limit }}"
+        cpus: "{{ monitoring_blackbox_exporter_cpu_limit }}"
+        pids_limit: "{{ monitoring_blackbox_exporter_pids_limit }}"
+        volumes:
+          - "{{ monitoring_config_dir }}/blackbox/blackbox.yml:/config/blackbox.yml:ro"
+        command:
+          - --config.file=/config/blackbox.yml
+          - --web.listen-address={{ monitoring_bind_address }}:{{ monitoring_blackbox_exporter_port }}
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+
+    - name: Ensure Prometheus container is running
+      community.docker.docker_container:
+        name: "{{ monitoring_prometheus_container_name }}"
+        image: "{{ monitoring_prometheus_image }}"
+        state: started
+        recreate: >-
+          {{ monitoring_prometheus_config.changed
+             or monitoring_alert_rules_config.changed }}
+        restart_policy: "{{ monitoring_restart_policy }}"
+        network_mode: host
+        user: "{{ monitoring_prometheus_uid }}:0"
+        read_only: true
+        cap_drop:
+          - ALL
+        security_opts:
+          - no-new-privileges:true
+        memory: "{{ monitoring_prometheus_memory_limit }}"
+        cpus: "{{ monitoring_prometheus_cpu_limit }}"
+        pids_limit: "{{ monitoring_prometheus_pids_limit }}"
+        volumes:
+          - "{{ monitoring_config_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+          - "{{ monitoring_config_dir }}/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro"
+          - "{{ monitoring_data_dir }}/prometheus:/prometheus"
+        tmpfs:
+          - /tmp:rw,noexec,nosuid,nodev,size=32m
+        comparisons:
+          volumes: strict
+        command:
+          - --config.file=/etc/prometheus/prometheus.yml
+          - --storage.tsdb.path=/prometheus
+          - --storage.tsdb.retention.time={{ monitoring_prometheus_retention_time }}
+          - --storage.tsdb.retention.size={{ monitoring_prometheus_retention_size }}
+          - --web.listen-address={{ monitoring_bind_address }}:{{ monitoring_prometheus_port }}
+        healthcheck:
+          test:
+            - CMD
+            - wget
+            - --spider
+            - --quiet
+            - http://127.0.0.1:9090/-/ready
+          interval: 30s
+          timeout: 5s
+          retries: 5
+          start_period: 30s
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+
+    - name: Ensure Alertmanager container is running
+      community.docker.docker_container:
+        name: "{{ monitoring_alertmanager_container_name }}"
+        image: "{{ monitoring_alertmanager_image }}"
+        state: started
+        recreate: "{{ monitoring_alertmanager_config.changed }}"
+        restart_policy: "{{ monitoring_restart_policy }}"
+        network_mode: host
+        user: "{{ monitoring_alertmanager_uid }}:0"
+        read_only: true
+        cap_drop:
+          - ALL
+        security_opts:
+          - no-new-privileges:true
+        memory: "{{ monitoring_alertmanager_memory_limit }}"
+        cpus: "{{ monitoring_alertmanager_cpu_limit }}"
+        pids_limit: "{{ monitoring_alertmanager_pids_limit }}"
+        volumes:
+          - "{{ monitoring_config_dir }}/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"
+          - "{{ monitoring_data_dir }}/alertmanager:/alertmanager"
+        tmpfs:
+          - /tmp:rw,noexec,nosuid,nodev,size=16m
+        comparisons:
+          volumes: strict
+        command:
+          - --config.file=/etc/alertmanager/alertmanager.yml
+          - --storage.path=/alertmanager
+          - --web.listen-address={{ monitoring_bind_address }}:{{ monitoring_alertmanager_port }}
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+      no_log: true
+
+    - name: Ensure Grafana container is running
+      community.docker.docker_container:
+        name: "{{ monitoring_grafana_container_name }}"
+        image: "{{ monitoring_grafana_image }}"
+        state: started
+        restart_policy: "{{ monitoring_restart_policy }}"
+        network_mode: host
+        user: "{{ monitoring_grafana_uid }}:0"
+        read_only: false
+        cap_drop:
+          - ALL
+        security_opts:
+          - no-new-privileges:true
+        memory: "{{ monitoring_grafana_memory_limit }}"
+        cpus: "{{ monitoring_grafana_cpu_limit }}"
+        pids_limit: "{{ monitoring_grafana_pids_limit }}"
+        volumes:
+          - "{{ monitoring_config_dir }}/grafana/provisioning:/etc/grafana/provisioning:ro"
+          - "{{ monitoring_config_dir }}/grafana/dashboards:/var/lib/grafana-dashboards:ro"
+          - "{{ monitoring_data_dir }}/grafana:/var/lib/grafana"
+          - "{{ monitoring_data_dir }}/secrets/grafana_admin_password:/run/secrets/grafana_admin_password:ro"
+        tmpfs:
+          - /tmp:rw,noexec,nosuid,nodev,size=32m
+        comparisons:
+          volumes: strict
+          env: strict
+        env:
+          GF_SECURITY_ADMIN_USER: "{{ monitoring_grafana_admin_user }}"
+          GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+          GF_SERVER_HTTP_ADDR: "{{ monitoring_bind_address }}"
+          GF_SERVER_HTTP_PORT: "{{ monitoring_grafana_port }}"
+          GF_SERVER_ROOT_URL: "http://{{ monitoring_bind_address }}:{{ monitoring_grafana_port }}/"
+          GF_ANALYTICS_REPORTING_ENABLED: "false"
+          GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+          GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+          GF_USERS_ALLOW_SIGN_UP: "false"
+        healthcheck:
+          test:
+            - CMD
+            - wget
+            - --spider
+            - --quiet
+            - http://127.0.0.1:3000/api/health
+          interval: 30s
+          timeout: 5s
+          retries: 5
+          start_period: 30s
+        log_driver: json-file
+        log_options:
+          max-size: 10m
+          max-file: "3"
+
+    - name: Verify Prometheus is ready on host loopback
+      ansible.builtin.uri:
+        url: "http://{{ monitoring_bind_address }}:{{ monitoring_prometheus_port }}/-/ready"
+        method: GET
+        status_code: 200
+      register: monitoring_prometheus_ready
+      retries: 60
+      delay: 2
+      until: monitoring_prometheus_ready.status == 200
+      when: not ansible_check_mode
+
+    - name: Verify Grafana is ready on host loopback
+      ansible.builtin.uri:
+        url: "http://{{ monitoring_bind_address }}:{{ monitoring_grafana_port }}/api/health"
+        method: GET
+        status_code: 200
+      register: monitoring_grafana_ready
+      retries: 60
+      delay: 2
+      until: monitoring_grafana_ready.status == 200
+      when: not ansible_check_mode

@@ -1,0 +1,29 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: dual-channel
+  group_by: ["alertname"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: dual-channel
+    # Posting Alertmanager's own JSON payload straight to ntfy.sh's
+    # topic URL works -- a notification does arrive -- but ntfy doesn't
+    # understand Alertmanager's payload shape, so it shows the raw JSON
+    # as the message text rather than a clean summary. Good enough to
+    # know something fired; making it readable is a follow-up, not
+    # solved here.
+    webhook_configs:
+      - url: {{ monitoring_ntfy_url }}/{{ monitoring_ntfy_topic }}
+        send_resolved: true
+    email_configs:
+      - to: {{ monitoring_alert_email }}
+        from: {{ monitoring_ses_from_address }}
+        smarthost: {{ monitoring_ses_smtp_host }}:{{ monitoring_ses_smtp_port }}
+        auth_username: {{ monitoring_ses_smtp_username }}
+        auth_password: {{ monitoring_ses_smtp_password }}
+        require_tls: true
+        send_resolved: true

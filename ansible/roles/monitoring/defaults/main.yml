@@ -1,0 +1,152 @@
+---
+monitoring_enabled: false
+
+monitoring_bind_address: 127.0.0.1
+monitoring_restart_policy: unless-stopped
+monitoring_config_dir: /etc/monitoring
+monitoring_data_dir: /var/lib/monitoring
+
+# node_exporter: host health. Needs accurate host filesystem/network
+# stats, which only network_mode: host can give it -- the same precedent
+# shared_ingress already established, and every container in this role
+# uses it uniformly (see tasks/main.yml) so Prometheus's own scrape
+# configs can address everything as a plain 127.0.0.1:<port>, with no
+# published_ports mapping to configure anywhere in this role.
+monitoring_node_exporter_container_name: node-exporter
+monitoring_node_exporter_image_name: prom/node-exporter
+monitoring_node_exporter_image_tag: v1.12.1
+monitoring_node_exporter_image_digest: >-
+  sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+monitoring_node_exporter_image: >-
+  {{ monitoring_node_exporter_image_name }}:{{ monitoring_node_exporter_image_tag }}@{{ monitoring_node_exporter_image_digest }}
+monitoring_node_exporter_port: 9100
+monitoring_node_exporter_memory_limit: 128M
+monitoring_node_exporter_cpu_limit: 0.5
+monitoring_node_exporter_pids_limit: 64
+
+# cAdvisor: container health. Needs read-only access to the Docker socket
+# and host cgroup/container filesystems to report per-container metrics --
+# the same category of exception nextcloud_aio's own master container
+# already has (also a read-only docker.sock mount), not a new one. Runs
+# as its image's own default (root inside the container), unlike every
+# other role's dedicated unprivileged account: a restricted uid can't read
+# /var/lib/docker or the cgroup hierarchy this needs either.
+monitoring_cadvisor_container_name: cadvisor
+monitoring_cadvisor_image_name: ghcr.io/google/cadvisor
+monitoring_cadvisor_image_tag: v0.60.5
+monitoring_cadvisor_image_digest: >-
+  sha256:763aecf1c32c2be8a1a75f9abfc2fc461005c9dbbaa39cb356b354aac1296dbe
+monitoring_cadvisor_image: >-
+  {{ monitoring_cadvisor_image_name }}:{{ monitoring_cadvisor_image_tag }}@{{ monitoring_cadvisor_image_digest }}
+monitoring_cadvisor_port: 8080
+monitoring_cadvisor_memory_limit: 256M
+monitoring_cadvisor_cpu_limit: 0.5
+monitoring_cadvisor_pids_limit: 128
+
+# blackbox_exporter: service reachability AND cert/DNS expiry in one tool
+# -- its HTTPS probe module reports probe_ssl_earliest_cert_expiry for
+# free, so no separate certificate-expiry exporter is needed.
+monitoring_blackbox_exporter_container_name: blackbox-exporter
+monitoring_blackbox_exporter_image_name: prom/blackbox-exporter
+monitoring_blackbox_exporter_image_tag: v0.28.0
+monitoring_blackbox_exporter_image_digest: >-
+  sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc
+monitoring_blackbox_exporter_image: >-
+  {{ monitoring_blackbox_exporter_image_name }}:{{ monitoring_blackbox_exporter_image_tag }}@{{ monitoring_blackbox_exporter_image_digest }}
+monitoring_blackbox_exporter_port: 9115
+monitoring_blackbox_exporter_memory_limit: 64M
+monitoring_blackbox_exporter_cpu_limit: 0.25
+monitoring_blackbox_exporter_pids_limit: 32
+
+# Every URL blackbox_exporter probes with its HTTPS/HTTP module for both
+# reachability and (for the https:// ones) certificate expiry. Traefik's
+# own loopback ping endpoint is included so a Traefik outage shows up the
+# same way any other service outage would.
+monitoring_probe_targets:
+  - https://nextcloud.jkandler.de/
+  - https://ai.jkandler.de/healthz
+  - https://torrent.jkandler.de/
+  - https://www.jkandler.de/
+  - http://jkandler.de/
+  - http://127.0.0.1:8082/ping
+
+monitoring_prometheus_container_name: prometheus
+monitoring_prometheus_image_name: prom/prometheus
+monitoring_prometheus_image_tag: v3.14.0
+monitoring_prometheus_image_digest: >-
+  sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
+monitoring_prometheus_image: >-
+  {{ monitoring_prometheus_image_name }}:{{ monitoring_prometheus_image_tag }}@{{ monitoring_prometheus_image_digest }}
+monitoring_prometheus_port: 9090
+monitoring_prometheus_memory_limit: 512M
+monitoring_prometheus_cpu_limit: 1.0
+monitoring_prometheus_pids_limit: 128
+monitoring_prometheus_scrape_interval: 30s
+# Retention is capped by both time and size: the root disk this lives on
+# (not the HDD -- small footprint, and the HDD is spinning disk already
+# busy with Nextcloud/Deluge I/O) only had 23 GiB free at last check.
+monitoring_prometheus_retention_time: 30d
+monitoring_prometheus_retention_size: 2GB
+monitoring_prometheus_container_user: monitoring-prometheus
+
+monitoring_grafana_container_name: grafana
+monitoring_grafana_image_name: grafana/grafana
+monitoring_grafana_image_tag: "13.1.4"
+monitoring_grafana_image_digest: >-
+  sha256:9be3a3ccdb06bcbb127f888b0c4c1d151837443e478887897a63a27d7b348043
+monitoring_grafana_image: >-
+  {{ monitoring_grafana_image_name }}:{{ monitoring_grafana_image_tag }}@{{ monitoring_grafana_image_digest }}
+monitoring_grafana_port: 3000
+monitoring_grafana_memory_limit: 256M
+monitoring_grafana_cpu_limit: 0.5
+monitoring_grafana_pids_limit: 128
+monitoring_grafana_admin_user: admin
+# Set through SOPS before the first deploy, same as deluge_web_password.
+monitoring_grafana_admin_password: ""
+monitoring_grafana_container_user: monitoring-grafana
+
+monitoring_alertmanager_container_name: alertmanager
+monitoring_alertmanager_image_name: prom/alertmanager
+monitoring_alertmanager_image_tag: v0.34.0
+monitoring_alertmanager_image_digest: >-
+  sha256:690c7b525f4367aa91f73e2f91c632206d32e97c6384bdbf2fb7a861b420340d
+monitoring_alertmanager_image: >-
+  {{ monitoring_alertmanager_image_name }}:{{ monitoring_alertmanager_image_tag }}@{{ monitoring_alertmanager_image_digest }}
+monitoring_alertmanager_port: 9093
+monitoring_alertmanager_memory_limit: 128M
+monitoring_alertmanager_cpu_limit: 0.25
+monitoring_alertmanager_pids_limit: 64
+monitoring_alertmanager_container_user: monitoring-alertmanager
+
+# Alerting: deliberately dual-channel (ntfy push + email), both wired to
+# every alert rule so one channel being misconfigured doesn't mean
+# silence. Prometheus evaluates alert_rules.yml (its own native alerting)
+# and forwards firing alerts to Alertmanager, which owns notification
+# routing/delivery -- Grafana's built-in alerting was considered instead
+# (one fewer container) but dropped: it needs each rule's query/threshold
+# expressed in Grafana's own multi-step provisioning schema rather than
+# plain PromQL, which is real added risk to get exactly right without a
+# live Grafana to verify against, for a resource cost (a single small Go
+# binary) that isn't actually worth avoiding.
+
+# ntfy.sh is a public, unauthenticated-by-default service: anyone who
+# knows the topic name can read (and post to) it, so the topic itself is
+# the only thing standing between "just me" and "anyone who guesses it".
+# Set through SOPS to a long random string before the first deploy.
+monitoring_ntfy_url: https://ntfy.sh
+monitoring_ntfy_topic: ""
+
+# SES SMTP credentials come from infra/ses-relay's Terraform outputs, not
+# generated here -- see that repo's README for the exact values to copy
+# into SOPS. eu-central-1 matches this workspace's other AWS roots'
+# default region.
+monitoring_ses_smtp_host: email-smtp.eu-central-1.amazonaws.com
+monitoring_ses_smtp_port: 587
+monitoring_ses_smtp_username: ""
+monitoring_ses_smtp_password: ""
+monitoring_ses_from_address: alerts@jkandler.de
+monitoring_alert_email: julian.kandler@outlook.com
+
+# Alert thresholds, per ADR 0017's four scope areas.
+monitoring_alert_disk_full_percent: 85
+monitoring_alert_cert_expiry_days: 14

@@ -1,0 +1,70 @@
+groups:
+  - name: host_health
+    rules:
+      - alert: HostDown
+        expr: up{job="node_exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The homeserver's own node_exporter is unreachable"
+          description: >-
+            Prometheus can no longer scrape node_exporter -- the host may
+            be down, or Docker itself may have stopped.
+
+      - alert: RootDiskAlmostFull
+        expr: >-
+          100 * (1 - node_filesystem_avail_bytes{mountpoint="/"}
+          / node_filesystem_size_bytes{mountpoint="/"})
+          > {{ monitoring_alert_disk_full_percent }}
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Root disk is over {{ monitoring_alert_disk_full_percent }}% full"
+          description: >-
+            Prometheus's own TSDB lives here too -- a full root disk stops
+            monitoring itself, not just whatever else fills it up.
+
+  - name: container_health
+    rules:
+      - alert: ContainerDown
+        expr: >-
+          absent(container_last_seen{name!=""})
+          or (time() - container_last_seen{name!=""}) > 120
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container {{ '{{' }} $labels.name {{ '}}' }} is not reporting"
+          description: >-
+            cAdvisor hasn't seen this container recently -- it may have
+            stopped or be stuck restarting.
+
+  - name: service_reachability
+    rules:
+      - alert: ServiceUnreachable
+        expr: probe_success == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ '{{' }} $labels.instance {{ '}}' }} failed its reachability probe"
+          description: >-
+            blackbox_exporter could not reach this URL for at least 5
+            minutes.
+
+  - name: certificate_expiry
+    rules:
+      - alert: CertificateExpiringSoon
+        expr: >-
+          (probe_ssl_earliest_cert_expiry - time()) / 86400
+          < {{ monitoring_alert_cert_expiry_days }}
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS certificate for {{ '{{' }} $labels.instance {{ '}}' }} expires within {{ monitoring_alert_cert_expiry_days }} days"
+          description: >-
+            Traefik's own ACME renewal should handle this automatically --
+            this alert exists to catch the case where it doesn't.
