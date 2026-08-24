@@ -205,7 +205,7 @@
         state: started
         restart_policy: "{{ monitoring_restart_policy }}"
         network_mode: host
-        pid: host
+        pid_mode: host
         read_only: true
         cap_drop:
           - ALL
