@@ -71,6 +71,38 @@ class DelugeRoleTests(unittest.TestCase):
         self.assertIn('mode: "0755"', downloads_block)
         self.assertIn('mode: "0750"', config_block)
 
+    def test_nextcloud_process_gets_write_access_via_acl_not_wider_mode(
+        self,
+    ) -> None:
+        # Confirmed live: 0755's "other" bits are read+execute only, so
+        # Nextcloud (running as www-data, uid 33, which also exists as a
+        # real host account -- Docker shares the host uid namespace here)
+        # could list and open files but got EACCES deleting/renaming them,
+        # since Unix delete/rename needs write on the *containing*
+        # directory. Fixed via ACL grants scoped to that one account, not
+        # by widening "other" to rwx (0757), which would let any process on
+        # the host write here, not just Nextcloud's.
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("deluge_downloads_nextcloud_user: www-data", defaults)
+        self.assertNotIn('mode: "0757"', tasks)
+        self.assertNotIn('mode: "0777"', tasks)
+
+        acl_tasks = tasks.count("ansible.posix.acl:")
+        self.assertEqual(
+            acl_tasks,
+            2,
+            "expected one default-ACL task (future subfolders) and one"
+            " recursive access-ACL task (existing content)",
+        )
+        self.assertIn("default: true", tasks)
+        self.assertIn("recursive: true", tasks)
+        self.assertIn(
+            'entity: "{{ deluge_downloads_nextcloud_user }}"',
+            tasks,
+        )
+
     def test_web_ui_password_is_required_not_left_default(self) -> None:
         # Deluge has no "no login required" mode -- deluge/ui/web/auth.py's
         # check_password() returns False for every password when pwd_sha1

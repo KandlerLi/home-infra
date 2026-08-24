@@ -64,12 +64,45 @@
         # world-readable, so this top-level directory was the only thing
         # actually blocking visibility. config stays 0750 (private
         # session state/password hash, never meant to be shared).
+        #
+        # 0755's "other" bits are read+execute only, not write -- Unix
+        # delete/rename needs write on the *containing* directory, so
+        # Nextcloud could list and open files but never delete them. Not
+        # widened to 0757: that would let any process on the host write
+        # here, not just www-data specifically. The ACL tasks below grant
+        # write access to exactly that one account instead.
         - path: "{{ deluge_downloads_dir }}"
           mode: "0755"
         - path: "{{ deluge_config_dir }}"
           mode: "0750"
       loop_control:
         label: "{{ item.path }}"
+
+    # Grants www-data (Nextcloud AIO's own process, see
+    # deluge_downloads_nextcloud_user above) write access to the downloads
+    # directory and everything already inside it, so Nextcloud can delete
+    # files it can already see. "default: true" makes this the default ACL
+    # too, so any new per-torrent subfolder Deluge creates going forward
+    # inherits it automatically (Linux propagates a directory's default ACL
+    # into both the access and default ACL of anything created inside it) --
+    # the recursive pass below only needs to cover what already exists.
+    - name: Grant Nextcloud's process future write access to new downloads
+      ansible.posix.acl:
+        path: "{{ deluge_downloads_dir }}"
+        entity: "{{ deluge_downloads_nextcloud_user }}"
+        etype: user
+        permissions: rwx
+        default: true
+        state: present
+
+    - name: Grant Nextcloud's process write access to existing downloads
+      ansible.posix.acl:
+        path: "{{ deluge_downloads_dir }}"
+        entity: "{{ deluge_downloads_nextcloud_user }}"
+        etype: user
+        permissions: rwx
+        recursive: true
+        state: present
 
     - name: Read Deluge's web.conf, if it exists
       ansible.builtin.slurp:

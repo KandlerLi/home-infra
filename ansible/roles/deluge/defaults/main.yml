@@ -11,6 +11,18 @@ deluge_service_group: deluge
 deluge_downloads_dir: /mnt/black-hdd/downloads
 deluge_config_dir: /mnt/black-hdd/deluge-config
 
+# Nextcloud AIO's own container runs its PHP/Apache process as www-data,
+# confirmed live (`docker exec nextcloud-aio-nextcloud id www-data`) to be
+# uid=33, the standard Debian www-data account -- which also exists on the
+# host itself (Docker shares the host's uid namespace here, no user-ns
+# remapping), so a host-side grant to this account applies to that
+# container's bind-mounted view of deluge_downloads_dir too. Used to grant
+# write access (view access already came from "other" read+execute) via
+# ACL rather than Unix group membership: AIO manages its own containers,
+# so this role has no way to add a supplementary group to that container's
+# process the way docker_container's group_add would.
+deluge_downloads_nextcloud_user: www-data
+
 deluge_web_bind_address: 127.0.0.1
 deluge_web_port: 8112
 deluge_peer_port: 6881
