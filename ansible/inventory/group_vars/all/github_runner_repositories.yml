@@ -14,5 +14,7 @@ github_runner_github_repositories:
   repository: dyndns
 - id: homeserver-health-check
   repository: homeserver-health-check
+- id: ses-relay
+  repository: ses-relay
 - id: website
   repository: website
