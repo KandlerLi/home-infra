@@ -9,6 +9,7 @@ from jinja2 import Environment, FileSystemLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ROLE_ROOT = PROJECT_ROOT / "ansible/roles/monitoring"
+SHARED_INGRESS_ROOT = PROJECT_ROOT / "ansible/roles/shared_ingress"
 
 
 def render(name: str, **overrides: object) -> str:
@@ -248,6 +249,93 @@ class MonitoringRoleTests(unittest.TestCase):
         shared_ingress_index = site_yml.index("- shared_ingress")
         monitoring_index = site_yml.index("- monitoring")
         self.assertGreater(monitoring_index, shared_ingress_index)
+
+
+class GrafanaIngressTests(unittest.TestCase):
+    def test_grafana_route_requires_its_own_basic_auth_and_resource_limits(
+        self,
+    ) -> None:
+        dynamic = (SHARED_INGRESS_ROOT / "templates/dynamic.yml.j2").read_text(
+            encoding="utf-8"
+        )
+        defaults = (SHARED_INGRESS_ROOT / "defaults/main.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("shared_ingress_grafana_domain: grafana.jkandler.de", defaults)
+        self.assertIn("shared_ingress_grafana_upstream: http://127.0.0.1:3000", defaults)
+        self.assertIn("shared_ingress_grafana_domain", dynamic)
+        self.assertIn("grafana-auth", dynamic)
+        self.assertIn("/etc/traefik/grafana-users", dynamic)
+        self.assertIn("grafana-rate-limit", dynamic)
+        self.assertIn("grafana-request-limit", dynamic)
+        self.assertIn("grafana-security-headers", dynamic)
+
+    def test_grafana_credential_is_independent_of_other_route_credentials(
+        self,
+    ) -> None:
+        dynamic = (SHARED_INGRESS_ROOT / "templates/dynamic.yml.j2").read_text(
+            encoding="utf-8"
+        )
+
+        # Grafana's usersFile must differ from the agent's and Deluge's, so
+        # a leaked credential for one service doesn't grant access to
+        # another -- same reasoning as Deluge's own independent-credential
+        # test.
+        grafana_auth_block = dynamic.split("grafana-auth:", 1)[1].split(
+            "grafana-rate-limit:", 1
+        )[0]
+        self.assertIn("grafana-users", grafana_auth_block)
+        self.assertNotIn("usersFile: /etc/traefik/users\n", grafana_auth_block)
+        self.assertNotIn("usersFile: /etc/traefik/deluge-users\n", grafana_auth_block)
+
+    def test_grafana_route_renders_independently_of_other_feature_flags(
+        self,
+    ) -> None:
+        env = Environment(
+            loader=FileSystemLoader(str(SHARED_INGRESS_ROOT / "templates"))
+        )
+        env.filters["bool"] = bool
+        template = env.get_template("dynamic.yml.j2")
+
+        rendered = template.render(
+            shared_ingress_nextcloud_domain="nextcloud.jkandler.de",
+            shared_ingress_nextcloud_upstream="http://127.0.0.1:11000",
+            shared_ingress_agent_enabled=False,
+            shared_ingress_open_webui_enabled=False,
+            shared_ingress_deluge_enabled=False,
+            shared_ingress_grafana_enabled=True,
+            shared_ingress_grafana_domain="grafana.jkandler.de",
+            shared_ingress_grafana_upstream="http://127.0.0.1:3000",
+            shared_ingress_grafana_rate_average=120,
+            shared_ingress_grafana_rate_period="1m",
+            shared_ingress_grafana_rate_burst=240,
+            shared_ingress_grafana_max_request_body_bytes=1048576,
+        )
+        data = yaml.safe_load(rendered)
+
+        self.assertIn("grafana", data["http"]["routers"])
+        self.assertIn("grafana", data["http"]["services"])
+        self.assertIn("grafana-chain", data["http"]["middlewares"])
+        self.assertNotIn("home-agent", data["http"]["services"])
+        self.assertNotIn("deluge", data["http"]["services"])
+
+    def test_initial_grafana_publication_requires_confirmation(self) -> None:
+        tasks = (SHARED_INGRESS_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        publish_playbook = (
+            PROJECT_ROOT / "ansible/playbooks/publish-grafana.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("PUBLISH_GRAFANA", tasks)
+        self.assertIn("grafana_publish_confirmation", publish_playbook)
+
+    def test_rollback_playbook_requires_confirmation(self) -> None:
+        rollback_playbook = (
+            PROJECT_ROOT / "ansible/playbooks/rollback-grafana.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("ROLL_BACK_GRAFANA", rollback_playbook)
+        self.assertIn("shared_ingress_grafana_enabled: false", rollback_playbook)
 
 
 if __name__ == "__main__":

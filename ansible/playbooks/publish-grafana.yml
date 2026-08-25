@@ -1,0 +1,13 @@
+---
+- name: Publish Grafana through existing shared ingress
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: shared_ingress
+      shared_ingress_enabled: true
+      shared_ingress_start: true
+      shared_ingress_grafana_enabled: true
+      shared_ingress_grafana_publish_confirmation: >-
+        {{ grafana_publish_confirmation | default('') }}

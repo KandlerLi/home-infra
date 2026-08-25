@@ -59,6 +59,21 @@ shared_ingress_deluge_rate_burst: 240
 shared_ingress_deluge_max_request_body_bytes: 1048576
 shared_ingress_deluge_publish_confirmation: ""
 
+shared_ingress_grafana_enabled: false
+shared_ingress_grafana_domain: grafana.jkandler.de
+shared_ingress_grafana_upstream: http://127.0.0.1:3000
+shared_ingress_grafana_auth_username: julian
+shared_ingress_grafana_auth_password_hash: ""
+# Grafana's own dashboards auto-refresh and poll their datasource
+# continuously once open, on top of loading many panel/asset requests
+# per page -- matching deluge/open_webui's already-validated headroom
+# rather than the agent's lightweight-API values.
+shared_ingress_grafana_rate_average: 120
+shared_ingress_grafana_rate_period: 1m
+shared_ingress_grafana_rate_burst: 240
+shared_ingress_grafana_max_request_body_bytes: 1048576
+shared_ingress_grafana_publish_confirmation: ""
+
 shared_ingress_health_address: 127.0.0.1
 shared_ingress_health_port: 8082
 shared_ingress_memory_limit: 256M

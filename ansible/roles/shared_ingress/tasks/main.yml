@@ -39,6 +39,15 @@
           - >-
             not shared_ingress_deluge_enabled | bool
             or shared_ingress_deluge_auth_password_hash | length >= 20
+          - shared_ingress_grafana_upstream == "http://127.0.0.1:3000"
+          - shared_ingress_grafana_rate_average | int > 0
+          - shared_ingress_grafana_rate_burst | int > 0
+          - >-
+            not shared_ingress_grafana_enabled | bool
+            or shared_ingress_grafana_auth_username | length > 0
+          - >-
+            not shared_ingress_grafana_enabled | bool
+            or shared_ingress_grafana_auth_password_hash | length >= 20
         fail_msg: >-
           Configure the ACME and agent/deluge authentication values before
           enabling public routing. Keep every upstream bound to host loopback.
@@ -53,6 +62,7 @@
       when: >-
         shared_ingress_open_webui_enabled | bool
         or shared_ingress_deluge_enabled | bool
+        or shared_ingress_grafana_enabled | bool
 
     - name: Require confirmation for initial Open WebUI publication
       ansible.builtin.assert:
@@ -112,6 +122,35 @@
       until: shared_ingress_deluge_health.status == 200
       when:
         - shared_ingress_deluge_enabled | bool
+        - not ansible_check_mode
+
+    - name: Require confirmation for initial Grafana publication
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              shared_ingress_current_routes.content | default('')
+              | b64decode
+            ) is search('service: grafana')
+            or shared_ingress_grafana_publish_confirmation
+               == "PUBLISH_GRAFANA"
+        fail_msg: >-
+          Pass grafana_publish_confirmation=PUBLISH_GRAFANA only after the
+          loopback dashboard and its own admin login have been tested.
+      when: shared_ingress_grafana_enabled | bool
+
+    - name: Verify Grafana before publishing it
+      ansible.builtin.uri:
+        url: "{{ shared_ingress_grafana_upstream }}/api/health"
+        method: GET
+        return_content: false
+        status_code: 200
+      register: shared_ingress_grafana_health
+      retries: 10
+      delay: 2
+      until: shared_ingress_grafana_health.status == 200
+      when:
+        - shared_ingress_grafana_enabled | bool
         - not ansible_check_mode
 
     - name: Create shared ingress directories
@@ -184,6 +223,17 @@
       no_log: true
       register: shared_ingress_deluge_users_file
       when: shared_ingress_deluge_enabled | bool
+
+    - name: Install Grafana authentication file
+      ansible.builtin.template:
+        src: grafana-users.j2
+        dest: "{{ shared_ingress_config_dir }}/grafana-users"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      register: shared_ingress_grafana_users_file
+      when: shared_ingress_grafana_enabled | bool
 
     - name: Pull pinned Traefik image
       community.docker.docker_image:
@@ -259,7 +309,8 @@
               {{ shared_ingress_static_config.changed
                  or shared_ingress_dynamic_config.changed
                  or shared_ingress_users_file.changed | default(false)
-                 or shared_ingress_deluge_users_file.changed | default(false) }}
+                 or shared_ingress_deluge_users_file.changed | default(false)
+                 or shared_ingress_grafana_users_file.changed | default(false) }}
             restart_policy: "{{ shared_ingress_restart_policy }}"
             network_mode: host
             read_only: true

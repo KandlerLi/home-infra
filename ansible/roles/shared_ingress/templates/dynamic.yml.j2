@@ -56,6 +56,17 @@ http:
       tls:
         certResolver: letsencrypt
 {% endif %}
+{% if shared_ingress_grafana_enabled | bool %}
+    grafana:
+      rule: "Host(`{{ shared_ingress_grafana_domain }}`)"
+      entryPoints:
+        - websecure
+      service: grafana
+      middlewares:
+        - grafana-chain
+      tls:
+        certResolver: letsencrypt
+{% endif %}
 {% if shared_ingress_apex_redirect_enabled | bool %}
     apex-redirect:
       rule: "Host(`{{ shared_ingress_apex_domain }}`)"
@@ -94,6 +105,13 @@ http:
         passHostHeader: true
         servers:
           - url: "{{ shared_ingress_deluge_upstream }}"
+{% endif %}
+{% if shared_ingress_grafana_enabled | bool %}
+    grafana:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "{{ shared_ingress_grafana_upstream }}"
 {% endif %}
 
   middlewares:
@@ -186,6 +204,37 @@ http:
           - deluge-rate-limit
           - deluge-request-limit
           - deluge-security-headers
+{% endif %}
+{% if shared_ingress_grafana_enabled | bool %}
+    grafana-auth:
+      basicAuth:
+        usersFile: /etc/traefik/grafana-users
+        realm: Home Infrastructure
+        removeHeader: true
+    grafana-rate-limit:
+      rateLimit:
+        average: {{ shared_ingress_grafana_rate_average }}
+        period: {{ shared_ingress_grafana_rate_period }}
+        burst: {{ shared_ingress_grafana_rate_burst }}
+    grafana-request-limit:
+      buffering:
+        maxRequestBodyBytes: {{ shared_ingress_grafana_max_request_body_bytes }}
+        memRequestBodyBytes: {{ shared_ingress_grafana_max_request_body_bytes }}
+    grafana-security-headers:
+      headers:
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: no-referrer
+        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
+        stsSeconds: 31536000
+        stsIncludeSubdomains: false
+    grafana-chain:
+      chain:
+        middlewares:
+          - grafana-auth
+          - grafana-rate-limit
+          - grafana-request-limit
+          - grafana-security-headers
 {% endif %}
 {% if shared_ingress_apex_redirect_enabled | bool %}
     apex-redirect:
