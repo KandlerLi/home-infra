@@ -15,6 +15,7 @@
           - monitoring_ses_smtp_password | trim | length > 0
           - monitoring_ses_smtp_password | trim != "CHANGE_ME"
           - monitoring_probe_targets | length > 0
+          - monitoring_ntfy_relay_port | int > 1024
         fail_msg: >-
           Configure monitoring_grafana_admin_password, monitoring_ntfy_topic,
           and the SES SMTP credentials (from infra/ses-relay's outputs)
@@ -72,6 +73,16 @@
         monitoring_alertmanager_uid: >-
           {{ ansible_facts.getent_passwd[monitoring_alertmanager_container_user][1] }}
 
+    # Not a container, so no UID needs recording -- systemd's User=/Group=
+    # take a plain username directly, unlike docker_container's user:
+    # parameter.
+    - name: Create ntfy relay service account
+      ansible.builtin.user:
+        name: "{{ monitoring_ntfy_relay_service_user }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
     - name: Create monitoring directories
       ansible.builtin.file:
         path: "{{ item.path }}"
@@ -96,8 +107,23 @@
           owner: "{{ monitoring_alertmanager_container_user }}"
         - path: "{{ monitoring_data_dir }}/secrets"
           owner: "{{ monitoring_grafana_container_user }}"
+        - path: "{{ monitoring_data_dir }}/ntfy-relay"
+          owner: "{{ monitoring_ntfy_relay_service_user }}"
       loop_control:
         label: "{{ item.path }}"
+
+    # A dedicated task, not the loop above: that loop's shared 0750 mode
+    # is fine for directories only their own owner needs to enter, but
+    # this one is root-owned and must be readable by the relay's own
+    # (different) service account to execute the script inside it --
+    # same reasoning as nextcloud_tools_install_dir's 0755.
+    - name: Create ntfy relay install directory
+      ansible.builtin.file:
+        path: "{{ monitoring_ntfy_relay_install_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
 
     # Grafana's own docker image supports the "_FILE" env-var suffix
     # convention specifically so a secret doesn't have to sit in plain
@@ -112,6 +138,57 @@
         group: "{{ monitoring_grafana_container_user }}"
         mode: "0400"
       no_log: true
+
+    - name: Install ntfy topic file for the relay
+      ansible.builtin.copy:
+        content: "{{ monitoring_ntfy_topic }}"
+        dest: "{{ monitoring_data_dir }}/ntfy-relay/ntfy_topic"
+        owner: "{{ monitoring_ntfy_relay_service_user }}"
+        group: "{{ monitoring_ntfy_relay_service_user }}"
+        mode: "0400"
+      no_log: true
+
+    - name: Install ntfy relay script
+      ansible.builtin.copy:
+        src: ntfy_relay.py
+        dest: "{{ monitoring_ntfy_relay_install_dir }}/ntfy_relay.py"
+        owner: root
+        group: root
+        mode: "0644"
+      register: monitoring_ntfy_relay_script
+
+    - name: Install ntfy relay systemd unit
+      ansible.builtin.template:
+        src: ntfy-relay.service.j2
+        dest: /etc/systemd/system/ntfy-relay.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: monitoring_ntfy_relay_unit
+
+    - name: Reload systemd for the ntfy relay unit
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: monitoring_ntfy_relay_unit.changed
+
+    - name: Ensure ntfy relay is enabled and running
+      ansible.builtin.systemd:
+        name: ntfy-relay.service
+        enabled: true
+        state: >-
+          {{ 'restarted' if (monitoring_ntfy_relay_script.changed
+             or monitoring_ntfy_relay_unit.changed) else 'started' }}
+
+    - name: Verify ntfy relay is ready on host loopback
+      ansible.builtin.uri:
+        url: "http://{{ monitoring_bind_address }}:{{ monitoring_ntfy_relay_port }}/healthz"
+        method: GET
+        status_code: 200
+      register: monitoring_ntfy_relay_health
+      retries: 10
+      delay: 2
+      until: monitoring_ntfy_relay_health.status == 200
+      when: not ansible_check_mode
 
     - name: Install Prometheus scrape configuration
       ansible.builtin.template:

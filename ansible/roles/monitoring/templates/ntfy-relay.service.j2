@@ -1,0 +1,48 @@
+[Unit]
+Description=Alertmanager-to-ntfy webhook reformatter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ monitoring_ntfy_relay_service_user }}
+Group={{ monitoring_ntfy_relay_service_user }}
+Environment="NTFY_URL={{ monitoring_ntfy_url }}"
+Environment="NTFY_TOPIC_FILE={{ monitoring_data_dir }}/ntfy-relay/ntfy_topic"
+Environment="LISTEN_PORT={{ monitoring_ntfy_relay_port }}"
+ExecStart=/usr/bin/python3 {{ monitoring_ntfy_relay_install_dir }}/ntfy_relay.py
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=10s
+MemoryMax=64M
+TasksMax=32
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6
+# Deliberately no address allowlist restricting this to loopback here,
+# unlike nextcloud-tools' unit: this service's whole job is an outbound
+# HTTPS call to ntfy.sh, a CDN-backed public host without a fixed IP set
+# stable enough to pin.
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

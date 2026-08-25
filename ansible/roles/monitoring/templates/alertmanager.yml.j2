@@ -10,14 +10,13 @@ route:
 
 receivers:
   - name: dual-channel
-    # Posting Alertmanager's own JSON payload straight to ntfy.sh's
-    # topic URL works -- a notification does arrive -- but ntfy doesn't
-    # understand Alertmanager's payload shape, so it shows the raw JSON
-    # as the message text rather than a clean summary. Good enough to
-    # know something fired; making it readable is a follow-up, not
-    # solved here.
+    # Posts to the local ntfy_relay service (127.0.0.1, see monitoring's
+    # ntfy-relay.service), not straight to ntfy.sh -- Alertmanager's
+    # webhook_configs can't template its own JSON payload into something
+    # ntfy understands, so the relay reformats it into a readable
+    # title/message before republishing to ntfy's own API.
     webhook_configs:
-      - url: {{ monitoring_ntfy_url }}/{{ monitoring_ntfy_topic }}
+      - url: http://{{ monitoring_bind_address }}:{{ monitoring_ntfy_relay_port }}/webhook
         send_resolved: true
     email_configs:
       - to: {{ monitoring_alert_email }}

@@ -178,7 +178,9 @@ class MonitoringRoleTests(unittest.TestCase):
 
     def test_alertmanager_routes_to_both_ntfy_and_ses_email(self) -> None:
         # Dual-channel on purpose: one channel being misconfigured
-        # shouldn't mean silence.
+        # shouldn't mean silence. ntfy goes through the local relay
+        # (which reformats Alertmanager's JSON before it ever reaches
+        # ntfy.sh), not straight to ntfy.sh itself.
         rendered = render(
             "alertmanager.yml.j2",
             monitoring_ntfy_topic="a" * 25,
@@ -191,7 +193,7 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn("webhook_configs", receiver)
         self.assertIn("email_configs", receiver)
         self.assertEqual(
-            receiver["webhook_configs"][0]["url"], "https://ntfy.sh/" + "a" * 25
+            receiver["webhook_configs"][0]["url"], "http://127.0.0.1:9096/webhook"
         )
         self.assertEqual(
             receiver["email_configs"][0]["to"], "julian.kandler@outlook.com"
@@ -336,6 +338,62 @@ class GrafanaIngressTests(unittest.TestCase):
 
         self.assertIn("ROLL_BACK_GRAFANA", rollback_playbook)
         self.assertIn("shared_ingress_grafana_enabled: false", rollback_playbook)
+
+
+class NtfyRelayServiceTests(unittest.TestCase):
+    def test_defaults_are_loopback_only_and_do_not_reuse_grafanas_secrets_dir(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("monitoring_ntfy_relay_port: 9096", defaults)
+        self.assertIn(
+            "monitoring_ntfy_relay_service_user: monitoring-ntfy-relay", defaults
+        )
+
+    def test_relay_gets_its_own_directory_not_grafanas_shared_secrets_dir(self) -> None:
+        # The shared secrets/ dir is owned by Grafana's service account
+        # (0750) -- a different user can't read a file dropped in there.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("monitoring_data_dir }}/ntfy-relay/ntfy_topic", tasks)
+        self.assertIn("monitoring_ntfy_relay_service_user }}\"\n        group:", tasks)
+
+    def test_systemd_unit_is_hardened_and_allows_outbound_https(self) -> None:
+        rendered = render("ntfy-relay.service.j2")
+
+        self.assertIn("NoNewPrivileges=true", rendered)
+        self.assertIn("ProtectSystem=strict", rendered)
+        self.assertIn("CapabilityBoundingSet=\n", rendered)
+        self.assertIn("RestrictAddressFamilies=AF_INET AF_INET6", rendered)
+        # Deliberately NOT restricted to loopback via IPAddressAllow=, unlike
+        # nextcloud-tools' unit -- this service's job is an outbound HTTPS
+        # call to ntfy.sh, a CDN-backed host without a fixed IP to pin. (The
+        # unit's own comment mentions the directive name in prose, so check
+        # for the directive itself, not just the substring.)
+        self.assertNotIn("IPAddressAllow=", rendered)
+        self.assertIn("ExecStart=/usr/bin/python3", rendered)
+        self.assertIn("ntfy_relay.py", rendered)
+
+    def test_relay_is_installed_before_alertmanager_and_health_checked(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        relay_index = tasks.index("Install ntfy relay script")
+        alertmanager_index = tasks.index("Ensure Alertmanager container is running")
+        self.assertLess(relay_index, alertmanager_index)
+        self.assertIn("Verify ntfy relay is ready on host loopback", tasks)
+        self.assertIn("/healthz", tasks)
+
+    def test_alertmanager_config_points_at_the_relay_not_ntfy_sh_directly(self) -> None:
+        rendered = render(
+            "alertmanager.yml.j2",
+            monitoring_ntfy_topic="a" * 25,
+            monitoring_ses_smtp_username="AKIAEXAMPLE",
+            monitoring_ses_smtp_password="examplepassword",
+        )
+
+        parsed = yaml.safe_load(rendered)
+        webhook_url = parsed["receivers"][0]["webhook_configs"][0]["url"]
+        self.assertNotIn("ntfy.sh", webhook_url)
+        self.assertEqual(webhook_url, "http://127.0.0.1:9096/webhook")
 
 
 if __name__ == "__main__":

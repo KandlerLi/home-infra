@@ -147,6 +147,19 @@ monitoring_alertmanager_container_user: monitoring-alertmanager
 monitoring_ntfy_url: https://ntfy.sh
 monitoring_ntfy_topic: ""
 
+# Alertmanager's webhook_configs can't template its POST body, and ntfy
+# doesn't understand Alertmanager's payload shape -- posting straight to
+# ntfy.sh showed the raw JSON as the notification text (confirmed live).
+# This small stdlib-only Python service (no Docker container, matching
+# nextcloud_tools/sankey_export's precedent for small standalone logic
+# rather than pulling in a new base image) sits between the two:
+# Alertmanager posts here, it reformats, then republishes to ntfy's own
+# JSON API. Loopback-only; only reachable from Alertmanager on the same
+# host.
+monitoring_ntfy_relay_port: 9096
+monitoring_ntfy_relay_service_user: monitoring-ntfy-relay
+monitoring_ntfy_relay_install_dir: /usr/local/lib/monitoring/ntfy-relay
+
 # SES SMTP credentials come from infra/ses-relay's Terraform outputs, not
 # generated here -- see that repo's README for the exact values to copy
 # into SOPS. eu-central-1 matches this workspace's other AWS roots'
