@@ -12,11 +12,8 @@
     <ul class="links">
 {% for link in landing_page_links %}
       <li>
-        <a href="{{ link.url }}">
-          <span class="icon" aria-hidden="true">{{ link.icon | default('') | safe }}</span>
-          <span class="label">{{ link.name }}</span>
-        </a>
-        <span class="description">{{ link.description }}</span>
+        <a href="{{ link.url }}">{{ link.name }}</a>
+        <span>{{ link.description }}</span>
       </li>
 {% endfor %}
     </ul>

@@ -26,42 +26,17 @@ landing_page_title: Home
 # Pure HTML/CSS links out to the other services behind shared_ingress
 # (the actual per-service Basic Auth login happens on the target site,
 # same shared_ingress_auth_username/password_hash credential covers this
-# page too). Each icon is a small inline SVG (generic glyphs, not the
-# services' own logos, to avoid trademark/asset-licensing questions) so
-# the page stays a single self-contained file with no external requests
-# or JavaScript.
+# page too).
 landing_page_links:
   - name: Nextcloud
     url: https://nextcloud.jkandler.de/
     description: Files, calendar, contacts
-    icon: >-
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M7 18a4 4 0 0 1-.5-7.97A5 5 0 0 1 16 8.05 4.5 4.5 0 0 1
-      17.5 18H7Z"/></svg>
   - name: Home Agent
     url: https://ai.jkandler.de/
     description: Chat assistant and tools
-    icon: >-
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M4 5h16v11H8l-4 4V5Z"/>
-      <circle cx="8.5" cy="10.5" r="0.75" fill="currentColor" stroke="none"/>
-      <circle cx="12" cy="10.5" r="0.75" fill="currentColor" stroke="none"/>
-      <circle cx="15.5" cy="10.5" r="0.75" fill="currentColor" stroke="none"/>
-      </svg>
   - name: Deluge
     url: https://torrent.jkandler.de/
     description: Torrent client
-    icon: >-
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 4v10m0 0-4-4m4 4 4-4"/>
-      <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
   - name: Grafana
     url: https://grafana.jkandler.de/
     description: Dashboards and alerts
-    icon: >-
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M5 19V10M12 19V5M19 19v-6"/></svg>
