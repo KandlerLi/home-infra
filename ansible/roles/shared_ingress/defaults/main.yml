@@ -22,11 +22,16 @@ shared_ingress_apex_redirect_enabled: false
 shared_ingress_apex_domain: jkandler.de
 shared_ingress_apex_redirect_target_host: www.jkandler.de
 
+# Single shared Basic Auth credential for every route below that needs
+# one (agent, deluge, grafana) -- one password to manage instead of a
+# separate one per service. Trades away per-service blast-radius isolation
+# (a leak exposes all three at once); accepted for a single-user homelab.
+shared_ingress_auth_username: julian
+shared_ingress_auth_password_hash: ""
+
 shared_ingress_agent_enabled: false
 shared_ingress_agent_domain: ai.jkandler.de
 shared_ingress_agent_upstream: http://127.0.0.1:8090
-shared_ingress_agent_auth_username: julian
-shared_ingress_agent_auth_password_hash: ""
 shared_ingress_agent_rate_average: 10
 shared_ingress_agent_rate_period: 1m
 shared_ingress_agent_rate_burst: 5
@@ -45,8 +50,6 @@ shared_ingress_open_webui_publish_confirmation: ""
 shared_ingress_deluge_enabled: false
 shared_ingress_deluge_domain: torrent.jkandler.de
 shared_ingress_deluge_upstream: http://127.0.0.1:8112
-shared_ingress_deluge_auth_username: julian
-shared_ingress_deluge_auth_password_hash: ""
 # Deluge's web UI is a heavy ExtJS SPA, not a lightweight JSON API like the
 # agent route: a cold load fires 14+ static asset requests at once, and once
 # open it continuously polls /json for live torrent/status updates (roughly
@@ -62,8 +65,6 @@ shared_ingress_deluge_publish_confirmation: ""
 shared_ingress_grafana_enabled: false
 shared_ingress_grafana_domain: grafana.jkandler.de
 shared_ingress_grafana_upstream: http://127.0.0.1:3000
-shared_ingress_grafana_auth_username: julian
-shared_ingress_grafana_auth_password_hash: ""
 # Grafana's own dashboards auto-refresh and poll their datasource
 # continuously once open, on top of loading many panel/asset requests
 # per page -- matching deluge/open_webui's already-validated headroom
@@ -73,6 +74,18 @@ shared_ingress_grafana_rate_period: 1m
 shared_ingress_grafana_rate_burst: 240
 shared_ingress_grafana_max_request_body_bytes: 1048576
 shared_ingress_grafana_publish_confirmation: ""
+
+shared_ingress_home_enabled: false
+shared_ingress_home_domain: home.jkandler.de
+shared_ingress_home_upstream: http://127.0.0.1:8095
+# A pure static HTML/CSS page with no polling and no assets beyond one
+# stylesheet -- lightweight-API headroom like the agent route, not the
+# heavier SPA values deluge/open_webui/grafana need.
+shared_ingress_home_rate_average: 10
+shared_ingress_home_rate_period: 1m
+shared_ingress_home_rate_burst: 5
+shared_ingress_home_max_request_body_bytes: 16384
+shared_ingress_home_publish_confirmation: ""
 
 shared_ingress_health_address: 127.0.0.1
 shared_ingress_health_port: 8082

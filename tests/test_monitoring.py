@@ -267,29 +267,25 @@ class GrafanaIngressTests(unittest.TestCase):
         self.assertIn("shared_ingress_grafana_domain: grafana.jkandler.de", defaults)
         self.assertIn("shared_ingress_grafana_upstream: http://127.0.0.1:3000", defaults)
         self.assertIn("shared_ingress_grafana_domain", dynamic)
-        self.assertIn("grafana-auth", dynamic)
-        self.assertIn("/etc/traefik/grafana-users", dynamic)
+        self.assertIn("shared-auth", dynamic)
+        self.assertIn("/etc/traefik/users", dynamic)
         self.assertIn("grafana-rate-limit", dynamic)
         self.assertIn("grafana-request-limit", dynamic)
         self.assertIn("grafana-security-headers", dynamic)
 
-    def test_grafana_credential_is_independent_of_other_route_credentials(
-        self,
-    ) -> None:
+    def test_grafana_route_reuses_the_shared_auth_credential(self) -> None:
         dynamic = (SHARED_INGRESS_ROOT / "templates/dynamic.yml.j2").read_text(
             encoding="utf-8"
         )
 
-        # Grafana's usersFile must differ from the agent's and Deluge's, so
-        # a leaked credential for one service doesn't grant access to
-        # another -- same reasoning as Deluge's own independent-credential
-        # test.
-        grafana_auth_block = dynamic.split("grafana-auth:", 1)[1].split(
-            "grafana-rate-limit:", 1
+        # Grafana deliberately shares one Basic Auth credential/usersFile
+        # with the agent and Deluge routes (fewer passwords to manage),
+        # rather than getting its own -- see shared_ingress_auth_username
+        # in defaults/main.yml for the accepted blast-radius tradeoff.
+        grafana_chain = dynamic.split("grafana-chain:", 1)[1].split(
+            "{% endif %}", 1
         )[0]
-        self.assertIn("grafana-users", grafana_auth_block)
-        self.assertNotIn("usersFile: /etc/traefik/users\n", grafana_auth_block)
-        self.assertNotIn("usersFile: /etc/traefik/deluge-users\n", grafana_auth_block)
+        self.assertIn("shared-auth", grafana_chain)
 
     def test_grafana_route_renders_independently_of_other_feature_flags(
         self,

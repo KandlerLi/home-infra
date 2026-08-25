@@ -67,6 +67,17 @@ http:
       tls:
         certResolver: letsencrypt
 {% endif %}
+{% if shared_ingress_home_enabled | bool %}
+    home:
+      rule: "Host(`{{ shared_ingress_home_domain }}`)"
+      entryPoints:
+        - websecure
+      service: home
+      middlewares:
+        - home-chain
+      tls:
+        certResolver: letsencrypt
+{% endif %}
 {% if shared_ingress_apex_redirect_enabled | bool %}
     apex-redirect:
       rule: "Host(`{{ shared_ingress_apex_domain }}`)"
@@ -113,6 +124,13 @@ http:
         servers:
           - url: "{{ shared_ingress_grafana_upstream }}"
 {% endif %}
+{% if shared_ingress_home_enabled | bool %}
+    home:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "{{ shared_ingress_home_upstream }}"
+{% endif %}
 
   middlewares:
     nextcloud-secure-headers:
@@ -126,12 +144,14 @@ http:
       chain:
         middlewares:
           - nextcloud-secure-headers
-{% if shared_ingress_agent_enabled | bool %}
-    agent-auth:
+{% if shared_ingress_agent_enabled | bool or shared_ingress_deluge_enabled | bool or shared_ingress_grafana_enabled | bool or shared_ingress_home_enabled | bool %}
+    shared-auth:
       basicAuth:
         usersFile: /etc/traefik/users
         realm: Home Infrastructure
         removeHeader: true
+{% endif %}
+{% if shared_ingress_agent_enabled | bool %}
     agent-rate-limit:
       rateLimit:
         average: {{ shared_ingress_agent_rate_average }}
@@ -152,7 +172,7 @@ http:
     agent-chain:
       chain:
         middlewares:
-          - agent-auth
+          - shared-auth
           - agent-rate-limit
           - agent-request-limit
           - agent-security-headers
@@ -175,11 +195,6 @@ http:
 {% endif %}
 {% endif %}
 {% if shared_ingress_deluge_enabled | bool %}
-    deluge-auth:
-      basicAuth:
-        usersFile: /etc/traefik/deluge-users
-        realm: Home Infrastructure
-        removeHeader: true
     deluge-rate-limit:
       rateLimit:
         average: {{ shared_ingress_deluge_rate_average }}
@@ -200,17 +215,12 @@ http:
     deluge-chain:
       chain:
         middlewares:
-          - deluge-auth
+          - shared-auth
           - deluge-rate-limit
           - deluge-request-limit
           - deluge-security-headers
 {% endif %}
 {% if shared_ingress_grafana_enabled | bool %}
-    grafana-auth:
-      basicAuth:
-        usersFile: /etc/traefik/grafana-users
-        realm: Home Infrastructure
-        removeHeader: true
     grafana-rate-limit:
       rateLimit:
         average: {{ shared_ingress_grafana_rate_average }}
@@ -231,10 +241,36 @@ http:
     grafana-chain:
       chain:
         middlewares:
-          - grafana-auth
+          - shared-auth
           - grafana-rate-limit
           - grafana-request-limit
           - grafana-security-headers
+{% endif %}
+{% if shared_ingress_home_enabled | bool %}
+    home-rate-limit:
+      rateLimit:
+        average: {{ shared_ingress_home_rate_average }}
+        period: {{ shared_ingress_home_rate_period }}
+        burst: {{ shared_ingress_home_rate_burst }}
+    home-request-limit:
+      buffering:
+        maxRequestBodyBytes: {{ shared_ingress_home_max_request_body_bytes }}
+        memRequestBodyBytes: {{ shared_ingress_home_max_request_body_bytes }}
+    home-security-headers:
+      headers:
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: no-referrer
+        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
+        stsSeconds: 31536000
+        stsIncludeSubdomains: false
+    home-chain:
+      chain:
+        middlewares:
+          - shared-auth
+          - home-rate-limit
+          - home-request-limit
+          - home-security-headers
 {% endif %}
 {% if shared_ingress_apex_redirect_enabled | bool %}
     apex-redirect:

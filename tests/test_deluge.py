@@ -256,8 +256,8 @@ class DelugeIngressTests(unittest.TestCase):
         )
         self.assertIn("shared_ingress_deluge_domain: torrent.jkandler.de", defaults)
         self.assertIn("shared_ingress_deluge_domain", dynamic)
-        self.assertIn("deluge-auth", dynamic)
-        self.assertIn("/etc/traefik/deluge-users", dynamic)
+        self.assertIn("shared-auth", dynamic)
+        self.assertIn("/etc/traefik/users", dynamic)
         self.assertIn("deluge-rate-limit", dynamic)
         self.assertIn("deluge-request-limit", dynamic)
         self.assertIn("deluge-security-headers", dynamic)
@@ -277,21 +277,19 @@ class DelugeIngressTests(unittest.TestCase):
         self.assertIn("shared_ingress_deluge_rate_average: 120", defaults)
         self.assertIn("shared_ingress_deluge_rate_burst: 240", defaults)
 
-    def test_deluge_credential_is_independent_of_the_agent_credential(
-        self,
-    ) -> None:
+    def test_deluge_route_reuses_the_shared_auth_credential(self) -> None:
         dynamic = (SHARED_INGRESS_ROOT / "templates/dynamic.yml.j2").read_text(
             encoding="utf-8"
         )
 
-        # Deluge's usersFile must differ from the agent's, so the two
-        # credentials have independent blast radius (one leaking doesn't
-        # grant access to the other service).
-        deluge_auth_block = dynamic.split("deluge-auth:", 1)[1].split(
-            "deluge-rate-limit:", 1
+        # Deluge deliberately shares one Basic Auth credential/usersFile
+        # with the agent and Grafana routes (fewer passwords to manage),
+        # rather than getting its own -- see shared_ingress_auth_username
+        # in defaults/main.yml for the accepted blast-radius tradeoff.
+        deluge_chain = dynamic.split("deluge-chain:", 1)[1].split(
+            "{% endif %}", 1
         )[0]
-        self.assertIn("deluge-users", deluge_auth_block)
-        self.assertNotIn("usersFile: /etc/traefik/users\n", deluge_auth_block)
+        self.assertIn("shared-auth", deluge_chain)
 
     def test_deluge_route_renders_independently_of_the_agent_feature_flag(
         self,

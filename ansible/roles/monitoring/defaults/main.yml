@@ -69,7 +69,7 @@ monitoring_probe_targets:
   - http://127.0.0.1:8082/ping
 
 # ai.jkandler.de and torrent.jkandler.de sit behind Traefik Basic Auth
-# (shared_ingress_agent_auth_password_hash / _deluge_auth_password_hash),
+# (shared_ingress_auth_password_hash, shared across every gated route),
 # and only the bcrypt hash is stored anywhere in this repo -- the
 # plaintext lives solely in Julian's password manager, so blackbox has no
 # credential to send. Probed with the http_2xx_or_401 module instead:

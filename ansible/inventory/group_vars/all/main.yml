@@ -45,3 +45,15 @@ sankey_export_remote_dir: Shared/Finanzen
 # sops before a site.yml run against this flag will pass its own
 # validate checks.
 monitoring_enabled: true
+shared_ingress_grafana_enabled: true
+
+# Static landing page linking out to the other services, published
+# directly at home.jkandler.de (skipping the loopback-first staging the
+# other shared_ingress routes went through). The very first site.yml run
+# against this flag still needs -e home_publish_confirmation=PUBLISH_HOME
+# once -- shared_ingress's own confirmation gate isn't tied to this flag,
+# it just requires proving the route is intentional before Traefik starts
+# routing it publicly. Not needed on subsequent runs, once the route
+# exists.
+landing_page_enabled: true
+shared_ingress_home_enabled: true

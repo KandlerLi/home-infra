@@ -24,30 +24,31 @@
           - shared_ingress_open_webui_rate_burst | int > 0
           - >-
             shared_ingress_open_webui_max_request_body_bytes | int <= 1048576
-          - >-
-            not shared_ingress_agent_enabled | bool
-            or shared_ingress_agent_auth_username | length > 0
-          - >-
-            not shared_ingress_agent_enabled | bool
-            or shared_ingress_agent_auth_password_hash | length >= 20
           - shared_ingress_deluge_upstream == "http://127.0.0.1:8112"
           - shared_ingress_deluge_rate_average | int > 0
           - shared_ingress_deluge_rate_burst | int > 0
-          - >-
-            not shared_ingress_deluge_enabled | bool
-            or shared_ingress_deluge_auth_username | length > 0
-          - >-
-            not shared_ingress_deluge_enabled | bool
-            or shared_ingress_deluge_auth_password_hash | length >= 20
           - shared_ingress_grafana_upstream == "http://127.0.0.1:3000"
           - shared_ingress_grafana_rate_average | int > 0
           - shared_ingress_grafana_rate_burst | int > 0
+          - shared_ingress_home_upstream == "http://127.0.0.1:8095"
+          - shared_ingress_home_rate_average | int > 0
+          - shared_ingress_home_rate_burst | int > 0
           - >-
-            not shared_ingress_grafana_enabled | bool
-            or shared_ingress_grafana_auth_username | length > 0
+            not (
+              shared_ingress_agent_enabled | bool
+              or shared_ingress_deluge_enabled | bool
+              or shared_ingress_grafana_enabled | bool
+              or shared_ingress_home_enabled | bool
+            )
+            or shared_ingress_auth_username | length > 0
           - >-
-            not shared_ingress_grafana_enabled | bool
-            or shared_ingress_grafana_auth_password_hash | length >= 20
+            not (
+              shared_ingress_agent_enabled | bool
+              or shared_ingress_deluge_enabled | bool
+              or shared_ingress_grafana_enabled | bool
+              or shared_ingress_home_enabled | bool
+            )
+            or shared_ingress_auth_password_hash | length >= 20
         fail_msg: >-
           Configure the ACME and agent/deluge authentication values before
           enabling public routing. Keep every upstream bound to host loopback.
@@ -63,6 +64,7 @@
         shared_ingress_open_webui_enabled | bool
         or shared_ingress_deluge_enabled | bool
         or shared_ingress_grafana_enabled | bool
+        or shared_ingress_home_enabled | bool
 
     - name: Require confirmation for initial Open WebUI publication
       ansible.builtin.assert:
@@ -153,6 +155,35 @@
         - shared_ingress_grafana_enabled | bool
         - not ansible_check_mode
 
+    - name: Require confirmation for initial Home publication
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              shared_ingress_current_routes.content | default('')
+              | b64decode
+            ) is search('service: home')
+            or shared_ingress_home_publish_confirmation
+               == "PUBLISH_HOME"
+        fail_msg: >-
+          Pass home_publish_confirmation=PUBLISH_HOME only after the
+          loopback landing page has been tested.
+      when: shared_ingress_home_enabled | bool
+
+    - name: Verify the landing page before publishing it
+      ansible.builtin.uri:
+        url: "{{ shared_ingress_home_upstream }}/"
+        method: GET
+        return_content: false
+        status_code: 200
+      register: shared_ingress_home_health
+      retries: 10
+      delay: 2
+      until: shared_ingress_home_health.status == 200
+      when:
+        - shared_ingress_home_enabled | bool
+        - not ansible_check_mode
+
     - name: Create shared ingress directories
       ansible.builtin.file:
         path: "{{ item.path }}"
@@ -202,7 +233,7 @@
         mode: "0640"
       register: shared_ingress_dynamic_config
 
-    - name: Install agent authentication file
+    - name: Install shared ingress authentication file
       ansible.builtin.template:
         src: users.j2
         dest: "{{ shared_ingress_config_dir }}/users"
@@ -211,29 +242,11 @@
         mode: "0600"
       no_log: true
       register: shared_ingress_users_file
-      when: shared_ingress_agent_enabled | bool
-
-    - name: Install Deluge authentication file
-      ansible.builtin.template:
-        src: deluge-users.j2
-        dest: "{{ shared_ingress_config_dir }}/deluge-users"
-        owner: root
-        group: root
-        mode: "0600"
-      no_log: true
-      register: shared_ingress_deluge_users_file
-      when: shared_ingress_deluge_enabled | bool
-
-    - name: Install Grafana authentication file
-      ansible.builtin.template:
-        src: grafana-users.j2
-        dest: "{{ shared_ingress_config_dir }}/grafana-users"
-        owner: root
-        group: root
-        mode: "0600"
-      no_log: true
-      register: shared_ingress_grafana_users_file
-      when: shared_ingress_grafana_enabled | bool
+      when: >-
+        shared_ingress_agent_enabled | bool
+        or shared_ingress_deluge_enabled | bool
+        or shared_ingress_grafana_enabled | bool
+        or shared_ingress_home_enabled | bool
 
     - name: Pull pinned Traefik image
       community.docker.docker_image:
@@ -308,9 +321,7 @@
             recreate: >-
               {{ shared_ingress_static_config.changed
                  or shared_ingress_dynamic_config.changed
-                 or shared_ingress_users_file.changed | default(false)
-                 or shared_ingress_deluge_users_file.changed | default(false)
-                 or shared_ingress_grafana_users_file.changed | default(false) }}
+                 or shared_ingress_users_file.changed | default(false) }}
             restart_policy: "{{ shared_ingress_restart_policy }}"
             network_mode: host
             read_only: true

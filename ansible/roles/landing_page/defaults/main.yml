@@ -1,0 +1,42 @@
+---
+landing_page_enabled: false
+
+landing_page_container_name: landing-page
+# nginx-unprivileged, not plain nginx: it listens on 8080 and runs as a
+# non-root user by default, so this container can run read_only with
+# cap_drop: ALL like every other role here, instead of needing the
+# NET_BIND_SERVICE capability shared_ingress needs for port 80/443.
+landing_page_image_name: nginxinc/nginx-unprivileged
+landing_page_image_tag: 1.27-alpine
+landing_page_image_digest: >-
+  sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+landing_page_image: >-
+  {{ landing_page_image_name }}:{{ landing_page_image_tag }}@{{ landing_page_image_digest }}
+landing_page_restart_policy: unless-stopped
+
+landing_page_bind_address: 127.0.0.1
+landing_page_port: 8095
+landing_page_content_dir: /etc/landing-page/html
+landing_page_memory_limit: 32M
+landing_page_cpu_limit: 0.1
+landing_page_pids_limit: 16
+
+landing_page_title: Home
+
+# Pure HTML/CSS links out to the other services behind shared_ingress
+# (the actual per-service Basic Auth login happens on the target site,
+# same shared_ingress_auth_username/password_hash credential covers this
+# page too).
+landing_page_links:
+  - name: Nextcloud
+    url: https://nextcloud.jkandler.de/
+    description: Files, calendar, contacts
+  - name: Home Agent
+    url: https://ai.jkandler.de/
+    description: Chat assistant and tools
+  - name: Deluge
+    url: https://torrent.jkandler.de/
+    description: Torrent client
+  - name: Grafana
+    url: https://grafana.jkandler.de/
+    description: Dashboards and alerts
