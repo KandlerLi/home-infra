@@ -83,6 +83,26 @@
         create_home: false
         shell: /usr/sbin/nologin
 
+    # A dedicated task, ahead of the shared loop below: when a path's
+    # parent doesn't exist yet, ansible.builtin.file creates it stamped
+    # with that *same task's* owner/mode -- so without this, whichever
+    # loop item happened to run first (monitoring_data_dir/prometheus)
+    # would leave the shared /var/lib/monitoring parent itself owned by
+    # that one service account at 0750, silently blocking every other
+    # account from even traversing into it. Never mattered for the
+    # Docker-based services below (a bind mount doesn't traverse the
+    # host's real parent-directory chain the way a native process does)
+    # -- confirmed live as the reason ntfy_relay.service, the first
+    # native (non-container) reader under this tree, got EACCES opening
+    # its own correctly-owned file.
+    - name: Create monitoring data root directory
+      ansible.builtin.file:
+        path: "{{ monitoring_data_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
     - name: Create monitoring directories
       ansible.builtin.file:
         path: "{{ item.path }}"

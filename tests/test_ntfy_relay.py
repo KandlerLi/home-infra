@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from _load_module import load_module_from_path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+ROLE_ROOT = PROJECT_ROOT / "ansible/roles/monitoring"
 
 ntfy_relay = load_module_from_path(
     "ntfy_relay", "ansible/roles/monitoring/files/ntfy_relay.py"
@@ -101,6 +105,30 @@ class NtfyRelayFormattingTests(unittest.TestCase):
 
         self.assertEqual(title, "0 alerts firing")
         self.assertEqual(message, "(no alert detail in payload)")
+
+
+class MonitoringDataRootPermissionTests(unittest.TestCase):
+    def test_data_root_is_created_world_traversable_before_service_subdirs(self) -> None:
+        # ansible.builtin.file stamps an implicitly-created parent
+        # directory with whatever owner/mode the *first* task needing it
+        # specifies. Without an explicit, world-traversable
+        # monitoring_data_dir task ahead of the per-service directory
+        # loop, /var/lib/monitoring would end up owned by whichever
+        # service happened to be first in that loop (0750) -- silently
+        # blocking every other account from traversing into it. Never
+        # surfaced for the Docker-based services (a bind mount doesn't
+        # walk the host's real parent-directory chain), only for
+        # ntfy_relay.service's native, non-container file read --
+        # confirmed live via a real EACCES.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        root_task_index = tasks.index("Create monitoring data root directory")
+        loop_task_index = tasks.index("Create monitoring directories")
+        self.assertLess(root_task_index, loop_task_index)
+
+        root_task = tasks[root_task_index : loop_task_index + 200]
+        self.assertIn('owner: root', root_task)
+        self.assertIn('mode: "0755"', root_task)
 
 
 if __name__ == "__main__":
