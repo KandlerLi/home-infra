@@ -60,6 +60,32 @@ class LandingPageRoleTests(unittest.TestCase):
         self.assertIn("https://torrent.jkandler.de/", defaults)
         self.assertIn("https://grafana.jkandler.de/", defaults)
 
+    def test_each_default_link_has_an_inline_svg_icon(self) -> None:
+        import yaml
+
+        defaults = yaml.safe_load(
+            (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        )
+
+        links = defaults["landing_page_links"]
+        self.assertEqual(len(links), 4)
+        for link in links:
+            self.assertIn("icon", link)
+            self.assertIn("<svg", link["icon"])
+            # Generic glyphs only, not the services' own logos/branding.
+            self.assertNotIn("<image", link["icon"])
+
+    def test_icons_are_rendered_unescaped_and_stay_self_contained(self) -> None:
+        index_html = (ROLE_ROOT / "templates/index.html.j2").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("{{ link.icon | default('') | safe }}", index_html)
+        # No external icon font/CDN request -- svg markup is inlined
+        # directly by the role, not fetched by the browser.
+        self.assertNotIn("fonts.googleapis.com", index_html)
+        self.assertNotIn("cdn.", index_html)
+
     def test_recreates_on_image_or_content_change(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
