@@ -15,5 +15,10 @@
   gather_facts: true
 
   roles:
+    # Before github_runner: every repository's CI now runs inside a
+    # container built from that repo's own Dockerfile, so the docker
+    # group must exist before configure_repository.yml adds each
+    # per-repo service account to it.
+    - role: docker
     - role: github_runner
       github_runner_role_mode: configure_guest

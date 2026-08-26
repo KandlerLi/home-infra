@@ -28,6 +28,11 @@
     create_home: true
     home: "/var/lib/{{ github_runner_repository_service_user }}"
     shell: /bin/bash
+    # Every repository's CI runs its steps inside a container built from
+    # that repo's own Dockerfile, so this account needs to talk to the
+    # Docker daemon directly (no sudo inside a CI job).
+    groups: docker
+    append: true
   register: github_runner_service_account
 
 - name: Select check-mode service identity for {{ github_runner_repository }}
@@ -189,6 +194,7 @@
         or not (
           github_runner_update_required
           or github_runner_systemd_unit_preview.changed
+          or github_runner_service_account.changed
         )
         or github_runner_remote_registrations | length == 0
         or not github_runner_remote_registrations[0].busy
@@ -205,6 +211,7 @@
     - >-
       github_runner_update_required
       or github_runner_systemd_unit_preview.changed
+      or github_runner_service_account.changed
     - github_runner_systemd_unit_file.stat.exists
 
 - name: Extract runner application for {{ github_runner_repository }}

@@ -62,6 +62,44 @@ class GithubRunnerTests(unittest.TestCase):
 
         self.assertIn("awscli", tasks)
 
+    def test_docker_role_runs_before_github_runner_on_the_vm(self) -> None:
+        # Before github_runner's configure_guest: each per-repo service
+        # account needs the docker group to already exist when it's
+        # created, so every repository's CI can run inside a container.
+        playbook = (
+            PROJECT_ROOT / "ansible/playbooks/github-runner.yml"
+        ).read_text(encoding="utf-8")
+
+        vm_play = playbook.split("hosts: github_runner_vms", 1)[1]
+        docker_index = vm_play.index("- role: docker")
+        runner_index = vm_play.index("- role: github_runner")
+        self.assertLess(docker_index, runner_index)
+
+    def test_per_repo_service_account_can_use_docker_without_sudo(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/configure_repository.yml").read_text(
+            encoding="utf-8"
+        )
+
+        create_user_task = tasks.split(
+            "Create service user for", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("groups: docker", create_user_task)
+        self.assertIn("append: true", create_user_task)
+
+    def test_runner_restarts_when_docker_group_membership_changes(self) -> None:
+        # A user's supplementary-group change doesn't affect an
+        # already-running process -- the runner has to actually restart
+        # to pick up docker-group access, same as it already does for a
+        # binary update or a systemd unit change.
+        tasks = (ROLE_ROOT / "tasks/configure_repository.yml").read_text(
+            encoding="utf-8"
+        )
+
+        stop_task = tasks.split(
+            "Stop runner before changing", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("github_runner_service_account.changed", stop_task)
+
 
 if __name__ == "__main__":
     unittest.main()
