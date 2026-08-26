@@ -51,16 +51,26 @@ class GithubRunnerTests(unittest.TestCase):
             tasks,
         )
 
-    def test_aws_cli_is_installed_on_the_runner_vm(self) -> None:
-        # Found live: website's apply.yml runs `aws s3 sync`/`aws
-        # cloudfront create-invalidation` directly, which GitHub-hosted
-        # runners have preinstalled but this VM never needed before
-        # website moved onto the self-hosted runner.
+    def test_aws_cli_is_removed_from_the_bare_runner_vm(self) -> None:
+        # Every repository's terraform/aws-cli steps -- including
+        # website's `aws s3 sync`/`aws cloudfront create-invalidation`,
+        # the last thing that ran directly on this VM -- now run inside
+        # that repo's own CI container, which bundles its own pinned
+        # awscli. The bare host doesn't need it any more.
         tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn("awscli", tasks)
+        install_task = tasks.split(
+            "Install GitHub runner operating system packages", 1
+        )[1].split("- name:", 1)[0]
+        self.assertNotIn("awscli", install_task)
+
+        removal_task = tasks.split(
+            "Remove packages superseded by containerized CI", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("awscli", removal_task)
+        self.assertIn("state: absent", removal_task)
 
     def test_runner_vm_gets_a_lower_bridge_mtu_than_the_bare_homeserver(
         self,

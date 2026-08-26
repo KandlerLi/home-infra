@@ -10,12 +10,6 @@
 - name: Install GitHub runner operating system packages
   ansible.builtin.apt:
     name:
-      # Found live: website's apply.yml runs `aws s3 sync`/`aws cloudfront
-      # create-invalidation` directly as shell steps, unlike dyndns/
-      # aws-budget which only ever use terraform. GitHub-hosted runners
-      # have the AWS CLI preinstalled; this VM never needed it before
-      # website moved onto it.
-      - awscli
       - ca-certificates
       - curl
       - git
@@ -26,6 +20,18 @@
     state: present
     update_cache: true
     cache_valid_time: 86400
+
+- name: Remove packages superseded by containerized CI
+  ansible.builtin.apt:
+    # Every repository's terraform/aws-cli steps -- including website's
+    # `aws s3 sync`/`aws cloudfront create-invalidation`, the last thing
+    # that ran directly on this VM -- now run inside that repo's own CI
+    # container, which bundles its own pinned awscli. The bare host
+    # never needs it itself any more.
+    name:
+      - awscli
+    state: absent
+    purge: true
 
 - name: Create GitHub runner installation root
   ansible.builtin.file:
