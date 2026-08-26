@@ -100,6 +100,29 @@ class GithubRunnerTests(unittest.TestCase):
         )[1].split("- name:", 1)[0]
         self.assertIn("github_runner_service_account.changed", stop_task)
 
+    def test_workspace_ownership_is_reclaimed_from_root_owned_ci_files(
+        self,
+    ) -> None:
+        # A containerized job runs as root by default and can leave
+        # root-owned files behind in the reused on-disk workspace,
+        # blocking the next unprivileged job's checkout.
+        tasks = (ROLE_ROOT / "tasks/configure_repository.yml").read_text(
+            encoding="utf-8"
+        )
+
+        reclaim_task = tasks.split(
+            "Reclaim workspace ownership for", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn(
+            "path: \"{{ github_runner_repository_install_dir }}/_work\"",
+            reclaim_task,
+        )
+        self.assertIn(
+            "owner: \"{{ github_runner_repository_service_user }}\"",
+            reclaim_task,
+        )
+        self.assertIn("recurse: true", reclaim_task)
+
 
 if __name__ == "__main__":
     unittest.main()

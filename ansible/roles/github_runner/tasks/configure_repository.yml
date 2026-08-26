@@ -365,3 +365,20 @@
   when: >-
     not ansible_check_mode
     or github_runner_systemd_unit_file.stat.exists
+
+# A containerized CI job runs its steps as root by default, and the job's
+# workspace is a bind mount of this same on-disk directory -- self-hosted
+# runners reuse it across jobs rather than wiping it, unlike GitHub-hosted
+# ones. Any file a container job creates or partially downloads before
+# failing stays root-owned on disk, which then blocks the next (non-
+# containerized) job's unprivileged checkout step with a permission
+# error. Reclaim it on every apply, not just once, since a future job can
+# always re-create the problem between applies.
+- name: Reclaim workspace ownership for {{ github_runner_repository }}
+  ansible.builtin.file:
+    path: "{{ github_runner_repository_install_dir }}/_work"
+    state: directory
+    owner: "{{ github_runner_repository_service_user }}"
+    group: "{{ github_runner_repository_service_user }}"
+    recurse: true
+  when: not ansible_check_mode
