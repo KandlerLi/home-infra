@@ -62,6 +62,26 @@ class GithubRunnerTests(unittest.TestCase):
 
         self.assertIn("awscli", tasks)
 
+    def test_runner_vm_gets_a_lower_bridge_mtu_than_the_bare_homeserver(
+        self,
+    ) -> None:
+        # Confirmed live: a job container's TLS connection downloading a
+        # Terraform provider was reset partway through on this VM's
+        # auto-created per-job bridge network -- this guest sits behind
+        # an extra libvirt NAT hop the bare-metal homeserver doesn't have.
+        playbook = (
+            PROJECT_ROOT / "ansible/playbooks/github-runner.yml"
+        ).read_text(encoding="utf-8")
+        site_yml = (
+            PROJECT_ROOT / "ansible/playbooks/site.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("docker_daemon_config", playbook)
+        self.assertIn("com.docker.network.driver.mtu", playbook)
+        # The bare homeserver's own docker role invocation (site.yml)
+        # stays untouched -- this is scoped to the runner VM only.
+        self.assertNotIn("docker_daemon_config", site_yml)
+
     def test_docker_role_runs_before_github_runner_on_the_vm(self) -> None:
         # Before github_runner's configure_guest: each per-repo service
         # account needs the docker group to already exist when it's

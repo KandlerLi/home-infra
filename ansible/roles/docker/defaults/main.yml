@@ -11,3 +11,6 @@ docker_packages:
   - docker-compose-plugin
 
 docker_service_name: docker
+
+# See tasks/main.yml -- empty means Docker's own defaults, untouched.
+docker_daemon_config: {}
