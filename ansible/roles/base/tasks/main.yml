@@ -13,6 +13,11 @@
     fail_msg: "Ansible does not have root privileges."
     success_msg: "Ansible is running with root privileges."
 
+# The zsh/zsh-autosuggestions/zsh-syntax-highlighting group was
+# Homebrew-installed by hand before, entirely outside this repo --
+# migrated here so the interactive shell setup isn't an untracked install
+# any more (zsh-syntax-highlighting was already apt-installed and unused
+# by Ansible).
 - name: Install base packages
   ansible.builtin.apt:
     name:
@@ -23,6 +28,9 @@
       - tree
       - unzip
       - vim
+      - zsh
+      - zsh-autosuggestions
+      - zsh-syntax-highlighting
     state: present
     update_cache: true
     cache_valid_time: 86400
@@ -38,20 +46,6 @@
     groups:
       - www-data
     append: true
-
-# Was Homebrew-installed by hand before, entirely outside this repo --
-# migrated here so the interactive shell setup isn't an untracked install
-# any more. zsh-syntax-highlighting was already apt-installed and unused
-# by Ansible; folded in here too since it's part of the same shell setup.
-- name: Install interactive shell packages
-  ansible.builtin.apt:
-    name:
-      - zsh
-      - zsh-autosuggestions
-      - zsh-syntax-highlighting
-    state: present
-    update_cache: true
-    cache_valid_time: 86400
 
 - name: Set the administrator's login shell to zsh
   ansible.builtin.user:

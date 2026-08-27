@@ -34,7 +34,7 @@ class BaseRoleTests(unittest.TestCase):
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         install_task = tasks.split(
-            "Install interactive shell packages", 1
+            "Install base packages", 1
         )[1].split("- name:", 1)[0]
         self.assertIn("zsh", install_task)
         self.assertIn("zsh-autosuggestions", install_task)
