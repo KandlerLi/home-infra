@@ -247,20 +247,48 @@ class DelugeIngressTests(unittest.TestCase):
     def test_deluge_route_requires_its_own_basic_auth_and_resource_limits(
         self,
     ) -> None:
-        dynamic = (SHARED_INGRESS_ROOT / "templates/dynamic.yml.j2").read_text(
-            encoding="utf-8"
-        )
-
         defaults = (SHARED_INGRESS_ROOT / "defaults/main.yml").read_text(
             encoding="utf-8"
         )
         self.assertIn("shared_ingress_deluge_domain: torrent.jkandler.de", defaults)
+
+        dynamic = (SHARED_INGRESS_ROOT / "templates/dynamic.yml.j2").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("shared_ingress_deluge_domain", dynamic)
-        self.assertIn("shared-auth", dynamic)
         self.assertIn("/etc/traefik/users", dynamic)
-        self.assertIn("deluge-rate-limit", dynamic)
-        self.assertIn("deluge-request-limit", dynamic)
-        self.assertIn("deluge-security-headers", dynamic)
+
+        # deluge-rate-limit/-request-limit/-security-headers are generated
+        # by a loop over shared_ingress_rate_limited_routes (shared with
+        # grafana/home), not literal source text -- render it to confirm
+        # they actually come out the other side for this route.
+        import yaml
+        from jinja2 import Environment, FileSystemLoader
+
+        env = Environment(
+            loader=FileSystemLoader(str(SHARED_INGRESS_ROOT / "templates"))
+        )
+        env.filters["bool"] = bool
+        template = env.get_template("dynamic.yml.j2")
+
+        rendered = template.render(
+            shared_ingress_nextcloud_domain="nextcloud.jkandler.de",
+            shared_ingress_nextcloud_upstream="http://127.0.0.1:11000",
+            shared_ingress_agent_enabled=False,
+            shared_ingress_open_webui_enabled=False,
+            shared_ingress_deluge_enabled=True,
+            shared_ingress_deluge_domain="torrent.jkandler.de",
+            shared_ingress_deluge_upstream="http://127.0.0.1:8112",
+            shared_ingress_deluge_rate_average=120,
+            shared_ingress_deluge_rate_period="1m",
+            shared_ingress_deluge_rate_burst=240,
+            shared_ingress_deluge_max_request_body_bytes=1048576,
+        )
+        data = yaml.safe_load(rendered)
+
+        self.assertIn("deluge-rate-limit", data["http"]["middlewares"])
+        self.assertIn("deluge-request-limit", data["http"]["middlewares"])
+        self.assertIn("deluge-security-headers", data["http"]["middlewares"])
 
     def test_deluge_rate_limit_tolerates_its_polling_web_ui(self) -> None:
         # Deluge's web UI is a heavy ExtJS SPA that continuously polls
@@ -278,18 +306,38 @@ class DelugeIngressTests(unittest.TestCase):
         self.assertIn("shared_ingress_deluge_rate_burst: 240", defaults)
 
     def test_deluge_route_reuses_the_shared_auth_credential(self) -> None:
-        dynamic = (SHARED_INGRESS_ROOT / "templates/dynamic.yml.j2").read_text(
-            encoding="utf-8"
-        )
-
         # Deluge deliberately shares one Basic Auth credential/usersFile
         # with the agent and Grafana routes (fewer passwords to manage),
         # rather than getting its own -- see shared_ingress_auth_username
         # in defaults/main.yml for the accepted blast-radius tradeoff.
-        deluge_chain = dynamic.split("deluge-chain:", 1)[1].split(
-            "{% endif %}", 1
-        )[0]
-        self.assertIn("shared-auth", deluge_chain)
+        import yaml
+        from jinja2 import Environment, FileSystemLoader
+
+        env = Environment(
+            loader=FileSystemLoader(str(SHARED_INGRESS_ROOT / "templates"))
+        )
+        env.filters["bool"] = bool
+        template = env.get_template("dynamic.yml.j2")
+
+        rendered = template.render(
+            shared_ingress_nextcloud_domain="nextcloud.jkandler.de",
+            shared_ingress_nextcloud_upstream="http://127.0.0.1:11000",
+            shared_ingress_agent_enabled=False,
+            shared_ingress_open_webui_enabled=False,
+            shared_ingress_deluge_enabled=True,
+            shared_ingress_deluge_domain="torrent.jkandler.de",
+            shared_ingress_deluge_upstream="http://127.0.0.1:8112",
+            shared_ingress_deluge_rate_average=120,
+            shared_ingress_deluge_rate_period="1m",
+            shared_ingress_deluge_rate_burst=240,
+            shared_ingress_deluge_max_request_body_bytes=1048576,
+        )
+        data = yaml.safe_load(rendered)
+
+        deluge_chain_middlewares = data["http"]["middlewares"]["deluge-chain"]["chain"][
+            "middlewares"
+        ]
+        self.assertIn("shared-auth", deluge_chain_middlewares)
 
     def test_deluge_route_renders_independently_of_the_agent_feature_flag(
         self,

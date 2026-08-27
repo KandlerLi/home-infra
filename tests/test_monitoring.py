@@ -19,6 +19,18 @@ def render(name: str, **overrides: object) -> str:
     return env.get_template(name).render(**ctx)
 
 
+def render_shared_ingress(**overrides: object) -> str:
+    env = Environment(
+        loader=FileSystemLoader(str(SHARED_INGRESS_ROOT / "templates"))
+    )
+    env.filters["bool"] = bool
+    defaults = yaml.safe_load(
+        (SHARED_INGRESS_ROOT / "defaults/main.yml").read_text()
+    )
+    ctx = {**defaults, **overrides}
+    return env.get_template("dynamic.yml.j2").render(**ctx)
+
+
 class MonitoringRoleTests(unittest.TestCase):
     def test_defaults_are_opt_in_and_loopback_only(self) -> None:
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
@@ -257,35 +269,49 @@ class GrafanaIngressTests(unittest.TestCase):
     def test_grafana_route_requires_its_own_basic_auth_and_resource_limits(
         self,
     ) -> None:
-        dynamic = (SHARED_INGRESS_ROOT / "templates/dynamic.yml.j2").read_text(
-            encoding="utf-8"
-        )
         defaults = (SHARED_INGRESS_ROOT / "defaults/main.yml").read_text(
             encoding="utf-8"
         )
-
         self.assertIn("shared_ingress_grafana_domain: grafana.jkandler.de", defaults)
         self.assertIn("shared_ingress_grafana_upstream: http://127.0.0.1:3000", defaults)
-        self.assertIn("shared_ingress_grafana_domain", dynamic)
-        self.assertIn("shared-auth", dynamic)
-        self.assertIn("/etc/traefik/users", dynamic)
-        self.assertIn("grafana-rate-limit", dynamic)
-        self.assertIn("grafana-request-limit", dynamic)
-        self.assertIn("grafana-security-headers", dynamic)
 
-    def test_grafana_route_reuses_the_shared_auth_credential(self) -> None:
         dynamic = (SHARED_INGRESS_ROOT / "templates/dynamic.yml.j2").read_text(
             encoding="utf-8"
         )
+        self.assertIn("shared_ingress_grafana_domain", dynamic)
+        self.assertIn("/etc/traefik/users", dynamic)
 
+        # grafana-rate-limit/-request-limit/-security-headers are generated
+        # by a loop over shared_ingress_rate_limited_routes (shared with
+        # deluge/home), not literal source text -- render it to confirm
+        # they actually come out the other side for this route.
+        # The domain/upstream/rate values above already match this role's
+        # own defaults -- only the enabled flag needs overriding to render
+        # the route at all.
+        data = yaml.safe_load(
+            render_shared_ingress(shared_ingress_grafana_enabled=True)
+        )
+
+        self.assertIn("grafana-rate-limit", data["http"]["middlewares"])
+        self.assertIn("grafana-request-limit", data["http"]["middlewares"])
+        self.assertIn("grafana-security-headers", data["http"]["middlewares"])
+
+    def test_grafana_route_reuses_the_shared_auth_credential(self) -> None:
         # Grafana deliberately shares one Basic Auth credential/usersFile
         # with the agent and Deluge routes (fewer passwords to manage),
         # rather than getting its own -- see shared_ingress_auth_username
         # in defaults/main.yml for the accepted blast-radius tradeoff.
-        grafana_chain = dynamic.split("grafana-chain:", 1)[1].split(
-            "{% endif %}", 1
-        )[0]
-        self.assertIn("shared-auth", grafana_chain)
+        # Only the enabled flag needs overriding to render the route --
+        # everything else this template needs is already correct in
+        # shared_ingress's own defaults.
+        data = yaml.safe_load(
+            render_shared_ingress(shared_ingress_grafana_enabled=True)
+        )
+
+        grafana_chain_middlewares = data["http"]["middlewares"]["grafana-chain"][
+            "chain"
+        ]["middlewares"]
+        self.assertIn("shared-auth", grafana_chain_middlewares)
 
     def test_grafana_route_renders_independently_of_other_feature_flags(
         self,

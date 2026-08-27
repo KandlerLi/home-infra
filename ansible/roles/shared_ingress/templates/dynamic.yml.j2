@@ -194,17 +194,22 @@ http:
           - agent-security-headers
 {% endif %}
 {% endif %}
-{% if shared_ingress_deluge_enabled | bool %}
-    deluge-rate-limit:
+{% set shared_ingress_rate_limited_routes = [
+  {'name': 'deluge', 'enabled': shared_ingress_deluge_enabled | bool, 'rate_average': shared_ingress_deluge_rate_average, 'rate_period': shared_ingress_deluge_rate_period, 'rate_burst': shared_ingress_deluge_rate_burst, 'max_request_body_bytes': shared_ingress_deluge_max_request_body_bytes},
+  {'name': 'grafana', 'enabled': shared_ingress_grafana_enabled | bool, 'rate_average': shared_ingress_grafana_rate_average, 'rate_period': shared_ingress_grafana_rate_period, 'rate_burst': shared_ingress_grafana_rate_burst, 'max_request_body_bytes': shared_ingress_grafana_max_request_body_bytes},
+  {'name': 'home', 'enabled': shared_ingress_home_enabled | bool, 'rate_average': shared_ingress_home_rate_average, 'rate_period': shared_ingress_home_rate_period, 'rate_burst': shared_ingress_home_rate_burst, 'max_request_body_bytes': shared_ingress_home_max_request_body_bytes},
+] %}
+{% for route in shared_ingress_rate_limited_routes if route.enabled %}
+    {{ route.name }}-rate-limit:
       rateLimit:
-        average: {{ shared_ingress_deluge_rate_average }}
-        period: {{ shared_ingress_deluge_rate_period }}
-        burst: {{ shared_ingress_deluge_rate_burst }}
-    deluge-request-limit:
+        average: {{ route.rate_average }}
+        period: {{ route.rate_period }}
+        burst: {{ route.rate_burst }}
+    {{ route.name }}-request-limit:
       buffering:
-        maxRequestBodyBytes: {{ shared_ingress_deluge_max_request_body_bytes }}
-        memRequestBodyBytes: {{ shared_ingress_deluge_max_request_body_bytes }}
-    deluge-security-headers:
+        maxRequestBodyBytes: {{ route.max_request_body_bytes }}
+        memRequestBodyBytes: {{ route.max_request_body_bytes }}
+    {{ route.name }}-security-headers:
       headers:
         contentTypeNosniff: true
         frameDeny: true
@@ -212,66 +217,14 @@ http:
         permissionsPolicy: "camera=(), microphone=(), geolocation=()"
         stsSeconds: 31536000
         stsIncludeSubdomains: false
-    deluge-chain:
+    {{ route.name }}-chain:
       chain:
         middlewares:
           - shared-auth
-          - deluge-rate-limit
-          - deluge-request-limit
-          - deluge-security-headers
-{% endif %}
-{% if shared_ingress_grafana_enabled | bool %}
-    grafana-rate-limit:
-      rateLimit:
-        average: {{ shared_ingress_grafana_rate_average }}
-        period: {{ shared_ingress_grafana_rate_period }}
-        burst: {{ shared_ingress_grafana_rate_burst }}
-    grafana-request-limit:
-      buffering:
-        maxRequestBodyBytes: {{ shared_ingress_grafana_max_request_body_bytes }}
-        memRequestBodyBytes: {{ shared_ingress_grafana_max_request_body_bytes }}
-    grafana-security-headers:
-      headers:
-        contentTypeNosniff: true
-        frameDeny: true
-        referrerPolicy: no-referrer
-        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
-        stsSeconds: 31536000
-        stsIncludeSubdomains: false
-    grafana-chain:
-      chain:
-        middlewares:
-          - shared-auth
-          - grafana-rate-limit
-          - grafana-request-limit
-          - grafana-security-headers
-{% endif %}
-{% if shared_ingress_home_enabled | bool %}
-    home-rate-limit:
-      rateLimit:
-        average: {{ shared_ingress_home_rate_average }}
-        period: {{ shared_ingress_home_rate_period }}
-        burst: {{ shared_ingress_home_rate_burst }}
-    home-request-limit:
-      buffering:
-        maxRequestBodyBytes: {{ shared_ingress_home_max_request_body_bytes }}
-        memRequestBodyBytes: {{ shared_ingress_home_max_request_body_bytes }}
-    home-security-headers:
-      headers:
-        contentTypeNosniff: true
-        frameDeny: true
-        referrerPolicy: no-referrer
-        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
-        stsSeconds: 31536000
-        stsIncludeSubdomains: false
-    home-chain:
-      chain:
-        middlewares:
-          - shared-auth
-          - home-rate-limit
-          - home-request-limit
-          - home-security-headers
-{% endif %}
+          - {{ route.name }}-rate-limit
+          - {{ route.name }}-request-limit
+          - {{ route.name }}-security-headers
+{% endfor %}
 {% if shared_ingress_apex_redirect_enabled | bool %}
     apex-redirect:
       redirectRegex:
