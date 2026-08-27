@@ -66,7 +66,3 @@ jobs:
 
       - name: Run unit tests
         run: python3 -m unittest discover -s tests -v
-
-      - name: Fix workspace permissions for the next job
-        if: always()
-        run: chmod -R a+rwX "$GITHUB_WORKSPACE"
