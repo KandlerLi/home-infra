@@ -61,6 +61,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # actions/checkout reuses this persistent workspace across runs and
+      # doesn't reset the directory's own permission bits -- a previous
+      # run's now-removed chmod -R a+rwX left it world-writable, which
+      # makes Ansible refuse to load ansible.cfg from it at all (a real
+      # security check: a world-writable ansible.cfg could be planted by
+      # anyone else with access to the directory). Self-healing regardless
+      # of history, not a one-off manual fix.
+      - name: Ensure the workspace isn't world-writable
+        run: chmod o-w "$GITHUB_WORKSPACE"
+
       - name: Ansible syntax check
         run: ansible-playbook ansible/playbooks/site.yml --syntax-check
 
