@@ -4,7 +4,11 @@ shared_ingress_start: false
 shared_ingress_cutover_confirmation: ""
 
 shared_ingress_container_name: shared-ingress
-shared_ingress_image: traefik:v3.7.1
+# Digest fetched live from the registry for this exact tag -- was tag-only
+# before, an oversight given this is the single most security-critical,
+# internet-facing image in this repo.
+shared_ingress_image: >-
+  traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42
 shared_ingress_restart_policy: unless-stopped
 shared_ingress_config_dir: /etc/shared-ingress
 shared_ingress_state_dir: /var/lib/shared-ingress

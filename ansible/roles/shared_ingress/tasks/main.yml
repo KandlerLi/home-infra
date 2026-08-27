@@ -5,7 +5,9 @@
     - name: Validate shared ingress configuration
       ansible.builtin.assert:
         that:
-          - shared_ingress_image == "traefik:v3.7.1"
+          - >-
+            shared_ingress_image
+            == "traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42"
           - shared_ingress_nextcloud_domain | length > 3
           - shared_ingress_nextcloud_upstream == "http://127.0.0.1:11000"
           - shared_ingress_agent_domain | length > 3
