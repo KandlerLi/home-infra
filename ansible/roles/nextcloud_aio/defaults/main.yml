@@ -1,4 +1,10 @@
 ---
+# Deliberately not digest-pinned, unlike every other image in this repo.
+# Nextcloud's own AIO docs recommend :latest for the mastercontainer: it
+# orchestrates the sub-containers it manages (Nextcloud app, database,
+# etc.), which self-update through AIO's own internal mechanism, not
+# through Ansible -- pinning this to an old digest risks exactly the
+# compatibility mismatch digest-pinning elsewhere is meant to prevent.
 nextcloud_aio_image: ghcr.io/nextcloud-releases/all-in-one:latest
 nextcloud_aio_container_name: nextcloud-aio-mastercontainer
 
