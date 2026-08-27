@@ -42,7 +42,6 @@
     signed_by: /etc/apt/keyrings/docker.asc
     state: present
 
-
 - name: Install Docker packages
   ansible.builtin.apt:
     name: "{{ docker_packages }}"
