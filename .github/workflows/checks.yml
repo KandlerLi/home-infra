@@ -10,25 +10,63 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Validate
+  build-image:
+    name: Build CI image
     runs-on: [self-hosted, home, debian]
     timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      uid: ${{ steps.whoami.outputs.uid }}
+      gid: ${{ steps.whoami.outputs.gid }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install Python dependencies
-        run: |
-          python3 -m pip install --upgrade pip
-          pip install -r requirements.txt
+      - name: Log in to GHCR
+        run: >-
+          echo "${{ secrets.GITHUB_TOKEN }}"
+          | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Install Ansible collections
-        run: ansible-galaxy collection install -r requirements.yml
+      - name: Build CI image
+        run: docker build -t ghcr.io/kandlerli/home-infra-ci:latest -f .github/ci/Dockerfile .
+
+      - name: Push CI image
+        run: docker push ghcr.io/kandlerli/home-infra-ci:latest
+
+      - name: Determine service account identity
+        id: whoami
+        run: |
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+          echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
+
+  validate:
+    name: Validate
+    needs: build-image
+    runs-on: [self-hosted, home, debian]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/kandlerli/home-infra-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user ${{ needs.build-image.outputs.uid }}:${{ needs.build-image.outputs.gid }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Ansible syntax check
         run: ansible-playbook ansible/playbooks/site.yml --syntax-check
 
       - name: Run unit tests
         run: python3 -m unittest discover -s tests -v
+
+      - name: Fix workspace permissions for the next job
+        if: always()
+        run: chmod -R a+rwX "$GITHUB_WORKSPACE"
