@@ -66,21 +66,6 @@ class BaseRoleTests(unittest.TestCase):
         )
         self.assertIn("version: v1.20.0", clone_task)
 
-    def test_zshrc_no_longer_references_homebrew(self) -> None:
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        self.assertIn("Remove the Homebrew shellenv line from .zshrc", tasks)
-        self.assertIn(
-            'line: "source /usr/share/zsh-autosuggestions/'
-            'zsh-autosuggestions.zsh"',
-            tasks,
-        )
-        self.assertIn(
-            'line: "source /home/{{ admin_user }}/.oh-my-zsh/custom/'
-            'themes/powerlevel10k/powerlevel10k.zsh-theme"',
-            tasks,
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

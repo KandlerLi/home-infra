@@ -85,24 +85,6 @@
     group: "{{ admin_user }}"
     recurse: true
 
-- name: Remove the Homebrew shellenv line from .zshrc
-  ansible.builtin.lineinfile:
-    path: "/home/{{ admin_user }}/.zshrc"
-    regexp: '^eval "\$\(/home/linuxbrew/\.linuxbrew/bin/brew shellenv\)"$'
-    state: absent
-
-- name: Point Powerlevel10k at the Ansible-managed clone in .zshrc
-  ansible.builtin.lineinfile:
-    path: "/home/{{ admin_user }}/.zshrc"
-    regexp: '^source /home/linuxbrew/\.linuxbrew/share/powerlevel10k/powerlevel10k\.zsh-theme$'
-    line: "source /home/{{ admin_user }}/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme"
-
-- name: Point zsh-autosuggestions at the apt package in .zshrc
-  ansible.builtin.lineinfile:
-    path: "/home/{{ admin_user }}/.zshrc"
-    regexp: '^source /home/linuxbrew/\.linuxbrew/share/zsh-autosuggestions/zsh-autosuggestions\.zsh$'
-    line: "source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
-
 # Found live during a homeserver audit: iperf3 had been apt-installed for a
 # one-off bandwidth test, and Debian's package enables its systemd service
 # unconditionally on install -- so it had been running as an unauthenticated
