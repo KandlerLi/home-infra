@@ -388,12 +388,26 @@ class HomeAgentAPITests(unittest.TestCase):
         connection = http.client.HTTPConnection(
             "127.0.0.1", self.server.server_address[1], timeout=5
         )
-        connection.request(
-            "POST",
-            "/v1/audio/transcriptions",
-            body=chunks(),
-            headers={"Content-Type": "multipart/form-data; boundary=X"},
-        )
+        # The server rejects and closes as soon as it's read enough to know
+        # the body exceeds the cap -- it doesn't wait to drain the rest of
+        # what we're still sending. Depending on TCP buffering/scheduling
+        # (confirmed to differ between bare-metal and containerized CI
+        # runs), our in-flight send can hit the now-closed socket and raise
+        # BrokenPipeError before request() ever returns -- reproduced
+        # deterministically by shrinking SO_SNDBUF, which also confirmed
+        # getresponse() still reads the already-sent 413 correctly
+        # afterward. That's the server behaving correctly, not a test
+        # failure, so tolerate it here instead of asserting on the exact
+        # send path.
+        try:
+            connection.request(
+                "POST",
+                "/v1/audio/transcriptions",
+                body=chunks(),
+                headers={"Content-Type": "multipart/form-data; boundary=X"},
+            )
+        except BrokenPipeError:
+            pass
         response = connection.getresponse()
         response.read()
         connection.close()
