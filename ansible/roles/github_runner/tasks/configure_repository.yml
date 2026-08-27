@@ -323,25 +323,16 @@
     - not github_runner_configuration.stat.exists
     - ansible_check_mode
 
-- name: Create work directory for {{ github_runner_repository }}
+- name: Create work and diagnostics directories for {{ github_runner_repository }}
   ansible.builtin.file:
-    path: >-
-      {{ github_runner_repository_install_dir }}/{{ github_runner_work_dir }}
+    path: "{{ github_runner_repository_install_dir }}/{{ item }}"
     state: directory
     owner: "{{ github_runner_repository_file_owner }}"
     group: "{{ github_runner_repository_file_owner }}"
     mode: "0750"
-  when: >-
-    not ansible_check_mode
-    or github_runner_installation_directory.stat.exists
-
-- name: Create diagnostics directory for {{ github_runner_repository }}
-  ansible.builtin.file:
-    path: "{{ github_runner_repository_install_dir }}/_diag"
-    state: directory
-    owner: "{{ github_runner_repository_file_owner }}"
-    group: "{{ github_runner_repository_file_owner }}"
-    mode: "0750"
+  loop:
+    - "{{ github_runner_work_dir }}"
+    - _diag
   when: >-
     not ansible_check_mode
     or github_runner_installation_directory.stat.exists
