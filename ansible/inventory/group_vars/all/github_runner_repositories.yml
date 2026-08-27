@@ -12,6 +12,8 @@ github_runner_github_repositories:
   repository: aws-budget
 - id: dyndns
   repository: dyndns
+- id: home-infra
+  repository: home-infra
 - id: homeserver-health-check
   repository: homeserver-health-check
 - id: ses-relay
