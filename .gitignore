@@ -18,3 +18,5 @@ __pycache__/
 .vscode/
 
 .venv/
+.ansible/
+.ruff_cache/
