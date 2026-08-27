@@ -25,35 +25,18 @@
       /dev/kvm does not exist. Hardware virtualization may be disabled
       in the BIOS/UEFI or unsupported by the CPU.
 
-- name: Check libvirt QEMU runtime user
-  ansible.builtin.command:
-    argv:
-      - getent
-      - passwd
-      - "{{ libvirt_host_qemu_user }}"
-  register: libvirt_host_qemu_user_result
-  changed_when: false
-  check_mode: false
+# getent fails the task on its own if the key isn't found (same idiom
+# deluge's role uses to look up its own service account) -- no need for
+# a raw `getent` shell-out plus a separate assert on the return code.
+- name: Verify libvirt QEMU runtime user exists
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ libvirt_host_qemu_user }}"
 
-- name: Check libvirt QEMU runtime group
-  ansible.builtin.command:
-    argv:
-      - getent
-      - group
-      - "{{ libvirt_host_qemu_group }}"
-  register: libvirt_host_qemu_group_result
-  changed_when: false
-  check_mode: false
-
-- name: Verify libvirt QEMU runtime identity
-  ansible.builtin.assert:
-    that:
-      - libvirt_host_qemu_user_result.rc == 0
-      - libvirt_host_qemu_group_result.rc == 0
-    fail_msg: >-
-      The configured libvirt QEMU user or group does not exist.
-      Verify libvirt_host_qemu_user and libvirt_host_qemu_group
-      against the host's libvirt configuration.
+- name: Verify libvirt QEMU runtime group exists
+  ansible.builtin.getent:
+    database: group
+    key: "{{ libvirt_host_qemu_group }}"
 
 - name: Create cloud image cache directory
   ansible.builtin.file:
