@@ -1,4 +1,11 @@
 ---
+- name: Install Docker repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+    state: present
+    update_cache: true
+
 - name: Ensure APT keyring directory exists
   ansible.builtin.file:
     path: /etc/apt/keyrings
@@ -14,13 +21,6 @@
     owner: root
     group: root
     mode: "0644"
-
-- name: Install Docker repository prerequisites
-  ansible.builtin.apt:
-    name:
-      - ca-certificates
-    state: present
-    update_cache: true
 
 - name: Remove legacy Docker repository configuration
   ansible.builtin.file:
