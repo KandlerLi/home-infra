@@ -39,6 +39,70 @@
       - www-data
     append: true
 
+# Was Homebrew-installed by hand before, entirely outside this repo --
+# migrated here so the interactive shell setup isn't an untracked install
+# any more. zsh-syntax-highlighting was already apt-installed and unused
+# by Ansible; folded in here too since it's part of the same shell setup.
+- name: Install interactive shell packages
+  ansible.builtin.apt:
+    name:
+      - zsh
+      - zsh-autosuggestions
+      - zsh-syntax-highlighting
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Set the administrator's login shell to zsh
+  ansible.builtin.user:
+    name: "{{ admin_user }}"
+    shell: /usr/bin/zsh
+
+# Pinned to today's HEAD, not a moving branch -- a future update is a
+# deliberate SHA bump here, the same way Terraform/base-image versions
+# are pinned elsewhere in this repo.
+- name: Install Oh My Zsh
+  ansible.builtin.git:
+    repo: https://github.com/ohmyzsh/ohmyzsh.git
+    dest: "/home/{{ admin_user }}/.oh-my-zsh"
+    version: 146461f7c6d95f4ba1220559d66eb113418b40a8
+    depth: 1
+
+# Pinned to v1.20.0 -- the exact version already in use via Homebrew, so
+# migrating off brew doesn't change the prompt's look.
+- name: Install Powerlevel10k theme
+  ansible.builtin.git:
+    repo: https://github.com/romkatv/powerlevel10k.git
+    dest: "/home/{{ admin_user }}/.oh-my-zsh/custom/themes/powerlevel10k"
+    version: v1.20.0
+    depth: 1
+
+- name: Reclaim ownership of the Oh My Zsh installation
+  ansible.builtin.file:
+    path: "/home/{{ admin_user }}/.oh-my-zsh"
+    state: directory
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    recurse: true
+
+- name: Remove the Homebrew shellenv line from .zshrc
+  ansible.builtin.lineinfile:
+    path: "/home/{{ admin_user }}/.zshrc"
+    regexp: '^eval "\$\(/home/linuxbrew/\.linuxbrew/bin/brew shellenv\)"$'
+    state: absent
+
+- name: Point Powerlevel10k at the Ansible-managed clone in .zshrc
+  ansible.builtin.lineinfile:
+    path: "/home/{{ admin_user }}/.zshrc"
+    regexp: '^source /home/linuxbrew/\.linuxbrew/share/powerlevel10k/powerlevel10k\.zsh-theme$'
+    line: "source /home/{{ admin_user }}/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme"
+
+- name: Point zsh-autosuggestions at the apt package in .zshrc
+  ansible.builtin.lineinfile:
+    path: "/home/{{ admin_user }}/.zshrc"
+    regexp: '^source /home/linuxbrew/\.linuxbrew/share/zsh-autosuggestions/zsh-autosuggestions\.zsh$'
+    line: "source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+
 # Found live during a homeserver audit: iperf3 had been apt-installed for a
 # one-off bandwidth test, and Debian's package enables its systemd service
 # unconditionally on install -- so it had been running as an unauthenticated
