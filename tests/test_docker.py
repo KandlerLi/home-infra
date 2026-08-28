@@ -19,13 +19,27 @@ class DockerRoleTests(unittest.TestCase):
         self.assertIn("dest: /etc/docker/daemon.json", tasks)
         self.assertIn("when: docker_daemon_config | length > 0", tasks)
 
-    def test_docker_restarts_only_when_daemon_config_changes(self) -> None:
+    def test_daemon_config_override_is_removed_when_unconfigured(self) -> None:
+        # Symmetric with the install task above -- going back to {} (the
+        # default) must actually revert a previously-installed override,
+        # not just silently leave the old file in place.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        removal_task = tasks.split(
+            "Remove Docker daemon configuration override", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("path: /etc/docker/daemon.json", removal_task)
+        self.assertIn("state: absent", removal_task)
+        self.assertIn("when: docker_daemon_config | length == 0", removal_task)
+
+    def test_docker_restarts_when_daemon_config_changes_either_way(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         service_task = tasks.split(
             "Ensure Docker service is enabled and running", 1
         )[1]
         self.assertIn("docker_daemon_config_file.changed", service_task)
+        self.assertIn("docker_daemon_config_removed.changed", service_task)
 
 
 if __name__ == "__main__":

@@ -53,7 +53,9 @@
 # it if a real need shows up again (was used once to lower the runner
 # VM's bridge MTU after a live TLS reset; removed after direct testing
 # showed ICMP PMTUD works correctly end-to-end through every hop on that
-# path -- see the docker role's README).
+# path -- see the docker role's README). Symmetric with the removal task
+# below it, so going back to {} actually reverts a previously-installed
+# override instead of silently leaving it in place.
 - name: Install Docker daemon configuration
   ansible.builtin.copy:
     content: "{{ docker_daemon_config | to_nice_json }}\n"
@@ -64,6 +66,13 @@
   register: docker_daemon_config_file
   when: docker_daemon_config | length > 0
 
+- name: Remove Docker daemon configuration override
+  ansible.builtin.file:
+    path: /etc/docker/daemon.json
+    state: absent
+  register: docker_daemon_config_removed
+  when: docker_daemon_config | length == 0
+
 - name: Ensure Docker service is enabled and running
   ansible.builtin.systemd_service:
     name: "{{ docker_service_name }}"
@@ -71,6 +80,7 @@
     state: >-
       {{
         'restarted'
-        if docker_daemon_config_file.changed | default(false)
+        if (docker_daemon_config_file.changed | default(false)
+            or docker_daemon_config_removed.changed | default(false))
         else 'started'
       }}
