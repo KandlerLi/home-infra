@@ -56,3 +56,9 @@ shared_ingress_grafana_enabled: true
 # exists.
 landing_page_enabled: true
 shared_ingress_home_enabled: true
+
+# Network-wide DNS ad-blocking (ADR 0020). Confirmed live: blocky and
+# blocky-postgres answering real DNS queries and the blocking-status
+# API correctly. Needs blocky_postgres_password set via sops before a
+# site.yml run against this flag will pass its own validate checks.
+blocky_enabled: true
