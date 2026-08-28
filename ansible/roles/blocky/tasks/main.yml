@@ -162,13 +162,18 @@
           - "{{ blocky_config_dir }}/config.yml:/app/config.yml:ro"
         tmpfs:
           - /tmp:rw,noexec,nosuid,nodev,size=16m
+        # Blocky's own image is FROM scratch -- no shell, no wget/curl, not
+        # even /bin/sh (confirmed live: `docker exec blocky sh` fails with
+        # "executable file not found in $PATH"). The image ships its own
+        # HEALTHCHECK using the blocky binary's built-in "healthcheck"
+        # subcommand for exactly this reason; reuse that instead of a
+        # wget-based CMD, which failed on every check live and never
+        # reported the container healthy.
         healthcheck:
           test:
             - CMD
-            - wget
-            - --spider
-            - --quiet
-            - "http://127.0.0.1:{{ blocky_http_port }}/api/blocking/status"
+            - /app/blocky
+            - healthcheck
           interval: 30s
           timeout: 5s
           retries: 5

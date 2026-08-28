@@ -89,6 +89,29 @@ class BlockyRoleTests(unittest.TestCase):
         self.assertIn("- NET_BIND_SERVICE", blocky_container_task)
         self.assertIn("read_only: true", blocky_container_task)
 
+    def test_healthcheck_uses_blockys_own_binary_not_a_missing_shell_tool(
+        self,
+    ) -> None:
+        # Confirmed live (2026-08-28, a real deploy): Blocky's own image is
+        # FROM scratch -- no shell, no wget/curl, not even /bin/sh. A
+        # wget-based CMD healthcheck fails on every check
+        # ("executable file not found in $PATH") and the container never
+        # reports healthy. The image ships its own HEALTHCHECK using the
+        # blocky binary's built-in "healthcheck" subcommand; reuse that.
+        tasks_path = ROLE_ROOT / "tasks/main.yml"
+        tasks = yaml.safe_load(tasks_path.read_text())
+        blocky_container_task = next(
+            task
+            for task in tasks[0]["block"]
+            if task["name"] == "Ensure Blocky container is running"
+        )
+        healthcheck_test = blocky_container_task["community.docker.docker_container"][
+            "healthcheck"
+        ]["test"]
+
+        self.assertNotIn("wget", healthcheck_test)
+        self.assertEqual(healthcheck_test, ["CMD", "/app/blocky", "healthcheck"])
+
     def test_postgres_is_loopback_only_via_listen_addresses(self) -> None:
         # Postgres shares Blocky's host network namespace (network_mode:
         # host), so nothing stops it listening on every host interface by
