@@ -352,6 +352,30 @@ class BlockyIntegrationTests(unittest.TestCase):
                 self.assertNotIn("${DS_", raw)
                 self.assertNotIn("${VAR_", raw)
 
+    def test_query_variables_refresh_on_dashboard_load(self) -> None:
+        # Confirmed live (2026-08-28, a real deploy): the DNS Type,
+        # Client name, and Response type filters used refresh: 2 ("On
+        # Time Range Change"), inherited as-is from the vendored
+        # dashboard. That means their defining SQL never ran on a plain
+        # dashboard load, only on a time-range change -- so on first
+        # view "options" stayed empty, "All" (the default selection)
+        # expanded to nothing, and every panel's `IN (...)` clause
+        # became `IN ()`, a Postgres syntax error (SQLSTATE 42601),
+        # reproduced directly through Grafana's own query API. refresh:
+        # 1 ("On Dashboard Load") forces these to populate with real
+        # values every time the dashboard is opened, not just after a
+        # time-range change.
+        dashboards_dir = ROLE_ROOT / "files/dashboards"
+        query_log = json.loads((dashboards_dir / "blocky-postgres.json").read_text())
+
+        query_vars = [
+            v for v in query_log["templating"]["list"] if v.get("type") == "query"
+        ]
+        self.assertTrue(query_vars)
+        for variable in query_vars:
+            with self.subTest(variable=variable["name"]):
+                self.assertEqual(variable["refresh"], 1)
+
     def test_dashboards_are_installed_only_when_blocky_is_enabled_and_cleaned_up_otherwise(
         self,
     ) -> None:
