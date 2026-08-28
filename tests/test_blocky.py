@@ -130,6 +130,33 @@ class BlockyRoleTests(unittest.TestCase):
             ],
         )
 
+    def test_postgres_data_dir_ownership_matches_the_containers_own_uid(
+        self,
+    ) -> None:
+        # Confirmed live (2026-08-28, a real deploy): this task used to
+        # assert owner/group: root on every site.yml run, which silently
+        # reset the already-running Postgres container's data directory
+        # back to root:root out from under it (the container's own
+        # entrypoint had already chowned it to postgres:postgres, uid 70,
+        # during initdb). New connections failed with "could not open
+        # file 'global/pg_filenode.map': Permission denied" -- the
+        # query-log dashboard showed nothing as a result. Owning it 70:70
+        # here, matching the image's own fixed postgres uid/gid, keeps
+        # this task idempotent against what the container maintains
+        # instead of fighting it every run.
+        tasks_path = ROLE_ROOT / "tasks/main.yml"
+        tasks = yaml.safe_load(tasks_path.read_text())
+        data_dir_task = next(
+            task
+            for task in tasks[0]["block"]
+            if task["name"] == "Create Blocky Postgres data directory"
+        )
+        file_args = data_dir_task["ansible.builtin.file"]
+
+        self.assertEqual(file_args["owner"], "70")
+        self.assertEqual(file_args["group"], "70")
+        self.assertNotEqual(file_args["owner"], "root")
+
     def test_postgres_is_loopback_only_via_listen_addresses(self) -> None:
         # Postgres shares Blocky's host network namespace (network_mode:
         # host), so nothing stops it listening on every host interface by

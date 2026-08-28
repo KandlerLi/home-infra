@@ -30,12 +30,28 @@
         group: root
         mode: "0755"
 
+    # owner/group is 70:70, not root -- that's postgres's fixed uid/gid in
+    # the official postgres:alpine image family (confirmed live via
+    # `docker exec blocky-postgres id postgres`), the same uid its own
+    # entrypoint already uses for everything *inside* this directory
+    # (base/, global/, etc., created via initdb on first run). Owning
+    # root:root here was a real bug: this task re-asserted that on every
+    # site.yml run, which doesn't touch an already-running container, so
+    # it silently reset the *top-level* PGDATA directory back to
+    # root:root out from under a Postgres that had already correctly
+    # chowned it to postgres:postgres. The main postmaster process kept
+    # running (already had its files open), but every new connection
+    # after that failed immediately with "could not open file
+    # 'global/pg_filenode.map': Permission denied" -- confirmed live,
+    # this is why the query-log dashboard showed nothing. Matching 70:70
+    # here means this task is idempotent against what the container
+    # itself maintains, instead of fighting it every run.
     - name: Create Blocky Postgres data directory
       ansible.builtin.file:
         path: "{{ blocky_postgres_data_dir }}"
         state: directory
-        owner: root
-        group: root
+        owner: "70"
+        group: "70"
         mode: "0700"
 
     # Embeds blocky_postgres_password in the queryLog.target connection
