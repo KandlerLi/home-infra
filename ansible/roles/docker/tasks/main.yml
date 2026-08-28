@@ -50,11 +50,10 @@
 
 # Empty by default -- every network docker network create makes still
 # just gets Docker's own default MTU. Set docker_daemon_config to override
-# it (see github-runner.yml, where the runner VM's guest networking sits
-# behind an extra libvirt NAT hop on top of the host's own network and
-# reset TLS connections downloading a Terraform provider from inside a
-# job container, confirmed live -- a classic symptom of an MTU mismatch
-# on a nested/virtualized network path).
+# it if a real need shows up again (was used once to lower the runner
+# VM's bridge MTU after a live TLS reset; removed after direct testing
+# showed ICMP PMTUD works correctly end-to-end through every hop on that
+# path -- see the docker role's README).
 - name: Install Docker daemon configuration
   ansible.builtin.copy:
     content: "{{ docker_daemon_config | to_nice_json }}\n"

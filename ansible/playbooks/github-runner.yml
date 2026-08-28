@@ -18,16 +18,7 @@
     # Before github_runner: every repository's CI now runs inside a
     # container built from that repo's own Dockerfile, so the docker
     # group must exist before configure_repository.yml adds each
-    # per-repo service account to it. The lower MTU is scoped to this VM
-    # only (not the main homeserver's docker role invocation in site.yml)
-    # -- this guest's networking sits behind an extra libvirt NAT hop the
-    # bare-metal host doesn't have, and confirmed live: a job container's
-    # TLS connection downloading a Terraform provider got reset partway
-    # through on the runner's own auto-created per-job bridge network.
+    # per-repo service account to it.
     - role: docker
-      docker_daemon_config:
-        default-network-opts:
-          bridge:
-            com.docker.network.driver.mtu: "1400"
     - role: github_runner
       github_runner_role_mode: configure_guest
