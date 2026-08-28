@@ -174,3 +174,15 @@ monitoring_alert_email: julian.kandler@outlook.com
 # Alert thresholds, per ADR 0017's four scope areas.
 monitoring_alert_disk_full_percent: 85
 monitoring_alert_cert_expiry_days: 14
+
+# Cross-role references into the blocky role, the same default()-guarded
+# pattern home_agent already uses for nextcloud_tools -- lets this role
+# add Blocky's scrape job and Postgres datasource only when blocky is
+# actually enabled, without a hard dependency on it always being present.
+monitoring_blocky_enabled: "{{ blocky_enabled | default(false) }}"
+monitoring_blocky_http_port: "{{ blocky_http_port | default(4000) }}"
+monitoring_blocky_postgres_port: "{{ blocky_postgres_port | default(5432) }}"
+monitoring_blocky_postgres_database: >-
+  {{ blocky_postgres_database | default('blocky_query_log') }}
+monitoring_blocky_postgres_user: "{{ blocky_postgres_user | default('blocky') }}"
+monitoring_blocky_postgres_password: "{{ blocky_postgres_password | default('') }}"

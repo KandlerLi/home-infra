@@ -8,6 +8,7 @@
     - base
     - storage
     - docker
+    - blocky
     - deluge
     - nextcloud_aio
     - nextcloud_tools

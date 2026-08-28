@@ -27,6 +27,16 @@ scrape_configs:
       - targets:
           - 127.0.0.1:{{ monitoring_cadvisor_port }}
 
+{% if monitoring_blocky_enabled | bool %}
+  # Blocky exposes real Prometheus metrics natively, unlike
+  # node_exporter/cAdvisor/blackbox_exporter, which needed dedicated
+  # sidecar exporters -- scraped directly, no /probe proxying needed.
+  - job_name: blocky
+    static_configs:
+      - targets:
+          - 127.0.0.1:{{ monitoring_blocky_http_port }}
+{% endif %}
+
   # blackbox_exporter's own multi-target pattern: each real target is
   # passed as a "target" query param on a single /probe endpoint, not
   # scraped directly -- the exporter does the actual probing per request.

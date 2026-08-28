@@ -1,0 +1,40 @@
+upstreams:
+  groups:
+    default:
+{% for upstream in blocky_upstreams %}
+      - {{ upstream }}
+{% endfor %}
+
+bootstrapDns:
+{% for ip in blocky_bootstrap_dns %}
+  - upstream: {{ ip }}
+{% endfor %}
+
+ports:
+  dns: {{ blocky_bind_address }}:{{ blocky_dns_port }}
+  http: 127.0.0.1:{{ blocky_http_port }}
+
+prometheus:
+  enable: true
+  path: /metrics
+
+blocking:
+  denylists:
+{% for group, urls in blocky_denylists.items() %}
+    {{ group }}:
+{% for url in urls %}
+      - {{ url }}
+{% endfor %}
+{% endfor %}
+  clientGroupsBlock:
+    default:
+{% for group in blocky_denylists.keys() %}
+      - {{ group }}
+{% endfor %}
+
+queryLog:
+  type: postgresql
+  target: >-
+    postgres://{{ blocky_postgres_user }}:{{ blocky_postgres_password }}@127.0.0.1:{{ blocky_postgres_port }}/{{ blocky_postgres_database }}
+  logRetentionDays: {{ blocky_query_log_retention_days }}
+  flushInterval: 30s

@@ -8,3 +8,18 @@ datasources:
     url: http://127.0.0.1:{{ monitoring_prometheus_port }}
     isDefault: true
     editable: false
+{% if monitoring_blocky_enabled | bool %}
+  - name: blocky-postgresql
+    uid: blocky-postgres
+    type: postgres
+    access: proxy
+    url: 127.0.0.1:{{ monitoring_blocky_postgres_port }}
+    database: {{ monitoring_blocky_postgres_database }}
+    user: {{ monitoring_blocky_postgres_user }}
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1700
+    secureJsonData:
+      password: {{ monitoring_blocky_postgres_password }}
+    editable: false
+{% endif %}

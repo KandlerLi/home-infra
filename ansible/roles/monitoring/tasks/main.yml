@@ -220,13 +220,29 @@
         mode: "0644"
       register: monitoring_blackbox_config
 
+    # Renamed from prometheus.yml now that this can also carry the
+    # Blocky Postgres datasource -- Grafana just reads every YAML file
+    # in this directory, so the filename itself has no meaning to it.
+    # no_log: true because, once Blocky is enabled, this also renders
+    # monitoring_blocky_postgres_password.
     - name: Install Grafana datasource provisioning
       ansible.builtin.template:
         src: grafana_datasources.yml.j2
-        dest: "{{ monitoring_config_dir }}/grafana/provisioning/datasources/prometheus.yml"
+        dest: "{{ monitoring_config_dir }}/grafana/provisioning/datasources/datasources.yml"
         owner: root
         group: root
         mode: "0644"
+      no_log: true
+
+    # Actively remove the file this task used to write, not just stop
+    # writing it -- an already-deployed homeserver would otherwise keep
+    # the stale prometheus.yml sitting alongside the new datasources.yml
+    # forever (a template rename never cleans up its old destination on
+    # its own).
+    - name: Remove pre-rename Grafana datasource provisioning file
+      ansible.builtin.file:
+        path: "{{ monitoring_config_dir }}/grafana/provisioning/datasources/prometheus.yml"
+        state: absent
 
     - name: Install Grafana dashboard provider config
       ansible.builtin.template:
@@ -243,10 +259,24 @@
         owner: root
         group: root
         mode: "0644"
+      loop: >-
+        {{
+          ['host-health.json', 'container-health.json', 'service-reachability.json']
+          + (['blocky.json', 'blocky-postgres.json'] if monitoring_blocky_enabled | bool else [])
+        }}
+
+    # Symmetric with the loop above -- if Blocky is ever disabled again
+    # after being enabled, its dashboards shouldn't just stay behind
+    # showing broken/empty panels for a datasource and scrape target
+    # that no longer exist.
+    - name: Remove Blocky Grafana dashboards when Blocky is disabled
+      ansible.builtin.file:
+        path: "{{ monitoring_config_dir }}/grafana/dashboards/{{ item }}"
+        state: absent
       loop:
-        - host-health.json
-        - container-health.json
-        - service-reachability.json
+        - blocky.json
+        - blocky-postgres.json
+      when: not (monitoring_blocky_enabled | bool)
 
     # Contains the SES SMTP password and the ntfy topic name, so owner-only
     # read access -- same reasoning as the Grafana admin password file

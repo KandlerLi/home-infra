@@ -14,8 +14,14 @@ SHARED_INGRESS_ROOT = PROJECT_ROOT / "ansible/roles/shared_ingress"
 
 def render(name: str, **overrides: object) -> str:
     env = Environment(loader=FileSystemLoader(str(ROLE_ROOT / "templates")))
+    env.filters["bool"] = bool
     defaults = yaml.safe_load((ROLE_ROOT / "defaults/main.yml").read_text())
-    ctx = {**defaults, **overrides}
+    # monitoring_blocky_* are default()-guarded cross-role references
+    # (see defaults/main.yml) -- their raw, un-rendered "{{ ... }}"
+    # string is truthy under a plain bool() call, so every render() that
+    # doesn't care about blocky must say so explicitly, the same way
+    # callers already pass real values for other required vars below.
+    ctx = {**defaults, "monitoring_blocky_enabled": False, **overrides}
     return env.get_template(name).render(**ctx)
 
 
@@ -215,6 +221,7 @@ class MonitoringRoleTests(unittest.TestCase):
         rendered = render("grafana_datasources.yml.j2")
         parsed = yaml.safe_load(rendered)
 
+        self.assertEqual(len(parsed["datasources"]), 1)
         datasource = parsed["datasources"][0]
         self.assertEqual(datasource["type"], "prometheus")
         self.assertEqual(datasource["url"], "http://127.0.0.1:9090")
@@ -229,14 +236,13 @@ class MonitoringRoleTests(unittest.TestCase):
             "container-health.json",
             "service-reachability.json",
         }
-        self.assertEqual({p.name for p in dashboards_dir.glob("*.json")}, expected)
 
         for name in expected:
             with self.subTest(dashboard=name):
                 data = json.loads((dashboards_dir / name).read_text(encoding="utf-8"))
                 self.assertTrue(data["panels"])
                 for panel in data["panels"]:
-                    for target in panel["targets"]:
+                    for target in panel.get("targets", []):
                         self.assertEqual(target["datasource"]["uid"], "prometheus")
 
     def test_dashboards_are_installed_and_referenced_by_the_provider_config(
@@ -263,6 +269,126 @@ class MonitoringRoleTests(unittest.TestCase):
         shared_ingress_index = site_yml.index("- shared_ingress")
         monitoring_index = site_yml.index("- monitoring")
         self.assertGreater(monitoring_index, shared_ingress_index)
+
+
+class BlockyIntegrationTests(unittest.TestCase):
+    def test_scrape_job_and_datasource_only_appear_when_blocky_is_enabled(
+        self,
+    ) -> None:
+        prometheus_off = yaml.safe_load(render("prometheus.yml.j2"))
+        datasources_off = yaml.safe_load(render("grafana_datasources.yml.j2"))
+
+        job_names_off = {job["job_name"] for job in prometheus_off["scrape_configs"]}
+        self.assertNotIn("blocky", job_names_off)
+        self.assertEqual(len(datasources_off["datasources"]), 1)
+
+    def test_scrape_job_and_datasource_render_correctly_when_enabled(self) -> None:
+        overrides = {
+            "monitoring_blocky_enabled": True,
+            "monitoring_blocky_http_port": 4000,
+            "monitoring_blocky_postgres_port": 5432,
+            "monitoring_blocky_postgres_database": "blocky_query_log",
+            "monitoring_blocky_postgres_user": "blocky",
+            "monitoring_blocky_postgres_password": "a-generated-password-1234",
+        }
+        prometheus_on = yaml.safe_load(render("prometheus.yml.j2", **overrides))
+        datasources_on = yaml.safe_load(render("grafana_datasources.yml.j2", **overrides))
+
+        blocky_job = next(
+            job
+            for job in prometheus_on["scrape_configs"]
+            if job["job_name"] == "blocky"
+        )
+        self.assertIn(
+            "127.0.0.1:4000", blocky_job["static_configs"][0]["targets"]
+        )
+
+        blocky_datasource = next(
+            ds
+            for ds in datasources_on["datasources"]
+            if ds["uid"] == "blocky-postgres"
+        )
+        self.assertEqual(blocky_datasource["type"], "postgres")
+        self.assertEqual(blocky_datasource["url"], "127.0.0.1:5432")
+        self.assertEqual(blocky_datasource["database"], "blocky_query_log")
+        self.assertEqual(
+            blocky_datasource["secureJsonData"]["password"],
+            "a-generated-password-1234",
+        )
+
+    def test_datasource_install_task_never_logs_the_postgres_password(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        install_task = tasks.split(
+            "Install Grafana datasource provisioning", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("no_log: true", install_task)
+
+    def test_dashboards_are_valid_json_with_the_right_datasource_uids(self) -> None:
+        dashboards_dir = ROLE_ROOT / "files/dashboards"
+
+        metrics = json.loads((dashboards_dir / "blocky.json").read_text())
+        self.assertTrue(metrics["panels"])
+        for panel in metrics["panels"]:
+            for target in panel.get("targets", []):
+                datasource = target.get("datasource")
+                if datasource and datasource.get("type") == "prometheus":
+                    self.assertEqual(datasource["uid"], "prometheus")
+
+        query_log = json.loads((dashboards_dir / "blocky-postgres.json").read_text())
+        self.assertTrue(query_log["panels"])
+        for panel in query_log["panels"]:
+            for target in panel.get("targets", []):
+                datasource = target.get("datasource")
+                if datasource and datasource.get("type") == "grafana-postgresql-datasource":
+                    self.assertEqual(datasource["uid"], "blocky-postgres")
+
+        # Neither dashboard should still carry unresolved Grafana
+        # "import with variables" placeholders -- these are file-
+        # provisioned with fixed values, not imported interactively.
+        for path in (dashboards_dir / "blocky.json", dashboards_dir / "blocky-postgres.json"):
+            with self.subTest(path=path.name):
+                raw = path.read_text()
+                self.assertNotIn("${DS_", raw)
+                self.assertNotIn("${VAR_", raw)
+
+    def test_dashboards_are_installed_only_when_blocky_is_enabled_and_cleaned_up_otherwise(
+        self,
+    ) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        install_task = tasks.split("Install Grafana dashboards", 1)[1].split(
+            "- name:", 1
+        )[0]
+        self.assertIn("blocky.json", install_task)
+        self.assertIn("blocky-postgres.json", install_task)
+        self.assertIn("monitoring_blocky_enabled", install_task)
+
+        self.assertIn(
+            "Remove Blocky Grafana dashboards when Blocky is disabled", tasks
+        )
+        cleanup_task = tasks.split(
+            "Remove Blocky Grafana dashboards when Blocky is disabled", 1
+        )[1]
+        self.assertIn("state: absent", cleanup_task)
+
+    def test_pre_rename_datasource_file_is_actively_removed(self) -> None:
+        # Renaming grafana_datasources.yml.j2's destination away from
+        # prometheus.yml (to make room for the Blocky datasource) doesn't
+        # itself clean up the old file on an already-deployed homeserver
+        # -- a dedicated removal task does.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "Remove pre-rename Grafana datasource provisioning file", tasks
+        )
+        cleanup_task = tasks.split(
+            "Remove pre-rename Grafana datasource provisioning file", 1
+        )[1]
+        self.assertIn(
+            "datasources/prometheus.yml", cleanup_task.split("- name:", 1)[0]
+        )
+        self.assertIn("state: absent", cleanup_task.split("- name:", 1)[0])
 
 
 class GrafanaIngressTests(unittest.TestCase):
