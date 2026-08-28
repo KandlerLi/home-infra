@@ -6,7 +6,6 @@
 
   roles:
     - role: home_agent
-      home_agent_enabled: true
       home_agent_frontend_network_enabled: true
     - role: open_webui
       open_webui_enabled: true

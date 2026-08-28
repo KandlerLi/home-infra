@@ -6,7 +6,6 @@
 
   roles:
     - role: home_agent
-      home_agent_enabled: true
       home_agent_nextcloud_tools_enabled: false
       home_agent_force_recreate: true
 

@@ -29,7 +29,6 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
             inventory,
         )
         self.assertIn("nextcloud_tools_enabled: true", inventory)
-        self.assertIn("home_agent_enabled: true", inventory)
 
     def test_service_is_network_and_process_restricted(self) -> None:
         unit = (
@@ -122,9 +121,13 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
                         PROJECT_ROOT / f"ansible/roles/{role_name}/tasks/main.yml"
                     ).read_text()
                 )
+                # nextcloud_tools is still gated by its own enable flag
+                # (block + when); home_agent is always applied (a flat
+                # task list, no wrapping block) -- handle both shapes.
+                top_level_tasks = tasks[0]["block"] if "block" in tasks[0] else tasks
                 deploy_task = next(
                     task
-                    for task in tasks[0]["block"]
+                    for task in top_level_tasks
                     if "deploy_socket_service.yml"
                     in task.get("ansible.builtin.include_tasks", "")
                 )

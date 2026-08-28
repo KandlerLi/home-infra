@@ -1,5 +1,4 @@
 ---
-home_agent_enabled: false
 home_agent_force_recreate: false
 
 home_agent_container_name: home-agent

@@ -132,7 +132,6 @@
       nextcloud_tools_enabled: true
       nextcloud_tools_app_password: "{{ nextcloud_tools_role_app_password }}"
     - role: home_agent
-      home_agent_enabled: true
       home_agent_nextcloud_tools_enabled: true
       home_agent_force_recreate: true
 

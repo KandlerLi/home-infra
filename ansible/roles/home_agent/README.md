@@ -1,9 +1,9 @@
 # home_agent
 
-Opt-in private homeserver assistant (`home_agent_enabled`, default
-`false`). A small OpenAI-backed HTTP API, loopback-only, exposing an
-OpenAI-compatible `/v1/chat/completions` endpoint plus a legacy `/v1/chat`
-and `/v1/audio/transcriptions` (so Open WebUI can use it as both a chat
+The private homeserver assistant. Always applied (no enable flag). A
+small OpenAI-backed HTTP API, loopback-only, exposing an OpenAI-compatible
+`/v1/chat/completions` endpoint plus a legacy `/v1/chat` and
+`/v1/audio/transcriptions` (so Open WebUI can use it as both a chat
 backend and its speech-to-text engine).
 
 - Runs a Docker container built from `files/agent/` (its own Python

@@ -7,4 +7,3 @@
   roles:
     - role: nextcloud_tools
     - role: home_agent
-      home_agent_enabled: true

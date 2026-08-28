@@ -8,11 +8,11 @@ and an isolated GitHub Actions runner VM.
 - Base operating system packages
 - `/mnt/black-hdd` storage mount
 - Docker and Nextcloud AIO
+- Private homeserver health agent
 - Opt-in restricted Nextcloud file and shopping-list tools for the agent
 - Opt-in Finanzfluss Sankey budget exporter (planned for a future
   restructure away from Finanzfluss)
-- Opt-in private homeserver health agent
-- Opt-in Open WebUI chat frontend for the restricted agent
+- Opt-in Open WebUI chat frontend for the agent
 - Opt-in BitTorrent client (Deluge)
 - Opt-in static landing page linking the other home services
 - Opt-in shared Traefik ingress fronting the services above
@@ -119,7 +119,8 @@ sops ansible/inventory/group_vars/all/secrets.sops.yml
 
 ## Private homeserver agent
 
-The opt-in `home_agent` role installs two deliberately separate components:
+The `home_agent` role (always applied) installs two deliberately separate
+components:
 
 - `home-tools`, a hardened host systemd service that exposes only fixed,
   read-only JSON checks over `/run/home-tools/home-tools.sock`
@@ -138,16 +139,16 @@ Add the API key to the encrypted SOPS file:
 home_agent_openai_api_key: "sk-..."
 ```
 
-Then deploy only the agent stack:
+Then deploy just the agent stack (faster than a full `site.yml` run, e.g.
+after an image or code change):
 
 ```bash
 .venv/bin/ansible-playbook ansible/playbooks/home-agent.yml \
   --ask-become-pass
 ```
 
-The main `site.yml` includes the role but leaves it disabled by default, so
-existing infrastructure runs are unchanged until the dedicated playbook is
-used. The model defaults to `gpt-5.4-mini` and can be changed with
+A normal `site.yml` run applies it too -- the role has no enable flag.
+The model defaults to `gpt-5.4-mini` and can be changed with
 `home_agent_model`.
 
 After deployment, make a local request from the homeserver:
@@ -209,8 +210,8 @@ That one share remains manual so Ansible never needs a credential for the
 account that owns your personal files.
 
 After private list/search/text-read checks and an Open WebUI acceptance passed,
-`home_agent_enabled` and `nextcloud_tools_enabled` were persisted in inventory
-so aggregate applies retain the validated socket integration. File metadata or
+`nextcloud_tools_enabled` was persisted in inventory so aggregate applies
+retain the validated socket integration. File metadata or
 text content selected by these tools is sent to the configured cloud model only
 when the user explicitly requests a Nextcloud operation. Writes, bulk indexing,
 PDF/Office extraction, and image-content recognition require separate reviewed
