@@ -62,13 +62,13 @@ class NextcloudToolsAnsibleTests(unittest.TestCase):
     def test_writes_use_conflict_safe_conditional_headers(self) -> None:
         # Superseded 2026-08-21: ADR 0008 deferred writes to "a later ADR
         # with per-operation confirmation, conflict protection, and safe
-        # auditing" -- that's ADR 0011, now implemented. The invariant
-        # changed from "no write verbs exist" to "every write verb is
-        # conditional and only reachable through the gated propose/confirm
-        # flow" -- see NextcloudWebDAVWriteTests and
-        # ProposeConfirmWriteHandlerTests in test_nextcloud_tools_service.py
-        # for the detailed coverage (conflict headers, extension/size
-        # limits, confirmation-code gating, single-use codes).
+        # auditing" -- that's ADR 0011. ADR 0013 then removed the
+        # confirmation round-trip again (writes execute immediately once
+        # validated). The invariant is now "every write verb is conditional
+        # and bounded by scope/extension/size limits, with no confirmation
+        # step" -- see NextcloudWebDAVWriteTests and WriteFileHandlerTests
+        # in test_nextcloud_tools_service.py for the detailed coverage
+        # (conflict headers, extension/size limits, immediate execution).
         service = (
             PROJECT_ROOT
             / "ansible/roles/nextcloud_tools/files/nextcloud_tools_service.py"
