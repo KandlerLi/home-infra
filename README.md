@@ -18,6 +18,8 @@ and an isolated GitHub Actions runner VM.
 - Opt-in shared Traefik ingress fronting the services above
 - Opt-in Prometheus/Grafana monitoring stack (host health, container
   health, service reachability, certificate expiry)
+- Opt-in network-wide DNS ad-blocking (Blocky), with a Pi-hole-style
+  query-log dashboard in Grafana
 - KVM/QEMU and libvirt
 - Debian 13 GitHub Actions runner VM on a private NAT network
 
@@ -304,6 +306,46 @@ ingress enable flags in group variables before the next normal `site.yml` run.
 Use `shared-ingress-agent.yml` only after the agent DNS record resolves, and
 use the separately guarded `shared-ingress-rollback.yml` if Nextcloud
 validation fails.
+
+## DNS ad-blocking
+
+The opt-in `blocky` role (ADR 0020) runs Blocky for network-wide DNS
+ad-blocking, plus a dedicated Postgres container just to hold its query
+log. Blocky has no web UI of its own -- the dashboard is Grafana,
+already deployed by the `monitoring` role above, fed by Blocky's native
+Prometheus metrics and its Postgres query log.
+
+Set the Postgres password in the encrypted SOPS file before the first
+deploy:
+
+```yaml
+blocky_postgres_password: "..."
+```
+
+Then apply it (it's included in a normal `site.yml` run once
+`blocky_enabled: true` is set in inventory, same as every other opt-in
+role):
+
+```bash
+.venv/bin/ansible-playbook ansible/playbooks/site.yml --ask-become-pass
+```
+
+Enabling the role alone changes nothing for your devices -- they keep
+using whatever DNS they already have. To actually route traffic through
+it, point your router at the homeserver for DNS -- there's no way to
+automate this from Ansible. On a FRITZ!Box: Home Network -> Network ->
+Network Settings -> IPv4 Settings -> the custom/"other" DNS server
+field, set to the homeserver's LAN IP. This keeps the FRITZ!Box itself
+as the DHCP-advertised DNS server for every device (so its own
+local-hostname resolution keeps working), while the FRITZ!Box's own
+lookups route through Blocky. Verify the exact field name in your own
+FRITZ!Box firmware -- menu wording can drift between versions.
+
+Confirm it's working from the homeserver itself:
+
+```bash
+dig @<homeserver-lan-ip> example.com
+```
 
 Run the local unit tests with:
 
