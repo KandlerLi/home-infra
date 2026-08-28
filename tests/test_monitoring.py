@@ -310,7 +310,15 @@ class BlockyIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(blocky_datasource["type"], "postgres")
         self.assertEqual(blocky_datasource["url"], "127.0.0.1:5432")
-        self.assertEqual(blocky_datasource["database"], "blocky_query_log")
+        # database belongs in jsonData, not as a top-level field --
+        # confirmed live (2026-08-28): with it only at the top level,
+        # Grafana 13.1.4 showed "You do not currently have a default
+        # database configured for this data source" on every panel, even
+        # though the datasource's own health check reported OK.
+        self.assertEqual(
+            blocky_datasource["jsonData"]["database"], "blocky_query_log"
+        )
+        self.assertNotIn("database", blocky_datasource)
         self.assertEqual(
             blocky_datasource["secureJsonData"]["password"],
             "a-generated-password-1234",

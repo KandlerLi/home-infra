@@ -14,9 +14,16 @@ datasources:
     type: postgres
     access: proxy
     url: 127.0.0.1:{{ monitoring_blocky_postgres_port }}
-    database: {{ monitoring_blocky_postgres_database }}
     user: {{ monitoring_blocky_postgres_user }}
+    # database belongs in jsonData, not as a top-level field -- confirmed
+    # live (2026-08-28) and against Grafana's own current provisioning
+    # docs, every example there puts it in jsonData too. With it only at
+    # the top level, Grafana 13.1.4 showed "You do not currently have a
+    # default database configured for this data source" on every panel,
+    # even though the datasource's own /api/datasources response and its
+    # health check ("Database Connection OK") both looked fine.
     jsonData:
+      database: {{ monitoring_blocky_postgres_database }}
       sslmode: disable
       postgresVersion: 1700
     secureJsonData:
