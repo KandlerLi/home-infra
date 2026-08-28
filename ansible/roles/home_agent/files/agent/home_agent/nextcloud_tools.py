@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import httpx2
+from .unix_socket_client import call_unix_socket_json
 
 MAX_TOOL_RESPONSE_BYTES = 1024 * 1024
 MAX_ARGUMENT_BYTES = 4096
@@ -237,31 +237,14 @@ class NextcloudToolsClient:
         if len(body) > max_bytes:
             raise NextcloudToolsError("tool arguments exceeded the size limit")
 
-        transport = httpx2.HTTPTransport(uds=self.socket_path)
-        try:
-            with httpx2.Client(
-                transport=transport,
-                base_url="http://nextcloud-tools",
-                timeout=self.timeout,
-            ) as client:
-                with client.stream(
-                    "POST",
-                    path,
-                    content=body,
-                    headers={"Content-Type": "application/json"},
-                ) as response:
-                    response_body = bytearray()
-                    for chunk in response.iter_bytes():
-                        response_body.extend(chunk)
-                        if len(response_body) > MAX_TOOL_RESPONSE_BYTES:
-                            raise NextcloudToolsError(
-                                "tool response exceeded the size limit"
-                            )
-                    if response.status_code != 200:
-                        raise NextcloudToolsError("tool is unavailable")
-            payload = json.loads(bytes(response_body))
-            if not isinstance(payload, dict):
-                raise NextcloudToolsError("tool returned an unexpected response")
-            return payload
-        except (httpx2.HTTPError, json.JSONDecodeError) as error:
-            raise NextcloudToolsError("tool request failed") from error
+        return call_unix_socket_json(
+            socket_path=self.socket_path,
+            base_url="http://nextcloud-tools",
+            method="POST",
+            path=path,
+            timeout=self.timeout,
+            max_response_bytes=MAX_TOOL_RESPONSE_BYTES,
+            error_cls=NextcloudToolsError,
+            body=body,
+            headers={"Content-Type": "application/json"},
+        )

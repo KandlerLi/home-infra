@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
-import httpx2
+from .unix_socket_client import call_unix_socket_json
 
 MAX_TOOL_RESPONSE_BYTES = 4 * 1024 * 1024
 
@@ -35,22 +34,12 @@ class HomeToolsClient:
         if path is None:
             raise HomeToolsError("unknown tool")
 
-        transport = httpx2.HTTPTransport(uds=self.socket_path)
-        try:
-            with httpx2.Client(
-                transport=transport, base_url="http://home-tools", timeout=self.timeout
-            ) as client:
-                with client.stream("GET", path) as response:
-                    body = bytearray()
-                    for chunk in response.iter_bytes():
-                        body.extend(chunk)
-                        if len(body) > MAX_TOOL_RESPONSE_BYTES:
-                            raise HomeToolsError("tool response exceeded the size limit")
-                    if response.status_code != 200:
-                        raise HomeToolsError("tool is unavailable")
-            payload = json.loads(bytes(body))
-            if not isinstance(payload, dict):
-                raise HomeToolsError("tool returned an unexpected response")
-            return payload
-        except (httpx2.HTTPError, json.JSONDecodeError) as error:
-            raise HomeToolsError("tool request failed") from error
+        return call_unix_socket_json(
+            socket_path=self.socket_path,
+            base_url="http://home-tools",
+            method="GET",
+            path=path,
+            timeout=self.timeout,
+            max_response_bytes=MAX_TOOL_RESPONSE_BYTES,
+            error_cls=HomeToolsError,
+        )
