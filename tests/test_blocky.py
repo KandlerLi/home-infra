@@ -34,9 +34,31 @@ class BlockyRoleTests(unittest.TestCase):
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 
         self.assertIn(
-            "blocky_bind_address: \"{{ ansible_default_ipv4.address }}\"", defaults
+            'blocky_bind_address: "{{ ansible_facts.default_ipv4.address }}"',
+            defaults,
         )
         self.assertNotIn("blocky_bind_address: 127.0.0.1", defaults)
+
+    def test_fact_references_use_the_namespaced_form(self) -> None:
+        # Confirmed live (2026-08-28, a real production failure): this
+        # repo's ansible.cfg sets inject_facts_as_vars = False, so the
+        # legacy bare ansible_default_ipv4 (and any other bare
+        # ansible_<fact> variable) is never defined -- only
+        # ansible_facts.<fact> is. My own first cut of this role used
+        # the bare form and it failed live; a throwaway verification
+        # playbook that manually stubbed ansible_default_ipv4 as a
+        # plain var masked the bug instead of catching it, since it
+        # bypassed real fact-gathering entirely.
+        project_root = PROJECT_ROOT
+        ansible_cfg = (project_root / "ansible.cfg").read_text(encoding="utf-8")
+        self.assertIn("inject_facts_as_vars = False", ansible_cfg)
+
+        for path in [ROLE_ROOT / "defaults/main.yml", ROLE_ROOT / "tasks/main.yml"]:
+            with self.subTest(path=path.name):
+                text = path.read_text(encoding="utf-8")
+                self.assertNotIn("ansible_default_ipv4", text)
+                self.assertNotIn("{{ ansible_hostname", text)
+                self.assertNotIn("{{ ansible_distribution", text)
 
     def test_http_api_and_metrics_stay_loopback_only(self) -> None:
         rendered = yaml.safe_load(render_blocky_config())

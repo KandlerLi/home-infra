@@ -21,7 +21,7 @@ blocky_pids_limit: 128
 # the runner VM's isolated network (virbr10) or any future interface for
 # no reason. Discovered from the host's own default route rather than
 # hardcoded, so it can't silently go stale if DHCP ever reassigns it.
-blocky_bind_address: "{{ ansible_default_ipv4.address }}"
+blocky_bind_address: "{{ ansible_facts.default_ipv4.address }}"
 blocky_dns_port: 53
 # The HTTP/metrics/API port stays loopback-only -- Prometheus (also
 # host-networked, see the monitoring role) reaches it at 127.0.0.1, and
