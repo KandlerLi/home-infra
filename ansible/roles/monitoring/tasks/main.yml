@@ -22,11 +22,12 @@
           through SOPS before the first deploy.
       no_log: true
 
-    # One loop across the three containerized services' dedicated accounts
-    # instead of a separate create/read/record triplet per service --
-    # ansible.builtin.getent accumulates each looped key into the same
-    # ansible_facts.getent_passwd dict, so a single set_fact after both
-    # loops can address all three by name.
+    # Account creation is safely looped -- ansible.builtin.user has no
+    # shared-fact state for a loop iteration to clobber. getent is a
+    # different story (see below), so identity lookup stays as one
+    # getent + set_fact pair per account, the same proven pattern used
+    # everywhere else in this repo (home_agent, nextcloud_tools,
+    # sankey_export, libvirt_host).
     - name: Create monitoring service accounts
       ansible.builtin.user:
         name: "{{ item }}"
@@ -38,21 +39,41 @@
         - "{{ monitoring_grafana_container_user }}"
         - "{{ monitoring_alertmanager_container_user }}"
 
-    - name: Read monitoring service accounts
+    # Confirmed live (2026-08-28, a real production failure on this
+    # exact task): ansible.builtin.getent does NOT accumulate looped
+    # keys into ansible_facts.getent_passwd -- each loop iteration
+    # *replaces* it with a dict containing only that one key, so by the
+    # time the loop finishes only the last iteration's key survives.
+    # Reproduced directly (a two-item loop over "root"/"daemon" left
+    # only "daemon" in ansible_facts.getent_passwd) before writing this
+    # fix -- do not re-loop this without re-verifying that behavior.
+    - name: Read Prometheus service account
       ansible.builtin.getent:
         database: passwd
-        key: "{{ item }}"
-      loop:
-        - "{{ monitoring_prometheus_container_user }}"
-        - "{{ monitoring_grafana_container_user }}"
-        - "{{ monitoring_alertmanager_container_user }}"
+        key: "{{ monitoring_prometheus_container_user }}"
 
-    - name: Record monitoring runtime identities
+    - name: Record Prometheus runtime identity
       ansible.builtin.set_fact:
         monitoring_prometheus_uid: >-
           {{ ansible_facts.getent_passwd[monitoring_prometheus_container_user][1] }}
+
+    - name: Read Grafana service account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ monitoring_grafana_container_user }}"
+
+    - name: Record Grafana runtime identity
+      ansible.builtin.set_fact:
         monitoring_grafana_uid: >-
           {{ ansible_facts.getent_passwd[monitoring_grafana_container_user][1] }}
+
+    - name: Read Alertmanager service account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ monitoring_alertmanager_container_user }}"
+
+    - name: Record Alertmanager runtime identity
+      ansible.builtin.set_fact:
         monitoring_alertmanager_uid: >-
           {{ ansible_facts.getent_passwd[monitoring_alertmanager_container_user][1] }}
 
