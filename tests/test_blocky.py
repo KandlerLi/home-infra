@@ -98,6 +98,13 @@ class BlockyRoleTests(unittest.TestCase):
         # ("executable file not found in $PATH") and the container never
         # reports healthy. The image ships its own HEALTHCHECK using the
         # blocky binary's built-in "healthcheck" subcommand; reuse that.
+        #
+        # --bindip/--port must be passed explicitly, not left to
+        # auto-detect from config.yml -- also confirmed live: bare
+        # "blocky healthcheck" always dialed 127.0.0.1:53 regardless of
+        # what ports.dns in config.yml said, even mounted at blocky's own
+        # default config path. Explicit flags (proven live to work)
+        # sidestep that, rather than depending on it.
         tasks_path = ROLE_ROOT / "tasks/main.yml"
         tasks = yaml.safe_load(tasks_path.read_text())
         blocky_container_task = next(
@@ -110,7 +117,18 @@ class BlockyRoleTests(unittest.TestCase):
         ]["test"]
 
         self.assertNotIn("wget", healthcheck_test)
-        self.assertEqual(healthcheck_test, ["CMD", "/app/blocky", "healthcheck"])
+        self.assertEqual(
+            healthcheck_test,
+            [
+                "CMD",
+                "/app/blocky",
+                "healthcheck",
+                "--bindip",
+                "{{ blocky_bind_address }}",
+                "--port",
+                "{{ blocky_dns_port }}",
+            ],
+        )
 
     def test_postgres_is_loopback_only_via_listen_addresses(self) -> None:
         # Postgres shares Blocky's host network namespace (network_mode:
