@@ -8,12 +8,21 @@ and an isolated GitHub Actions runner VM.
 - Base operating system packages
 - `/mnt/black-hdd` storage mount
 - Docker and Nextcloud AIO
+- Opt-in restricted Nextcloud file and shopping-list tools for the agent
+- Opt-in Finanzfluss Sankey budget exporter (planned for a future
+  restructure away from Finanzfluss)
 - Opt-in private homeserver health agent
-- Prepared opt-in read-only Nextcloud tool boundary
 - Opt-in Open WebUI chat frontend for the restricted agent
-- Opt-in shared Traefik ingress for Nextcloud and the agent
+- Opt-in BitTorrent client (Deluge)
+- Opt-in static landing page linking the other home services
+- Opt-in shared Traefik ingress fronting the services above
+- Opt-in Prometheus/Grafana monitoring stack (host health, container
+  health, service reachability, certificate expiry)
 - KVM/QEMU and libvirt
 - Debian 13 GitHub Actions runner VM on a private NAT network
+
+Each role has its own short `README.md` under `ansible/roles/<name>/`
+with its enable flag, key variables, and how it's invoked.
 
 The runner disk is stored at
 `/mnt/black-hdd/github-runner/github-runner.qcow2`. The role never recursively
