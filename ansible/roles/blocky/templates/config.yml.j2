@@ -34,7 +34,16 @@ blocking:
 
 queryLog:
   type: postgresql
+  # sslmode=disable is required, not optional -- confirmed live: without
+  # it, Blocky's Postgres client attempts a TLS handshake by default,
+  # Postgres here has no TLS configured at all (deliberately, see the
+  # role's README/ADR -- listen_addresses=127.0.0.1 is its actual
+  # security boundary), the server rejects the handshake, and Blocky
+  # treats that as a hard failure rather than falling back to
+  # plaintext. It retries 3 times, then permanently falls back to
+  # console-only logging for the rest of that container's lifetime --
+  # nothing reaches Postgres until the container is recreated.
   target: >-
-    postgres://{{ blocky_postgres_user }}:{{ blocky_postgres_password }}@127.0.0.1:{{ blocky_postgres_port }}/{{ blocky_postgres_database }}
+    postgres://{{ blocky_postgres_user }}:{{ blocky_postgres_password }}@127.0.0.1:{{ blocky_postgres_port }}/{{ blocky_postgres_database }}?sslmode=disable
   logRetentionDays: {{ blocky_query_log_retention_days }}
   flushInterval: 30s

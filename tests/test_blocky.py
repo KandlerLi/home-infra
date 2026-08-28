@@ -200,6 +200,21 @@ class BlockyRoleTests(unittest.TestCase):
         )
         self.assertEqual(rendered["queryLog"]["logRetentionDays"], 7)
 
+    def test_query_log_target_disables_tls(self) -> None:
+        # Confirmed live (2026-08-28, a real deploy): without
+        # sslmode=disable, Blocky's Postgres client attempts a TLS
+        # handshake by default. Postgres here has no TLS configured at
+        # all (listen_addresses=127.0.0.1 is its actual security
+        # boundary, not TLS), so the server rejects the handshake and
+        # Blocky treats that as a hard failure rather than falling back
+        # to plaintext -- it retries 3 times, then permanently falls
+        # back to console-only logging for that container's lifetime.
+        # Nothing reaches the query-log dashboard until the container is
+        # recreated with this fixed.
+        rendered = yaml.safe_load(render_blocky_config())
+
+        self.assertIn("sslmode=disable", rendered["queryLog"]["target"])
+
     def test_config_install_and_postgres_container_never_log_the_password(
         self,
     ) -> None:
