@@ -22,54 +22,37 @@
           through SOPS before the first deploy.
       no_log: true
 
-    - name: Create Prometheus service account
+    # One loop across the three containerized services' dedicated accounts
+    # instead of a separate create/read/record triplet per service --
+    # ansible.builtin.getent accumulates each looped key into the same
+    # ansible_facts.getent_passwd dict, so a single set_fact after both
+    # loops can address all three by name.
+    - name: Create monitoring service accounts
       ansible.builtin.user:
-        name: "{{ monitoring_prometheus_container_user }}"
+        name: "{{ item }}"
         system: true
         create_home: false
         shell: /usr/sbin/nologin
+      loop:
+        - "{{ monitoring_prometheus_container_user }}"
+        - "{{ monitoring_grafana_container_user }}"
+        - "{{ monitoring_alertmanager_container_user }}"
 
-    - name: Read Prometheus service account
+    - name: Read monitoring service accounts
       ansible.builtin.getent:
         database: passwd
-        key: "{{ monitoring_prometheus_container_user }}"
+        key: "{{ item }}"
+      loop:
+        - "{{ monitoring_prometheus_container_user }}"
+        - "{{ monitoring_grafana_container_user }}"
+        - "{{ monitoring_alertmanager_container_user }}"
 
-    - name: Record Prometheus runtime identity
+    - name: Record monitoring runtime identities
       ansible.builtin.set_fact:
         monitoring_prometheus_uid: >-
           {{ ansible_facts.getent_passwd[monitoring_prometheus_container_user][1] }}
-
-    - name: Create Grafana service account
-      ansible.builtin.user:
-        name: "{{ monitoring_grafana_container_user }}"
-        system: true
-        create_home: false
-        shell: /usr/sbin/nologin
-
-    - name: Read Grafana service account
-      ansible.builtin.getent:
-        database: passwd
-        key: "{{ monitoring_grafana_container_user }}"
-
-    - name: Record Grafana runtime identity
-      ansible.builtin.set_fact:
         monitoring_grafana_uid: >-
           {{ ansible_facts.getent_passwd[monitoring_grafana_container_user][1] }}
-
-    - name: Create Alertmanager service account
-      ansible.builtin.user:
-        name: "{{ monitoring_alertmanager_container_user }}"
-        system: true
-        create_home: false
-        shell: /usr/sbin/nologin
-
-    - name: Read Alertmanager service account
-      ansible.builtin.getent:
-        database: passwd
-        key: "{{ monitoring_alertmanager_container_user }}"
-
-    - name: Record Alertmanager runtime identity
-      ansible.builtin.set_fact:
         monitoring_alertmanager_uid: >-
           {{ ansible_facts.getent_passwd[monitoring_alertmanager_container_user][1] }}
 
@@ -187,12 +170,12 @@
       register: monitoring_ntfy_relay_unit
 
     - name: Reload systemd for the ntfy relay unit
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         daemon_reload: true
       when: monitoring_ntfy_relay_unit.changed
 
     - name: Ensure ntfy relay is enabled and running
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: ntfy-relay.service
         enabled: true
         state: >-
