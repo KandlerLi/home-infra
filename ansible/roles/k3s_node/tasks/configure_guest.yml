@@ -121,6 +121,16 @@
     mode: "0755"
   when: k3s_node_terraform_zip.changed or not k3s_node_terraform_binary.stat.exists
 
+# Required for k3s's built-in NFS volume support to work at all -- the
+# kubelet shells out to the host's own mount.nfs helper (from
+# nfs-common) when a Pod mounts an NFS-backed PersistentVolume; without
+# it, that mount silently fails. Needed for the Deluge migration
+# (home-infra's nfs_server role exports its directories here).
+- name: Install NFS client packages
+  ansible.builtin.apt:
+    name: nfs-common
+    state: present
+
 - name: Wait for the k3s node to report Ready
   ansible.builtin.command:
     argv:

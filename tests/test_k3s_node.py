@@ -259,6 +259,16 @@ class K3sNodeTests(unittest.TestCase):
             extract_task,
         )
 
+    def test_nfs_client_is_installed_for_pv_support(self) -> None:
+        # k3s's kubelet shells out to the host's mount.nfs helper (from
+        # nfs-common) for NFS-backed PersistentVolumes -- without it,
+        # the mount silently fails.
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("nfs-common", tasks)
+
 
 if __name__ == "__main__":
     unittest.main()
