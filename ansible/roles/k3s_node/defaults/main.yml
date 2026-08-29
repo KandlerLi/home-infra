@@ -70,3 +70,18 @@ k3s_node_kubeconfig_path: "{{ k3s_node_config_dir }}/k3s.yaml"
 # command on a single-user learning node, it doesn't cross a real
 # privilege boundary.
 k3s_node_kubeconfig_mode: "0644"
+
+# Terraform -- installed here so the VM's whole base toolset stays
+# reproducible via this Ansible role, the same way it already owns
+# installing k3s itself. What Terraform actually *manages* (the
+# workloads running inside the cluster) deliberately lives in its own
+# separate git repo instead, not here -- this role's job stops at
+# making the tool available.
+k3s_node_terraform_version: "1.16.0"
+k3s_node_terraform_zip_url: >-
+  https://releases.hashicorp.com/terraform/{{ k3s_node_terraform_version }}/terraform_{{ k3s_node_terraform_version }}_linux_amd64.zip
+k3s_node_terraform_checksum_url: >-
+  https://releases.hashicorp.com/terraform/{{ k3s_node_terraform_version }}/terraform_{{ k3s_node_terraform_version }}_SHA256SUMS
+k3s_node_terraform_zip_path: >-
+  /var/cache/terraform/terraform_{{ k3s_node_terraform_version }}_linux_amd64.zip
+k3s_node_terraform_binary_path: /usr/local/bin/terraform

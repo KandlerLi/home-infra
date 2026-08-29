@@ -227,6 +227,38 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("hosts: k3s_nodes", playbook)
         self.assertIn("k3s_node_role_mode: configure_guest", playbook)
 
+    def test_terraform_is_pinned_and_checksum_verified_by_url(self) -> None:
+        # Same idiom as the k3s binary itself: point get_url's checksum
+        # param at HashiCorp's own published checksum file rather than
+        # hand-transcribing a hex digest.
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
+            encoding="utf-8"
+        )
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('k3s_node_terraform_version: "1.16.0"', defaults)
+        self.assertIn(
+            'checksum: "sha256:{{ k3s_node_terraform_checksum_url }}"',
+            tasks,
+        )
+        self.assertNotIn("| sh", tasks)
+
+    def test_terraform_extraction_is_idempotent(self) -> None:
+        # Only re-extracts when the downloaded zip actually changed, or
+        # the binary is missing -- not on every run.
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        extract_task = tasks.split("Extract Terraform binary", 1)[1]
+        self.assertIn(
+            "k3s_node_terraform_zip.changed or not "
+            "k3s_node_terraform_binary.stat.exists",
+            extract_task,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -78,6 +78,49 @@
     enabled: true
     state: started
 
+# Terraform itself, checksum-verified the same way as everything else
+# in this task file. What it manages (the workloads running inside the
+# cluster) lives in its own separate git repo, not here -- this only
+# makes the tool available on the node that will run "terraform apply"
+# against it.
+- name: Install unzip for extracting the Terraform release
+  ansible.builtin.apt:
+    name: unzip
+    state: present
+
+- name: Create Terraform download cache directory
+  ansible.builtin.file:
+    path: "{{ k3s_node_terraform_zip_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download checksum-verified Terraform release
+  ansible.builtin.get_url:
+    url: "{{ k3s_node_terraform_zip_url }}"
+    dest: "{{ k3s_node_terraform_zip_path }}"
+    checksum: "sha256:{{ k3s_node_terraform_checksum_url }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: k3s_node_terraform_zip
+
+- name: Check installed Terraform binary
+  ansible.builtin.stat:
+    path: "{{ k3s_node_terraform_binary_path }}"
+  register: k3s_node_terraform_binary
+
+- name: Extract Terraform binary
+  ansible.builtin.unarchive:
+    src: "{{ k3s_node_terraform_zip_path }}"
+    dest: /usr/local/bin
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+  when: k3s_node_terraform_zip.changed or not k3s_node_terraform_binary.stat.exists
+
 - name: Wait for the k3s node to report Ready
   ansible.builtin.command:
     argv:
