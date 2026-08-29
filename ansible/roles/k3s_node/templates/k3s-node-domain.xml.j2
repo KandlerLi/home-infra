@@ -1,0 +1,57 @@
+<domain type="kvm">
+  <name>{{ k3s_node_vm_name }}</name>
+  <memory unit="MiB">{{ k3s_node_vm_memory_mb }}</memory>
+  <currentMemory unit="MiB">{{ k3s_node_vm_memory_mb }}</currentMemory>
+  <vcpu placement="static">{{ k3s_node_vm_vcpus }}</vcpu>
+  <os>
+    <type arch="x86_64" machine="q35">hvm</type>
+    <boot dev="hd"/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode="host-passthrough" check="none"/>
+  <clock offset="utc"/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <disk type="file" device="disk">
+      <driver name="qemu" type="qcow2" discard="unmap"/>
+      <source file="{{ k3s_node_vm_disk_path }}"/>
+      <target dev="vda" bus="virtio"/>
+    </disk>
+    <disk type="file" device="cdrom">
+      <driver name="qemu" type="raw"/>
+      <source file="{{ k3s_node_cloud_init_iso_path }}"/>
+      <target dev="sda" bus="sata"/>
+      <readonly/>
+    </disk>
+    <interface type="network">
+      <mac address="{{ k3s_node_vm_mac }}"/>
+      <source network="{{ k3s_node_network_name }}"/>
+      <model type="virtio"/>
+    </interface>
+    <serial type="pty">
+      <target type="isa-serial" port="0"/>
+    </serial>
+    <console type="pty">
+      <target type="serial" port="0"/>
+    </console>
+    <channel type="unix">
+      <target type="virtio" name="org.qemu.guest_agent.0"/>
+    </channel>
+    <graphics type="vnc" autoport="yes" listen="127.0.0.1">
+      <listen type="address" address="127.0.0.1"/>
+    </graphics>
+    <video>
+      <model type="virtio" heads="1" primary="yes"/>
+    </video>
+    <rng model="virtio">
+      <backend model="random">/dev/urandom</backend>
+    </rng>
+    <memballoon model="virtio"/>
+  </devices>
+</domain>

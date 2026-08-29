@@ -1,0 +1,345 @@
+---
+# This role only stands up the bare VM -- no k3s installed yet. That's a
+# deliberate, separate step: standing up a VM is boilerplate this repo
+# already has a proven pattern for (github_runner's own provision_vm
+# mode); installing and learning k3s itself is the actual new ground,
+# and gets its own role/step once this one is confirmed working.
+
+- name: Validate k3s node storage configuration
+  ansible.builtin.assert:
+    that:
+      - k3s_node_vm_disk_path == "/mnt/black-hdd/k3s/k3s-node-1.qcow2"
+      - k3s_node_vm_storage_dir == (k3s_node_vm_disk_path | dirname)
+      - k3s_node_storage_mount == "/mnt/black-hdd"
+    fail_msg: >-
+      The k3s node disk must remain at
+      /mnt/black-hdd/k3s/k3s-node-1.qcow2.
+
+- name: Verify k3s node storage is a mounted filesystem
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - --mountpoint
+      - "{{ k3s_node_storage_mount }}"
+      - --noheadings
+  register: k3s_node_storage_mount_result
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Validate k3s node storage mount
+  ansible.builtin.assert:
+    that:
+      - k3s_node_storage_mount_result.rc == 0
+    fail_msg: >-
+      {{ k3s_node_storage_mount }} is not mounted. Refusing to create the
+      VM disk on the host's root filesystem.
+
+- name: List defined libvirt virtual machines
+  community.libvirt.virt:
+    command: list_vms
+  register: k3s_node_defined_vms
+  changed_when: false
+
+- name: Check k3s node disk
+  ansible.builtin.stat:
+    path: "{{ k3s_node_vm_disk_path }}"
+  register: k3s_node_vm_disk
+
+- name: Validate VM and disk recovery state
+  ansible.builtin.assert:
+    that:
+      - >-
+        (k3s_node_vm_disk.stat.exists | bool)
+        ==
+        (k3s_node_vm_name in k3s_node_defined_vms.list_vms)
+    fail_msg: >-
+      The k3s node VM and its disk are out of sync. The role will not
+      delete or overwrite either one automatically. Restore the missing
+      libvirt domain or disk, or archive the orphaned resource after
+      confirming it is no longer needed, then rerun Ansible.
+
+- name: Read existing k3s node virtual machine definition
+  community.libvirt.virt:
+    name: "{{ k3s_node_vm_name }}"
+    command: get_xml
+  register: k3s_node_existing_vm_xml
+  changed_when: false
+  when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
+- name: Validate existing k3s node virtual machine definition
+  ansible.builtin.assert:
+    that:
+      - k3s_node_vm_disk_path in k3s_node_existing_vm_xml.get_xml
+      - k3s_node_cloud_init_iso_path in k3s_node_existing_vm_xml.get_xml
+      - k3s_node_network_name in k3s_node_existing_vm_xml.get_xml
+      - >-
+        (k3s_node_vm_mac | lower)
+        in (k3s_node_existing_vm_xml.get_xml | lower)
+    fail_msg: >-
+      The existing {{ k3s_node_vm_name }} domain does not use the
+      configured disk, network, and MAC address. Refusing to modify it
+      automatically.
+  when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
+- name: Allow libvirt to traverse the HDD mount
+  ansible.posix.acl:
+    path: "{{ k3s_node_storage_mount }}"
+    entity: "{{ k3s_node_libvirt_user }}"
+    etype: user
+    permissions: x
+    state: present
+
+- name: Create dedicated k3s node VM storage directory
+  ansible.builtin.file:
+    path: "{{ k3s_node_vm_storage_dir }}"
+    state: directory
+    owner: "{{ k3s_node_libvirt_user }}"
+    group: "{{ k3s_node_libvirt_group }}"
+    mode: "0750"
+
+- name: Allow libvirt full access to k3s node VM storage
+  ansible.posix.acl:
+    path: "{{ k3s_node_vm_storage_dir }}"
+    entity: "{{ k3s_node_libvirt_user }}"
+    etype: user
+    permissions: rwx
+    state: present
+
+- name: Create k3s node cloud-init build directory
+  ansible.builtin.file:
+    path: "{{ k3s_node_cloud_init_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: List defined libvirt networks
+  community.libvirt.virt_net:
+    command: list_nets
+  register: k3s_node_defined_networks
+  changed_when: false
+
+- name: Read existing k3s network definition
+  community.libvirt.virt_net:
+    name: "{{ k3s_node_network_name }}"
+    command: get_xml
+  register: k3s_node_existing_network_xml
+  changed_when: false
+  when: k3s_node_network_name in k3s_node_defined_networks.list_nets
+
+- name: Validate existing k3s network definition
+  ansible.builtin.assert:
+    that:
+      - k3s_node_network_bridge in k3s_node_existing_network_xml.get_xml
+      - k3s_node_network_address in k3s_node_existing_network_xml.get_xml
+      - k3s_node_network_netmask in k3s_node_existing_network_xml.get_xml
+      - k3s_node_vm_ip in k3s_node_existing_network_xml.get_xml
+      - >-
+        'mode="nat"' in k3s_node_existing_network_xml.get_xml
+        or "mode='nat'" in k3s_node_existing_network_xml.get_xml
+      - >-
+        (k3s_node_vm_mac | lower)
+        in (k3s_node_existing_network_xml.get_xml | lower)
+    fail_msg: >-
+      The existing {{ k3s_node_network_name }} network does not match
+      the configured bridge, subnet, or DHCP reservation. Refusing to
+      redefine an existing network automatically.
+  when: k3s_node_network_name in k3s_node_defined_networks.list_nets
+
+- name: Define k3s libvirt network
+  community.libvirt.virt_net:
+    name: "{{ k3s_node_network_name }}"
+    state: present
+    xml: "{{ lookup('template', 'libvirt-network.xml.j2') }}"
+
+- name: Activate and enable k3s libvirt network
+  community.libvirt.virt_net:
+    name: "{{ k3s_node_network_name }}"
+    state: active
+    autostart: true
+
+- name: Check Ansible controller SSH public key
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat:
+    path: "{{ k3s_node_admin_ssh_public_key_path }}"
+  register: k3s_node_admin_ssh_public_key_file
+
+- name: Validate Ansible controller SSH public key
+  ansible.builtin.assert:
+    that:
+      - k3s_node_admin_ssh_public_key_file.stat.exists
+      - k3s_node_admin_ssh_public_key_file.stat.isreg
+    fail_msg: >-
+      The controller SSH public key does not exist at
+      {{ k3s_node_admin_ssh_public_key_path }}.
+
+- name: Read Ansible controller SSH public key
+  ansible.builtin.set_fact:
+    k3s_node_admin_ssh_public_key: >-
+      {{
+        lookup(
+          'ansible.builtin.file',
+          k3s_node_admin_ssh_public_key_path
+        )
+      }}
+
+- name: Capture hypervisor SSH connection
+  ansible.builtin.set_fact:
+    k3s_node_hypervisor_ssh_host: >-
+      {{ ansible_host | default(inventory_hostname) }}
+    k3s_node_hypervisor_ssh_user: "{{ ansible_user }}"
+
+- name: Render k3s node cloud-init configuration
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ k3s_node_cloud_init_dir }}/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: cloud-init-user-data.yml.j2
+      dest: user-data
+    - src: cloud-init-meta-data.yml.j2
+      dest: meta-data
+    - src: cloud-init-network-config.yml.j2
+      dest: network-config
+  loop_control:
+    label: "{{ item.dest }}"
+  register: k3s_node_cloud_init_files
+
+- name: Check k3s node cloud-init seed image
+  ansible.builtin.stat:
+    path: "{{ k3s_node_cloud_init_iso_path }}"
+  register: k3s_node_cloud_init_iso
+
+- name: Build persistent k3s node cloud-init seed image
+  ansible.builtin.command:
+    argv:
+      - xorriso
+      - -as
+      - mkisofs
+      - -quiet
+      - -output
+      - "{{ k3s_node_cloud_init_iso_path }}"
+      - -volid
+      - cidata
+      - -joliet
+      - -rock
+      - "{{ k3s_node_cloud_init_dir }}/user-data"
+      - "{{ k3s_node_cloud_init_dir }}/meta-data"
+      - "{{ k3s_node_cloud_init_dir }}/network-config"
+  when: >-
+    not k3s_node_cloud_init_iso.stat.exists
+    or k3s_node_cloud_init_files.changed
+
+- name: Set k3s node cloud-init seed image permissions
+  ansible.builtin.file:
+    path: "{{ k3s_node_cloud_init_iso_path }}"
+    state: file
+    owner: "{{ k3s_node_libvirt_user }}"
+    group: "{{ k3s_node_libvirt_group }}"
+    mode: "0640"
+  when: >-
+    not ansible_check_mode
+    or k3s_node_cloud_init_iso.stat.exists
+
+- name: Download verified Debian cloud image
+  ansible.builtin.get_url:
+    url: "{{ k3s_node_debian_image_url }}"
+    dest: "{{ k3s_node_debian_image_path }}"
+    checksum: "{{ k3s_node_debian_image_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create k3s node system disk from Debian cloud image
+  ansible.builtin.command:
+    argv:
+      - qemu-img
+      - convert
+      - -f
+      - qcow2
+      - -O
+      - qcow2
+      - "{{ k3s_node_debian_image_path }}"
+      - "{{ k3s_node_vm_disk_path }}"
+    creates: "{{ k3s_node_vm_disk_path }}"
+  register: k3s_node_system_disk_create
+
+- name: Resize new k3s node system disk
+  ansible.builtin.command:
+    argv:
+      - qemu-img
+      - resize
+      - "{{ k3s_node_vm_disk_path }}"
+      - "{{ k3s_node_vm_disk_size_gb }}G"
+  when: k3s_node_system_disk_create.changed
+
+- name: Set k3s node system disk permissions
+  ansible.builtin.file:
+    path: "{{ k3s_node_vm_disk_path }}"
+    state: file
+    owner: "{{ k3s_node_libvirt_user }}"
+    group: "{{ k3s_node_libvirt_group }}"
+    mode: "0640"
+  when: >-
+    not ansible_check_mode
+    or k3s_node_vm_disk.stat.exists
+
+- name: Define Debian k3s node virtual machine
+  community.libvirt.virt:
+    command: define
+    xml: "{{ lookup('template', 'k3s-node-domain.xml.j2') }}"
+  register: k3s_node_vm_result
+  when: k3s_node_vm_name not in k3s_node_defined_vms.list_vms
+
+- name: Start and enable k3s node virtual machine
+  community.libvirt.virt:
+    name: "{{ k3s_node_vm_name }}"
+    state: running
+    autostart: true
+  when: >-
+    not ansible_check_mode
+    or k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
+- name: Remove obsolete k3s node SSH host key after VM creation
+  delegate_to: localhost
+  become: false
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -R
+      - "{{ k3s_node_ssh_host_key_alias }}"
+  changed_when: true
+  failed_when: false
+  when:
+    - k3s_node_vm_result.changed
+    - not ansible_check_mode
+
+- name: Wait for k3s node SSH service from the hypervisor
+  ansible.builtin.wait_for:
+    host: "{{ k3s_node_vm_ip }}"
+    port: 22
+    connect_timeout: 5
+    sleep: 3
+    timeout: 600
+  when: not ansible_check_mode
+
+- name: Add k3s node to dynamic inventory
+  ansible.builtin.add_host:
+    name: "{{ k3s_node_vm_name }}"
+    groups:
+      - k3s_nodes
+    ansible_host: "{{ k3s_node_vm_ip }}"
+    ansible_user: "{{ k3s_node_admin_user }}"
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: >-
+      -o ProxyJump={{ k3s_node_hypervisor_ssh_user }}@{{ k3s_node_hypervisor_ssh_host }}
+      -o HostKeyAlias={{ k3s_node_ssh_host_key_alias }}
+      -o StrictHostKeyChecking=accept-new
+  changed_when: false
+  when: >-
+    not ansible_check_mode
+    or k3s_node_vm_name in k3s_node_defined_vms.list_vms

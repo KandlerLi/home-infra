@@ -1,0 +1,14 @@
+---
+# Deliberately NOT imported into site.yml -- this is a learning project,
+# kept separate from the production apply so it never runs as a side
+# effect of a normal homelab change. Run explicitly:
+#   ansible-playbook ansible/playbooks/k3s.yml --ask-become-pass
+
+- name: Provision k3s learning node
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: libvirt_host
+    - role: k3s_node

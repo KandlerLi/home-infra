@@ -1,0 +1,29 @@
+<network>
+  <name>{{ k3s_node_network_name }}</name>
+
+  <forward mode="nat"/>
+
+  <bridge
+    name="{{ k3s_node_network_bridge }}"
+    stp="on"
+    delay="0"
+  />
+
+  <ip
+    address="{{ k3s_node_network_address }}"
+    netmask="{{ k3s_node_network_netmask }}"
+  >
+    <dhcp>
+      <range
+        start="{{ k3s_node_network_dhcp_start }}"
+        end="{{ k3s_node_network_dhcp_end }}"
+      />
+
+      <host
+        mac="{{ k3s_node_vm_mac }}"
+        name="{{ k3s_node_vm_name }}"
+        ip="{{ k3s_node_vm_ip }}"
+      />
+    </dhcp>
+  </ip>
+</network>

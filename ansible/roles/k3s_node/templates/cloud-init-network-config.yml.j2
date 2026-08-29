@@ -1,0 +1,6 @@
+version: 2
+ethernets:
+  k3s:
+    match:
+      macaddress: "{{ k3s_node_vm_mac | lower }}"
+    dhcp4: true
