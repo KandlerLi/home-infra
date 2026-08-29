@@ -442,6 +442,21 @@ class NextcloudAioMountTests(unittest.TestCase):
             rescan_block,
         )
 
+    def test_container_is_torn_down_cleanly_when_disabled(self) -> None:
+        # Deluge is migrating to the k3s cluster (infra/k3s-apps), which
+        # reads the same config/downloads directories over NFS -- two
+        # Deluge daemons with the same session state open at once is a
+        # real corruption risk, confirmed live to actually be happening
+        # (both running concurrently) before this teardown existed. Only
+        # the container goes -- deluge_config_dir/deluge_downloads_dir
+        # on disk are never touched here.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        teardown_task = tasks.split("Tear down Deluge when disabled", 1)[1]
+        self.assertIn("not (deluge_enabled | bool)", teardown_task)
+        self.assertIn("state: absent", teardown_task)
+        self.assertIn("deluge_container_name", teardown_task)
+
 
 if __name__ == "__main__":
     unittest.main()

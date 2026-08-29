@@ -249,3 +249,17 @@
         port: "{{ deluge_web_port }}"
         timeout: 60
       when: not ansible_check_mode
+
+# Cleanly tears down the container this role itself created when
+# flipped off, rather than abandoning it as an orphan -- e.g. moving
+# to the k3s-native copy of this service (infra/k3s-apps), which reads
+# the exact same config/downloads directories over NFS. Only the
+# container goes; deluge_config_dir and deluge_downloads_dir on disk
+# are untouched, so nothing here is destructive or hard to reverse.
+- name: Tear down Deluge when disabled
+  when: not (deluge_enabled | bool)
+  block:
+    - name: Stop and remove Deluge container
+      community.docker.docker_container:
+        name: "{{ deluge_container_name }}"
+        state: absent
