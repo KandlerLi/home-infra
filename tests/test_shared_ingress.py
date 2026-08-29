@@ -18,6 +18,27 @@ class SharedIngressTests(unittest.TestCase):
         self.assertIn("http://127.0.0.1:8090", defaults)
         self.assertIn("shared_ingress_open_webui_rate_burst: 240", defaults)
 
+    def test_home_upstream_allows_only_loopback_or_the_k3s_cluster(
+        self,
+    ) -> None:
+        # home.jkandler.de is cut over to the k3s learning cluster's own
+        # Ingress (infra/k3s-apps) -- the one deliberate exception to
+        # every other upstream staying on loopback. 192.168.101.10 is
+        # the k3s VM's address on an isolated libvirt NAT network that
+        # only exists as a directly-connected route on this homeserver
+        # (confirmed live), so it's not actually leaving the host's
+        # trust boundary. This still refuses anything else -- widening
+        # the check to allow arbitrary upstreams would defeat the whole
+        # point of the loopback guard.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'shared_ingress_home_upstream == "http://127.0.0.1:8095"\n'
+            '            or shared_ingress_home_upstream == '
+            '"http://192.168.101.10:80"',
+            tasks,
+        )
+
     def test_proxy_has_no_docker_socket_and_keeps_hardening(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 

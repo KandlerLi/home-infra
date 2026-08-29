@@ -32,7 +32,20 @@
           - shared_ingress_grafana_upstream == "http://127.0.0.1:3000"
           - shared_ingress_grafana_rate_average | int > 0
           - shared_ingress_grafana_rate_burst | int > 0
-          - shared_ingress_home_upstream == "http://127.0.0.1:8095"
+          # The one deliberate exception to "every upstream stays on
+          # loopback": home.jkandler.de is cut over to the k3s learning
+          # cluster's Ingress (infra/k3s-apps, Terraform-managed).
+          # 192.168.101.10 is the k3s VM's own address on an isolated
+          # libvirt NAT network that only exists as a directly-connected
+          # route on this homeserver -- confirmed live, nothing beyond
+          # this host can reach it -- so it's not actually leaving the
+          # host's own trust boundary, just no longer loopback
+          # literally. Reverting to the loopback value here plus
+          # reapplying is the instant rollback if this ever needs
+          # undoing.
+          - >-
+            shared_ingress_home_upstream == "http://127.0.0.1:8095"
+            or shared_ingress_home_upstream == "http://192.168.101.10:80"
           - shared_ingress_home_rate_average | int > 0
           - shared_ingress_home_rate_burst | int > 0
           - >-

@@ -56,6 +56,17 @@ shared_ingress_grafana_enabled: true
 # exists.
 landing_page_enabled: true
 shared_ingress_home_enabled: true
+# Cut over to the k3s-native copy of this service (infra/k3s-apps,
+# Terraform-managed) instead of the Docker container above -- confirmed
+# live from the homeserver first (curl with Host: home.jkandler.de
+# against the k3s Ingress returned the real page). landing_page_enabled
+# deliberately stays true for now: the Docker container keeps running,
+# unused, as an instant rollback (revert this one line and reapply) in
+# case the k3s route has a problem in production that the direct curl
+# check didn't catch. Retiring the container and this role entirely is
+# a separate, later change once the cutover is proven in practice, not
+# bundled into this one.
+shared_ingress_home_upstream: http://192.168.101.10:80
 
 # Network-wide DNS ad-blocking (ADR 0020). Confirmed live: blocky and
 # blocky-postgres answering real DNS queries and the blocking-status
