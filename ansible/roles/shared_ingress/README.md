@@ -17,7 +17,7 @@ Let's Encrypt certificate.
   for a single-user homelab. A personal copy lives in `pass` (`ingress/user`,
   `ingress/password`) for convenience -- sops is always the source of
   truth; keep `pass` in sync with
-  `scripts/sync_ingress_credential_to_pass.py` after rotating it.
+  `scripts/sync_secrets_to_pass.py` after rotating it.
 - `shared_ingress_apex_redirect_enabled` gives the bare `jkandler.de` its
   own router + cert that redirects to `www.jkandler.de`, without touching
   the apex DNS record `dyndns` manages.

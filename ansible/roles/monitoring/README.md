@@ -21,4 +21,8 @@ see ADR 0017). Loopback-only, not published through `shared_ingress`.
   JSON in `files/dashboards/`), not click-through UI setup.
 
 Needs `monitoring_grafana_admin_password`, `monitoring_ntfy_topic`, and
-the SES SMTP credentials set through SOPS before first enabling.
+the SES SMTP credentials set through SOPS before first enabling. A
+personal copy of the Grafana admin login lives in `pass` (`grafana/user`,
+`grafana/password`) for convenience -- sops is always the source of
+truth; keep `pass` in sync with `scripts/sync_secrets_to_pass.py` after
+rotating it.
