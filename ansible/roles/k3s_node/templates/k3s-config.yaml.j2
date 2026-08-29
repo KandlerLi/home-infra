@@ -1,0 +1,7 @@
+# k3s server config -- see https://docs.k3s.io/cli/server
+# Deliberately just one setting for now: everything else stays at k3s's
+# own defaults (embedded SQLite datastore, bundled Traefik ingress,
+# bundled ServiceLB, bundled local-path-provisioner) so the very first
+# things learned via kubectl are k3s's real out-of-the-box behavior,
+# not a customized one.
+write-kubeconfig-mode: "{{ k3s_node_kubeconfig_mode }}"

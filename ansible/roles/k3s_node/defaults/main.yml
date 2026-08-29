@@ -1,4 +1,6 @@
 ---
+k3s_node_role_mode: provision_vm
+
 k3s_node_vm_name: k3s-node-1
 k3s_node_vm_memory_mb: 4096
 k3s_node_vm_vcpus: 2
@@ -45,3 +47,26 @@ k3s_node_admin_user: ansible
 k3s_node_admin_ssh_public_key_path: >-
   {{ lookup('env', 'HOME') }}/.ssh/id_ed25519.pub
 k3s_node_ssh_host_key_alias: k3s-node-1-via-homeserver
+
+# k3s install -- configure_guest mode. Pinned to a specific release
+# (confirmed live against k3s's own update.k3s.io channel API to be the
+# real "stable" channel, not just whatever "latest" happens to return)
+# rather than piping the get.k3s.io install script through a shell,
+# matching this repo's existing pin-and-checksum pattern (the Debian
+# cloud image download uses the exact same get_url + remote-checksum-
+# file idiom below).
+k3s_node_version: v1.36.4+k3s1
+k3s_node_release_url_tag: "{{ k3s_node_version | replace('+', '%2B') }}"
+k3s_node_release_base_url: >-
+  https://github.com/k3s-io/k3s/releases/download/{{ k3s_node_release_url_tag }}
+k3s_node_binary_path: /usr/local/bin/k3s
+k3s_node_kubectl_symlink: /usr/local/bin/kubectl
+k3s_node_config_dir: /etc/rancher/k3s
+k3s_node_kubeconfig_path: "{{ k3s_node_config_dir }}/k3s.yaml"
+# World-readable is fine here specifically: the only account that can
+# even reach this VM is "ansible" over SSH via the homeserver, and that
+# account already has passwordless root via sudo (see cloud-init-user-
+# data.yml.j2) -- 0644 just saves typing "sudo" before every kubectl
+# command on a single-user learning node, it doesn't cross a real
+# privilege boundary.
+k3s_node_kubeconfig_mode: "0644"

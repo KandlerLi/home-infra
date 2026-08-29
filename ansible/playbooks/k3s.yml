@@ -12,3 +12,12 @@
   roles:
     - role: libvirt_host
     - role: k3s_node
+
+- name: Install k3s on the learning node
+  hosts: k3s_nodes
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: k3s_node
+      k3s_node_role_mode: configure_guest
