@@ -15,20 +15,17 @@ shared_ingress_open_webui_enabled: true
 nextcloud_tools_enabled: true
 nextcloud_tools_allowed_root: Shared/AI Workspace
 
-# Deluge is migrating to the k3s cluster (infra/k3s-apps), which reads
-# the exact same config/downloads directories over NFS -- two Deluge
+# Deluge migrated to the k3s cluster (infra/k3s-apps), which reads the
+# exact same config/downloads directories over NFS -- two Deluge
 # daemons with the same session state open at once is a real
-# corruption risk, confirmed to actually be happening live (both
-# running concurrently for about an hour) before this flag was
-# flipped. deluge_enabled: false stops the Docker container (its own
-# role tears it down cleanly, see tasks/main.yml); the k3s copy only
-# comes back up once this is confirmed stopped. shared_ingress stays
-# routed at the Docker container for now (shared_ingress_deluge_upstream
-# unchanged) -- that switch is a separate, later step once the k3s
-# copy is proven to read the existing session state cleanly with
-# nothing else contending for it.
+# corruption risk, confirmed to actually be happening live (both ran
+# concurrently for about an hour) before the Docker container was
+# stopped. The k3s copy was then confirmed live to read the existing
+# session state cleanly (daemon connected, real external IP, real free
+# space through the NFS mount, no errors) before this cutover.
 deluge_enabled: false
 shared_ingress_deluge_enabled: true
+shared_ingress_deluge_upstream: http://192.168.101.10:80
 
 # Shares exactly Deluge's own two directories with the k3s learning VM
 # (infra/k3s-apps) -- nothing else under /mnt/black-hdd -- so a

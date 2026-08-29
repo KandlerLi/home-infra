@@ -26,7 +26,13 @@
           - shared_ingress_open_webui_rate_burst | int > 0
           - >-
             shared_ingress_open_webui_max_request_body_bytes | int <= 1048576
-          - shared_ingress_deluge_upstream == "http://127.0.0.1:8112"
+          # The same deliberate exception as shared_ingress_home_upstream
+          # (see its own comment above): torrent.jkandler.de is cut
+          # over to the k3s learning cluster's Ingress, on the same
+          # isolated, homeserver-only-reachable network.
+          - >-
+            shared_ingress_deluge_upstream == "http://127.0.0.1:8112"
+            or shared_ingress_deluge_upstream == "http://192.168.101.10:80"
           - shared_ingress_deluge_rate_average | int > 0
           - shared_ingress_deluge_rate_burst | int > 0
           - shared_ingress_grafana_upstream == "http://127.0.0.1:3000"
@@ -131,6 +137,12 @@
       ansible.builtin.uri:
         url: "{{ shared_ingress_deluge_upstream }}/"
         method: GET
+        # Needed once shared_ingress_deluge_upstream points at the k3s
+        # cluster's Ingress -- Traefik there routes purely on Host, so
+        # a bare request by IP 404s even though the backend is healthy
+        # (the same fix already applied to the landing page's check).
+        headers:
+          Host: "{{ shared_ingress_deluge_domain }}"
         return_content: false
         status_code: 200
       register: shared_ingress_deluge_health

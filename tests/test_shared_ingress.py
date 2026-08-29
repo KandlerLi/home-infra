@@ -50,6 +50,40 @@ class SharedIngressTests(unittest.TestCase):
             tasks,
         )
 
+    def test_deluge_upstream_allows_only_loopback_or_the_k3s_cluster(
+        self,
+    ) -> None:
+        # Same deliberate exception as shared_ingress_home_upstream:
+        # torrent.jkandler.de is cut over to the k3s learning cluster's
+        # own Ingress. Confirmed live before this cutover: the Docker
+        # container stopped cleanly, the k3s copy read the existing
+        # session state correctly (daemon connected, real external IP,
+        # real free space through the NFS mount, no errors) with
+        # nothing else contending for the same config files.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'shared_ingress_deluge_upstream == "http://127.0.0.1:8112"\n'
+            '            or shared_ingress_deluge_upstream == '
+            '"http://192.168.101.10:80"',
+            tasks,
+        )
+
+    def test_deluge_health_check_sends_the_real_host_header(self) -> None:
+        # Same fix as the landing page's own health check: once
+        # shared_ingress_deluge_upstream points at the k3s cluster's
+        # Ingress, a bare request by IP matches no routing rule and
+        # 404s even though the backend is healthy -- Traefik there
+        # routes purely on Host.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        verify_task = tasks.split(
+            "Verify Deluge before publishing it", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn(
+            'Host: "{{ shared_ingress_deluge_domain }}"', verify_task
+        )
+
     def test_proxy_has_no_docker_socket_and_keeps_hardening(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
