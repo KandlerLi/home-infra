@@ -1,0 +1,5 @@
+# Managed by home-infra's nfs_server role. Do not edit by hand --
+# changes here are overwritten on the next Ansible run.
+{% for export in nfs_server_exports %}
+{{ export.path }} {{ export.client }}({{ export.options }})
+{% endfor %}

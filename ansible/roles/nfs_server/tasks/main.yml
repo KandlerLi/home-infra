@@ -1,0 +1,69 @@
+---
+- name: Configure NFS server
+  when: nfs_server_enabled | bool
+  block:
+    - name: Validate NFS exports stay narrow and safe
+      ansible.builtin.assert:
+        that:
+          - nfs_server_exports is sequence
+          - nfs_server_exports is not string
+          - nfs_server_exports | length > 0
+          - >-
+            nfs_server_exports
+            | selectattr('path', 'defined')
+            | list | length == nfs_server_exports | length
+          - >-
+            nfs_server_exports
+            | selectattr('client', 'defined')
+            | list | length == nfs_server_exports | length
+          - >-
+            nfs_server_exports
+            | selectattr('options', 'defined')
+            | list | length == nfs_server_exports | length
+          - >-
+            nfs_server_exports
+            | rejectattr('client', 'search', '/')
+            | list | length == nfs_server_exports | length
+          - >-
+            nfs_server_exports
+            | rejectattr('client', 'equalto', '0.0.0.0')
+            | list | length == nfs_server_exports | length
+          - >-
+            nfs_server_exports
+            | rejectattr('options', 'search', 'no_root_squash')
+            | list | length == nfs_server_exports | length
+        fail_msg: >-
+          Every NFS export needs a path, a single specific client IP
+          (never a CIDR range or 0.0.0.0), and options -- and must never
+          include no_root_squash. Export the narrowest directory that
+          actually needs sharing, never a whole parent directory.
+
+    - name: Install NFS server packages
+      ansible.builtin.apt:
+        name: "{{ nfs_server_packages }}"
+        state: present
+        update_cache: true
+        cache_valid_time: 86400
+
+    - name: Install NFS exports
+      ansible.builtin.template:
+        src: exports.j2
+        dest: "{{ nfs_server_exports_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+      register: nfs_server_exports_file_result
+
+    - name: Reload NFS exports
+      ansible.builtin.command:
+        argv:
+          - exportfs
+          - -ra
+      changed_when: true
+      when: nfs_server_exports_file_result.changed
+
+    - name: Ensure NFS server is enabled and running
+      ansible.builtin.systemd_service:
+        name: nfs-kernel-server
+        enabled: true
+        state: started

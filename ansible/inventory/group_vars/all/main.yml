@@ -23,6 +23,21 @@ nextcloud_tools_allowed_root: Shared/AI Workspace
 deluge_enabled: true
 shared_ingress_deluge_enabled: true
 
+# Shares exactly Deluge's own two directories with the k3s learning VM
+# (infra/k3s-apps) -- nothing else under /mnt/black-hdd -- so a
+# Kubernetes-native copy of Deluge can be a real drop-in replacement,
+# Nextcloud integration included, rather than a disconnected sandbox
+# with its own separate downloads directory. 192.168.101.10 is that
+# VM's static address (see ansible/roles/k3s_node/defaults/main.yml).
+nfs_server_enabled: true
+nfs_server_exports:
+  - path: /mnt/black-hdd/downloads
+    client: 192.168.101.10
+    options: rw,sync,no_subtree_check,root_squash
+  - path: /mnt/black-hdd/deluge-config
+    client: 192.168.101.10
+    options: rw,sync,no_subtree_check,root_squash
+
 # Nextcloud external storage for Deluge's downloads folder, visible only to
 # the personal account below (not a service account) -- confirmed working
 # privately (torrent + default-password bug both verified fixed) before

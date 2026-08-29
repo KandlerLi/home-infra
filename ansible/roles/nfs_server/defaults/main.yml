@@ -1,0 +1,24 @@
+---
+nfs_server_enabled: false
+
+nfs_server_packages:
+  - nfs-kernel-server
+
+nfs_server_exports_file: /etc/exports.d/home-infra.exports
+
+# Each entry exports exactly one directory to exactly one client --
+# never a whole parent directory (e.g. /mnt/black-hdd itself, which
+# also holds Nextcloud's own data) and never a subnet (e.g. all of
+# 192.168.101.0/24), matching this repo's general least-privilege
+# habit. root_squash (the default here, and deliberately not
+# no_root_squash) maps a client's root user down to an unprivileged
+# one server-side -- safe to keep even though nothing here needs root
+# on the client anyway, since every container process that will
+# actually write through this export already runs as a specific
+# non-root PUID/PGID, not root.
+#
+# Example item shape:
+# - path: /mnt/black-hdd/downloads
+#   client: 192.168.101.10
+#   options: rw,sync,no_subtree_check,root_squash
+nfs_server_exports: []
