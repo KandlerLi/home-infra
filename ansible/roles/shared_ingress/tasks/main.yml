@@ -189,6 +189,15 @@
       ansible.builtin.uri:
         url: "{{ shared_ingress_home_upstream }}/"
         method: GET
+        # Needed once shared_ingress_home_upstream points at the k3s
+        # cluster's Ingress instead of the loopback Docker container --
+        # Traefik there routes purely on Host, so a bare request by IP
+        # with no Host header matches nothing and 404s even though the
+        # backend is perfectly healthy (confirmed live). Harmless for
+        # the loopback nginx container too, which never cared about the
+        # Host header in the first place.
+        headers:
+          Host: "{{ shared_ingress_home_domain }}"
         return_content: false
         status_code: 200
       register: shared_ingress_home_health

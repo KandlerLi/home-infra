@@ -147,6 +147,22 @@ class SharedAuthCredentialTests(unittest.TestCase):
         self.assertIn("shared_ingress_auth_username | length > 0", tasks)
         self.assertIn("shared_ingress_auth_password_hash | length >= 20", tasks)
 
+    def test_landing_page_health_check_sends_the_real_host_header(
+        self,
+    ) -> None:
+        # Found live: once shared_ingress_home_upstream points at the
+        # k3s cluster's Ingress, a bare request by IP with no Host
+        # header matches no routing rule and 404s even though the
+        # backend is perfectly healthy -- Traefik there routes purely
+        # on Host. This check needs to send the real domain explicitly,
+        # not rely on whatever the backend happens to default to.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        verify_task = tasks.split(
+            "Verify the landing page before publishing it", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("Host: \"{{ shared_ingress_home_domain }}\"", verify_task)
+
     def test_only_one_authentication_file_is_installed(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
