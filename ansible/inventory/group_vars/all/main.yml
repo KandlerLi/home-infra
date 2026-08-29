@@ -47,14 +47,12 @@ monitoring_enabled: true
 shared_ingress_grafana_enabled: true
 
 # home.jkandler.de -- served by the k3s-native copy of this service
-# (infra/k3s-apps, Terraform-managed) instead of a Docker container
-# here. Confirmed live in production (real domain, real TLS, real auth,
-# checked in the browser) before landing_page_enabled was flipped off
-# below -- this isn't a speculative retirement, the cutover was proven
-# first. landing_page's own role now tears its container down cleanly
-# when disabled (see its tasks/main.yml), rather than abandoning it as
-# an orphan.
-landing_page_enabled: false
+# (infra/k3s-apps, Terraform-managed), not by anything in this repo.
+# The landing_page role that used to run this as a Docker container is
+# gone entirely (not just disabled) -- its cutover was confirmed live
+# in production first (real domain, real TLS, real auth, checked in the
+# browser, then its container's clean removal also confirmed live)
+# before the role itself was deleted.
 shared_ingress_home_enabled: true
 shared_ingress_home_upstream: http://192.168.101.10:80
 
