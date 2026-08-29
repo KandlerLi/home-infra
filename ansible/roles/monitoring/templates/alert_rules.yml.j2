@@ -29,9 +29,21 @@ groups:
   - name: container_health
     rules:
       - alert: ContainerDown
+        # container_last_seen is keyed by cAdvisor's own "id" label too
+        # (the container's cgroup path), which changes to a brand-new
+        # value every time site.yml *recreates* a container (a config
+        # change, not just a restart) -- confirmed live. The old id's
+        # series then just stops updating and sits frozen in Prometheus
+        # while a fresh series starts under the new id, so comparing
+        # staleness per exact label set fires this alert for that dead
+        # ghost series on every ordinary recreate, even though the
+        # actual current container is healthy. Aggregating by the
+        # stable "name" label first (taking the freshest id's value)
+        # fixes that: as long as some container with this name has
+        # been seen recently, the alert doesn't fire.
         expr: >-
           absent(container_last_seen{name!=""})
-          or (time() - container_last_seen{name!=""}) > 120
+          or (time() - max by (name) (container_last_seen{name!=""})) > 120
         for: 2m
         labels:
           severity: critical

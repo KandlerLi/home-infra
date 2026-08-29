@@ -194,6 +194,29 @@ class MonitoringRoleTests(unittest.TestCase):
             {"host_health", "container_health", "service_reachability", "certificate_expiry"},
         )
 
+    def test_container_down_ignores_stale_ids_from_ordinary_recreates(self) -> None:
+        # Confirmed live (2026-08-29): cAdvisor's container_last_seen is
+        # also labeled by "id" (the container's cgroup path), which
+        # changes every time site.yml *recreates* a container (a config
+        # change, not just a restart). The old id's series then just
+        # freezes -- it doesn't disappear -- while a fresh series starts
+        # under the new id. Comparing staleness per exact label set (the
+        # bug this regresses) fires ContainerDown for that dead ghost
+        # series on every ordinary recreate, even though the actual
+        # current container is healthy. This alert fired via both ntfy
+        # and email on a real, unremarkable site.yml run before the fix.
+        rendered = render("alert_rules.yml.j2")
+        parsed = yaml.safe_load(rendered)
+
+        container_health = next(
+            group for group in parsed["groups"] if group["name"] == "container_health"
+        )
+        container_down = next(
+            rule for rule in container_health["rules"] if rule["alert"] == "ContainerDown"
+        )
+
+        self.assertIn("max by (name) (container_last_seen", container_down["expr"])
+
     def test_alertmanager_routes_to_both_ntfy_and_ses_email(self) -> None:
         # Dual-channel on purpose: one channel being misconfigured
         # shouldn't mean silence. ntfy goes through the local relay
