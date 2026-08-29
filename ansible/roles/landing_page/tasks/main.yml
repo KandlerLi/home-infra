@@ -106,3 +106,17 @@
       delay: 2
       until: landing_page_health.status == 200
       when: not ansible_check_mode
+
+# Cleanly tears down the container this role itself created when
+# flipped off, rather than abandoning it as an orphan that no longer
+# appears anywhere in this role's own tasks -- e.g. once
+# home.jkandler.de is cut over to serve from elsewhere (see
+# shared_ingress_home_upstream) and this Docker-based copy is no longer
+# needed as a fallback.
+- name: Tear down landing page when disabled
+  when: not (landing_page_enabled | bool)
+  block:
+    - name: Stop and remove landing page container
+      community.docker.docker_container:
+        name: "{{ landing_page_container_name }}"
+        state: absent

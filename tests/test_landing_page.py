@@ -105,6 +105,21 @@ class LandingPageRoleTests(unittest.TestCase):
         self.assertIn("landing_page_index_file.changed", tasks)
         self.assertIn("landing_page_style_file.changed", tasks)
 
+    def test_container_is_torn_down_cleanly_when_disabled(self) -> None:
+        # Once home.jkandler.de is cut over to serve from elsewhere (see
+        # shared_ingress_home_upstream), this container shouldn't be
+        # left running as an orphan just because the role's tasks that
+        # created it are now skipped -- it needs its own explicit
+        # teardown path.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        teardown_task = tasks.split(
+            "Tear down landing page when disabled", 1
+        )[1]
+        self.assertIn("not (landing_page_enabled | bool)", teardown_task)
+        self.assertIn("state: absent", teardown_task)
+        self.assertIn("landing_page_container_name", teardown_task)
+
     def test_role_is_registered_in_site_yml_before_shared_ingress(self) -> None:
         # Before shared_ingress: its "verify before publishing" health
         # check needs the loopback container already running.

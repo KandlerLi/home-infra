@@ -46,26 +46,16 @@ sankey_export_remote_dir: Shared/Finanzen
 monitoring_enabled: true
 shared_ingress_grafana_enabled: true
 
-# Static landing page linking out to the other services, published
-# directly at home.jkandler.de (skipping the loopback-first staging the
-# other shared_ingress routes went through). The very first site.yml run
-# against this flag still needs -e home_publish_confirmation=PUBLISH_HOME
-# once -- shared_ingress's own confirmation gate isn't tied to this flag,
-# it just requires proving the route is intentional before Traefik starts
-# routing it publicly. Not needed on subsequent runs, once the route
-# exists.
-landing_page_enabled: true
+# home.jkandler.de -- served by the k3s-native copy of this service
+# (infra/k3s-apps, Terraform-managed) instead of a Docker container
+# here. Confirmed live in production (real domain, real TLS, real auth,
+# checked in the browser) before landing_page_enabled was flipped off
+# below -- this isn't a speculative retirement, the cutover was proven
+# first. landing_page's own role now tears its container down cleanly
+# when disabled (see its tasks/main.yml), rather than abandoning it as
+# an orphan.
+landing_page_enabled: false
 shared_ingress_home_enabled: true
-# Cut over to the k3s-native copy of this service (infra/k3s-apps,
-# Terraform-managed) instead of the Docker container above -- confirmed
-# live from the homeserver first (curl with Host: home.jkandler.de
-# against the k3s Ingress returned the real page). landing_page_enabled
-# deliberately stays true for now: the Docker container keeps running,
-# unused, as an instant rollback (revert this one line and reapply) in
-# case the k3s route has a problem in production that the direct curl
-# check didn't catch. Retiring the container and this role entirely is
-# a separate, later change once the cutover is proven in practice, not
-# bundled into this one.
 shared_ingress_home_upstream: http://192.168.101.10:80
 
 # Network-wide DNS ad-blocking (ADR 0020). Confirmed live: blocky and
