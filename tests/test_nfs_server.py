@@ -27,6 +27,17 @@ class NfsServerRoleTests(unittest.TestCase):
             "rejectattr('options', 'search', 'no_root_squash')", tasks
         )
 
+    def test_exports_include_directory_is_created_first(self) -> None:
+        # Found live: /etc/exports.d isn't created by the
+        # nfs-kernel-server package install on this Debian version, so
+        # templating straight into it failed with "Destination
+        # directory /etc/exports.d does not exist".
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        create_dir_index = tasks.index("Create NFS exports include directory")
+        install_index = tasks.index("Install NFS exports")
+        self.assertLess(create_dir_index, install_index)
+
     def test_exports_reload_only_when_the_file_actually_changed(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 

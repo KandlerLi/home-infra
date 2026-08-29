@@ -45,6 +45,14 @@
         update_cache: true
         cache_valid_time: 86400
 
+    - name: Create NFS exports include directory
+      ansible.builtin.file:
+        path: "{{ nfs_server_exports_file | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
     - name: Install NFS exports
       ansible.builtin.template:
         src: exports.j2
