@@ -105,6 +105,28 @@ class DelugeRoleTests(unittest.TestCase):
         )
 
 
+class DelugeLegacyCleanupTests(unittest.TestCase):
+    def test_deluge_playbook_removes_the_retired_container_and_image(
+        self,
+    ) -> None:
+        # One-time cleanup, not standing config: the deluge role dropped
+        # its container_name/image variables entirely in the reshape
+        # (they're hardcoded here instead), so this asserts the exact
+        # values the old role used to manage are actually being removed,
+        # not silently left behind as orphaned Docker state.
+        playbook = (
+            PROJECT_ROOT / "ansible/playbooks/deluge.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("name: deluge", playbook)
+        self.assertIn(
+            "linuxserver/deluge:2.2.0-ls381@sha256:"
+            "33a939576f7ecfc1227db1a0cb2afce030ce983e620ec9d93c956e3700e21fe9",
+            playbook,
+        )
+        self.assertEqual(playbook.count("state: absent"), 2)
+
+
 class DelugeIngressTests(unittest.TestCase):
     def test_deluge_route_requires_its_own_basic_auth_and_resource_limits(
         self,

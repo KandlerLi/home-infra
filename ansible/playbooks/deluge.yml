@@ -6,3 +6,23 @@
 
   roles:
     - deluge
+
+  # One-time cleanup, not standing config: the deluge role used to run
+  # Deluge itself as a Docker container (retired 2026-08-29/30, see
+  # infra/k3s-apps) and no longer has a container_name/image variable at
+  # all -- hardcoded here instead, since these values only need to exist
+  # long enough to remove what the old role left behind. Remove this
+  # tasks block once confirmed applied and the container/image are
+  # actually gone (same "temporary check, deleted once proven clean"
+  # pattern used for base's old iperf3 purge task).
+  tasks:
+    - name: Ensure the retired Deluge Docker container is gone
+      community.docker.docker_container:
+        name: deluge
+        state: absent
+
+    - name: Ensure the retired Deluge Docker image is gone
+      community.docker.docker_image:
+        name: >-
+          linuxserver/deluge:2.2.0-ls381@sha256:33a939576f7ecfc1227db1a0cb2afce030ce983e620ec9d93c956e3700e21fe9
+        state: absent
