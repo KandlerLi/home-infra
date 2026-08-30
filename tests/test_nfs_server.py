@@ -91,18 +91,21 @@ class NfsServerRoleTests(unittest.TestCase):
         self.assertLess(nfs_server_index, docker_index)
         self.assertLess(nfs_server_index, deluge_index)
 
-    def test_group_vars_export_exactly_deluges_own_directories(
+    def test_group_vars_export_deluges_and_open_webuis_own_directories(
         self,
     ) -> None:
         # Never the whole /mnt/black-hdd -- Nextcloud's own data and the
-        # GitHub runner VM's disk live there too.
+        # GitHub runner VM's disk live there too -- and never the whole
+        # /var/lib either, just Open WebUI's own directory within it.
         group_vars = (
             PROJECT_ROOT / "ansible/inventory/group_vars/all/main.yml"
         ).read_text(encoding="utf-8")
 
         self.assertIn("path: /mnt/black-hdd/downloads", group_vars)
         self.assertIn("path: /mnt/black-hdd/deluge-config", group_vars)
+        self.assertIn("path: /var/lib/open-webui", group_vars)
         self.assertNotIn("path: /mnt/black-hdd\n", group_vars)
+        self.assertNotIn("path: /var/lib\n", group_vars)
 
 
 if __name__ == "__main__":

@@ -73,6 +73,19 @@ nfs_server_exports:
   - path: /mnt/black-hdd/deluge-config
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
+  # Open WebUI's real, already-live data (accounts, chat history,
+  # WEBUI_SECRET_KEY_FILE) -- same "share the k3s copy's real state,
+  # don't start it fresh" choice already made for Deluge's config, and
+  # the same live concurrent-write risk that surfaced during Deluge's
+  # own migration applies here too: home-infra's own open-webui
+  # container must be stopped before infra/k3s-apps' Pod is ever
+  # started against this export, not just before the routing cutover --
+  # two writers touching the same SQLite file (one local, one over NFS)
+  # risks corrupting real chat history, unlike Deluge's crash-safe
+  # session state.
+  - path: /var/lib/open-webui
+    client: 192.168.101.10
+    options: rw,sync,no_subtree_check,root_squash
 
 # Nextcloud external storage for Deluge's downloads folder, visible only to
 # the personal account below (not a service account) -- confirmed working
