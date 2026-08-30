@@ -58,7 +58,14 @@
             or shared_ingress_deluge_upstream == "http://192.168.101.10:80"
           - shared_ingress_deluge_rate_average | int > 0
           - shared_ingress_deluge_rate_burst | int > 0
-          - shared_ingress_grafana_upstream == "http://127.0.0.1:3000"
+          # The same deliberate exception as shared_ingress_home_upstream/
+          # shared_ingress_deluge_upstream above: grafana.jkandler.de is
+          # cut over to the k3s learning cluster's Ingress (infra/k3s-apps'
+          # modules/grafana), on the same isolated, homeserver-only-
+          # reachable network.
+          - >-
+            shared_ingress_grafana_upstream == "http://127.0.0.1:3000"
+            or shared_ingress_grafana_upstream == "http://192.168.101.10:80"
           - shared_ingress_grafana_rate_average | int > 0
           - shared_ingress_grafana_rate_burst | int > 0
           # The one deliberate exception to "every upstream stays on
@@ -204,6 +211,14 @@
       ansible.builtin.uri:
         url: "{{ shared_ingress_grafana_upstream }}/api/health"
         method: GET
+        # Needed once shared_ingress_grafana_upstream points at the k3s
+        # cluster's Ingress -- Traefik there routes purely on Host, so a
+        # bare request by IP 404s even though the backend is healthy
+        # (the same fix already applied to Deluge's/Open WebUI's/the
+        # landing page's own checks -- applied here proactively rather
+        # than rediscovering the same bug live a fourth time).
+        headers:
+          Host: "{{ shared_ingress_grafana_domain }}"
         return_content: false
         status_code: 200
       register: shared_ingress_grafana_health

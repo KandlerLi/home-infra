@@ -126,6 +126,41 @@ class SharedIngressTests(unittest.TestCase):
             tasks,
         )
 
+    def test_grafana_upstream_allows_only_loopback_or_the_k3s_cluster(
+        self,
+    ) -> None:
+        # Same deliberate exception as shared_ingress_home_upstream/
+        # shared_ingress_deluge_upstream: grafana.jkandler.de is cut
+        # over to the k3s learning cluster's own Ingress (infra/
+        # k3s-apps' modules/grafana). Confirmed live before this
+        # cutover: the k3s Pod's real admin login working (not the
+        # default admin/admin), both datasources healthy, and a real
+        # PromQL query returning real, current scrape data.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'shared_ingress_grafana_upstream == "http://127.0.0.1:3000"\n'
+            '            or shared_ingress_grafana_upstream == '
+            '"http://192.168.101.10:80"',
+            tasks,
+        )
+
+    def test_grafana_health_check_sends_the_real_host_header(self) -> None:
+        # Same bug class as Deluge's/Open WebUI's/the landing page's own
+        # checks, fixed here proactively rather than rediscovered live a
+        # fourth time: once shared_ingress_grafana_upstream points at
+        # the k3s cluster's Ingress, a bare request by IP 404s even
+        # though the backend is healthy -- Traefik there routes purely
+        # on Host.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        verify_task = tasks.split(
+            "Verify Grafana before publishing it", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn(
+            'Host: "{{ shared_ingress_grafana_domain }}"', verify_task
+        )
+
     def test_deluge_health_check_sends_the_real_host_header(self) -> None:
         # Same fix as the landing page's own health check: once
         # shared_ingress_deluge_upstream points at the k3s cluster's

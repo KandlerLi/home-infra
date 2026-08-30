@@ -130,17 +130,26 @@ sankey_export_remote_dir: Shared/Finanzen
 # validate checks.
 monitoring_enabled: true
 shared_ingress_grafana_enabled: true
-# First step of moving Grafana into the k3s cluster (infra/k3s-apps) --
-# Prometheus and Postgres stay on this host (node_exporter/cAdvisor/
-# blackbox_exporter/Blocky itself all have to, see monitoring's and
-# blocky's own comments), but Grafana's two datasources need to be
-# reachable from the k3s VM once it runs there instead of here.
-# Additive on both -- see monitoring_prometheus_k3s_bind_address's and
+# Phase 1 of moving the monitoring stack into the k3s cluster
+# (infra/k3s-apps, modules/grafana): Grafana only -- Prometheus and
+# Postgres stay on this host (node_exporter/cAdvisor/blackbox_exporter/
+# Blocky itself all have to, see monitoring's and blocky's own
+# comments), reached by the k3s-native Grafana over the two additive
+# listeners below. Additive on both -- see
+# monitoring_prometheus_k3s_bind_address's and
 # blocky_postgres_k3s_bind_address's own comments for why neither one
 # is a switch away from loopback the way nextcloud_aio_apache_ip_binding
-# was. Grafana itself hasn't moved into k3s yet -- this proves the
-# network path works first, before building on top of it.
+# was. Confirmed live before the cutover below: the k3s Pod's real
+# admin login working (not the default admin/admin -- an earlier bug in
+# how its password Secret was wired up got caught here first), both
+# datasources healthy, and a real PromQL query against Prometheus
+# returning real, current scrape data through Grafana's own proxy.
 monitoring_prometheus_k3s_bind_address: 192.168.101.1
+# Same k3s cutover as shared_ingress_home_upstream/_deluge_upstream/
+# etc. below -- see this file's own comment on shared_ingress_agent_upstream
+# for the full reasoning. shared_ingress' own health check now sends
+# the Host header this needs (see that role's tasks/main.yml).
+shared_ingress_grafana_upstream: http://192.168.101.10:80
 
 # home.jkandler.de -- served by the k3s-native copy of this service
 # (infra/k3s-apps, Terraform-managed), not by anything in this repo.
