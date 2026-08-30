@@ -43,9 +43,27 @@ shared_ingress_enabled: true
 shared_ingress_start: true
 shared_ingress_apex_redirect_enabled: true
 shared_ingress_agent_enabled: true
+# ai.jkandler.de -- served by the k3s-native home_agent + open_webui
+# pairing (infra/k3s-apps' modules/home_agent and modules/open_webui),
+# not the Docker containers here any more. Both upstreams move in
+# lockstep (see shared_ingress' own comment on
+# shared_ingress_agent_upstream) since this file's own /healthz +
+# /v1/chat vs. everything-else path split forwards both branches to
+# the same k3s Traefik entrypoint, which then does the equivalent
+# split on its own side via infra/k3s-apps' combined Ingress.
+# Confirmed live before this cutover: the Docker open-webui container
+# stopped cleanly, the k3s copy read the existing accounts/chat
+# history correctly over the new NFS export (persisted database
+# settings came back, not fresh env-var defaults). Not yet reshaped
+# down like the deluge role was -- the old home_agent/open_webui/
+# nextcloud_tools Docker containers are still here, just no longer
+# reachable from outside, a distinct follow-up step once this routing
+# cutover itself is confirmed working end-to-end.
+shared_ingress_agent_upstream: http://192.168.101.10:80
 home_agent_frontend_network_enabled: true
 open_webui_enabled: true
 shared_ingress_open_webui_enabled: true
+shared_ingress_open_webui_upstream: http://192.168.101.10:80
 nextcloud_tools_enabled: true
 nextcloud_tools_allowed_root: Shared/AI Workspace
 

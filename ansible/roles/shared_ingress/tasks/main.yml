@@ -20,7 +20,20 @@
             shared_ingress_nextcloud_upstream == "http://127.0.0.1:11000"
             or shared_ingress_nextcloud_upstream == "http://192.168.101.1:11000"
           - shared_ingress_agent_domain | length > 3
-          - shared_ingress_agent_upstream == "http://127.0.0.1:8090"
+          # The same deliberate exception as shared_ingress_home_upstream/
+          # shared_ingress_deluge_upstream: ai.jkandler.de's own
+          # home_agent + open_webui pairing is cut over to the k3s
+          # learning cluster's Ingress, on the same isolated,
+          # homeserver-only-reachable network. Both this and
+          # shared_ingress_open_webui_upstream below move in lockstep --
+          # the k3s Ingress does its own equivalent of this file's own
+          # /healthz + /v1/chat vs. everything-else path split (see
+          # infra/k3s-apps' own combined Ingress), so both branches of
+          # that split have to point at the same k3s address once either
+          # one does.
+          - >-
+            shared_ingress_agent_upstream == "http://127.0.0.1:8090"
+            or shared_ingress_agent_upstream == "http://192.168.101.10:80"
           - shared_ingress_health_address == "127.0.0.1"
           - shared_ingress_health_port | int >= 1024
           - shared_ingress_agent_max_request_body_bytes | int <= 16384
@@ -31,6 +44,7 @@
             or shared_ingress_agent_enabled | bool
           - >-
             shared_ingress_open_webui_upstream == "http://127.0.0.1:8091"
+            or shared_ingress_open_webui_upstream == "http://192.168.101.10:80"
           - shared_ingress_open_webui_rate_average | int > 0
           - shared_ingress_open_webui_rate_burst | int > 0
           - >-

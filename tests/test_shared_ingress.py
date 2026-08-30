@@ -89,6 +89,43 @@ class SharedIngressTests(unittest.TestCase):
             tasks,
         )
 
+    def test_agent_upstream_allows_only_loopback_or_the_k3s_cluster(
+        self,
+    ) -> None:
+        # Same deliberate exception as shared_ingress_home_upstream/
+        # shared_ingress_deluge_upstream: ai.jkandler.de's home_agent +
+        # open_webui pairing is cut over to the k3s cluster's own
+        # Ingress. Confirmed live before this cutover: the Docker
+        # open-webui container stopped cleanly, the k3s copy read the
+        # existing accounts/chat history correctly (persisted database
+        # settings came back, not fresh env-var defaults) over the new
+        # NFS export.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'shared_ingress_agent_upstream == "http://127.0.0.1:8090"\n'
+            '            or shared_ingress_agent_upstream == '
+            '"http://192.168.101.10:80"',
+            tasks,
+        )
+
+    def test_open_webui_upstream_allows_only_loopback_or_the_k3s_cluster(
+        self,
+    ) -> None:
+        # Moves in lockstep with shared_ingress_agent_upstream above --
+        # both branches of this file's own /healthz + /v1/chat vs.
+        # everything-else path split have to point at the same k3s
+        # address once either one does, since the k3s Ingress (infra/
+        # k3s-apps) does the equivalent split on its own side.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'shared_ingress_open_webui_upstream == "http://127.0.0.1:8091"\n'
+            '            or shared_ingress_open_webui_upstream == '
+            '"http://192.168.101.10:80"',
+            tasks,
+        )
+
     def test_deluge_health_check_sends_the_real_host_header(self) -> None:
         # Same fix as the landing page's own health check: once
         # shared_ingress_deluge_upstream points at the k3s cluster's
