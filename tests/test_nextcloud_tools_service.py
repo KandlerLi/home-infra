@@ -730,5 +730,42 @@ class ShoppingListHandlerTests(unittest.TestCase):
             nextcloud_tools.handle_tool("/v1/shopping/lists", {}, FakeClient())
 
 
+class EndpointHostAllowlistTests(unittest.TestCase):
+    """main() guards ENDPOINT_HOST against an arbitrary host, not just
+    loopback -- defense in depth for an AI-agent-facing tool, widened to
+    also admit the k3s VM's isolated-network address the k3s-native copy
+    of this service (infra/k3s-apps) reaches Nextcloud AIO's Apache at.
+    Confirmed live: the original bare loopback-only check broke that
+    copy outright ("Nextcloud endpoint must remain on loopback").
+    """
+
+    def test_allowed_hosts_are_exactly_loopback_and_the_k3s_vm_address(self) -> None:
+        self.assertEqual(
+            nextcloud_tools.ALLOWED_ENDPOINT_HOSTS,
+            frozenset({"127.0.0.1", "192.168.101.1"}),
+        )
+
+    def test_main_rejects_a_host_outside_the_allowlist(self) -> None:
+        with patch.object(nextcloud_tools, "ENDPOINT_HOST", "10.0.0.1"):
+            with self.assertRaisesRegex(RuntimeError, "allowlisted host"):
+                nextcloud_tools.main()
+
+    def test_main_accepts_the_k3s_vm_address_and_proceeds_past_the_guard(
+        self,
+    ) -> None:
+        # Patched to a path that can't exist, so main() fails at the next
+        # step (reading the app password) rather than actually starting a
+        # server -- proves the endpoint guard let this host through
+        # without asserting on anything past its own responsibility.
+        with (
+            patch.object(nextcloud_tools, "ENDPOINT_HOST", "192.168.101.1"),
+            patch.object(
+                nextcloud_tools, "APP_PASSWORD_FILE", "/nonexistent/app-password"
+            ),
+        ):
+            with self.assertRaises(FileNotFoundError):
+                nextcloud_tools.main()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -25,6 +25,15 @@ SOCKET_PATH = os.environ.get(
     "NEXTCLOUD_TOOLS_SOCKET", "/run/nextcloud-tools/nextcloud-tools.sock"
 )
 ENDPOINT_HOST = os.environ.get("NEXTCLOUD_ENDPOINT_HOST", "127.0.0.1")
+# Closed allowlist, not a bare loopback check -- this guards against the
+# endpoint being pointed at an arbitrary host (defense in depth for an
+# AI-agent-facing tool), not against it running off the homeserver.
+# 192.168.101.1 is this homeserver's own address on the k3s VM's
+# isolated libvirt NAT network, the address the k3s-native copy of this
+# service (infra/k3s-apps) reaches Nextcloud AIO's Apache at -- same
+# trust boundary as nextcloud_aio_apache_ip_binding and
+# shared_ingress_nextcloud_upstream's own widened allowlists.
+ALLOWED_ENDPOINT_HOSTS = frozenset({"127.0.0.1", "192.168.101.1"})
 ENDPOINT_PORT = int(os.environ.get("NEXTCLOUD_ENDPOINT_PORT", "11000"))
 HTTP_HOST = os.environ.get("NEXTCLOUD_HTTP_HOST", "nextcloud.jkandler.de")
 USERNAME = os.environ.get("NEXTCLOUD_USERNAME", "")
@@ -1045,8 +1054,8 @@ def read_app_password(path: str) -> str:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    if ENDPOINT_HOST != "127.0.0.1":
-        raise RuntimeError("Nextcloud endpoint must remain on loopback")
+    if ENDPOINT_HOST not in ALLOWED_ENDPOINT_HOSTS:
+        raise RuntimeError("Nextcloud endpoint must be an allowlisted host")
     app_password = read_app_password(APP_PASSWORD_FILE)
     client = NextcloudWebDAV(
         ENDPOINT_HOST,
