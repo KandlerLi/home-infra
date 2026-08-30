@@ -85,6 +85,19 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertEqual(tasks.count("        network_mode: host"), 6)
         self.assertNotIn("published_ports:", tasks)
 
+    def test_cadvisor_port_does_not_collide_with_nextcloud_aio_admin_ui(
+        self,
+    ) -> None:
+        # Confirmed live: cAdvisor's network_mode: host listener silently
+        # won port 8080 over Nextcloud AIO's own mastercontainer admin
+        # interface (unrelated to Ansible, always meant to be reachable
+        # at https://<homeserver>:8080), leaving nothing listening there
+        # for AIO's own interface -- only noticed when that interface was
+        # needed again and found unreachable.
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertNotIn("monitoring_cadvisor_port: 8080", defaults)
+
     def test_cadvisor_docker_socket_access_is_read_only(self) -> None:
         # Precedented by nextcloud_aio's own master container already
         # mounting docker.sock read-only -- not a new exception.

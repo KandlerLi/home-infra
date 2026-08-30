@@ -38,7 +38,16 @@ monitoring_cadvisor_image_digest: >-
   sha256:763aecf1c32c2be8a1a75f9abfc2fc461005c9dbbaa39cb356b354aac1296dbe
 monitoring_cadvisor_image: >-
   {{ monitoring_cadvisor_image_name }}:{{ monitoring_cadvisor_image_tag }}@{{ monitoring_cadvisor_image_digest }}
-monitoring_cadvisor_port: 8080
+# NOT 8080 -- that's Nextcloud AIO's own mastercontainer admin
+# interface port (nextcloud_aio's own listener, unrelated to Ansible).
+# Confirmed live: cAdvisor's network_mode: host listener silently won
+# that port (started later than the mastercontainer, or restarted more
+# recently), leaving nothing listening on 0.0.0.0:8080 for AIO's own
+# interface at all -- found only when the user needed https://<homeserver>:8080
+# again and it was unreachable. cAdvisor itself has no fixed
+# "conventional" port to preserve here, unlike e.g. Prometheus/Grafana's
+# well-known defaults, so there's no reason to fight AIO for 8080.
+monitoring_cadvisor_port: 8081
 monitoring_cadvisor_memory_limit: 256M
 monitoring_cadvisor_cpu_limit: 0.5
 monitoring_cadvisor_pids_limit: 128
