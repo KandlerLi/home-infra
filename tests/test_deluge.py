@@ -105,43 +105,6 @@ class DelugeRoleTests(unittest.TestCase):
         )
 
 
-class DelugeLegacyCleanupTests(unittest.TestCase):
-    def test_deluge_playbook_removes_the_retired_container_and_image(
-        self,
-    ) -> None:
-        # One-time cleanup, not standing config: the deluge role dropped
-        # its container_name/image variables entirely in the reshape
-        # (they're hardcoded here instead), so this asserts the exact
-        # values the old role used to manage are actually being removed,
-        # not silently left behind as orphaned Docker state.
-        playbook = (
-            PROJECT_ROOT / "ansible/playbooks/deluge.yml"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn("name: deluge", playbook)
-        self.assertIn("name: linuxserver/deluge", playbook)
-        self.assertIn("tag: 2.2.0-ls381", playbook)
-        self.assertEqual(playbook.count("state: absent"), 2)
-
-    def test_image_removal_uses_separate_name_and_tag_not_a_combined_string(
-        self,
-    ) -> None:
-        # Confirmed live and by reading community.docker.docker_image's
-        # own source: a single "repo:tag@digest" name string makes
-        # absent()'s find_image() lookup use the wrong repo/tag split
-        # (parse_repository_tag splits on "@" first, leaving `tag` as
-        # the digest and `name` still containing ":2.2.0-ls381"), so it
-        # can never match the real locally-stored image and silently
-        # no-ops instead of removing it or erroring. This is exactly why
-        # the image was still on the homeserver after this task had
-        # already run once with the combined-string form.
-        playbook = (
-            PROJECT_ROOT / "ansible/playbooks/deluge.yml"
-        ).read_text(encoding="utf-8")
-
-        self.assertNotIn("2.2.0-ls381@sha256:", playbook)
-
-
 class DelugeIngressTests(unittest.TestCase):
     def test_deluge_route_requires_its_own_basic_auth_and_resource_limits(
         self,
