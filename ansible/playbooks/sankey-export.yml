@@ -112,11 +112,12 @@
         - not sankey_export_bootstrap_password_file.stat.exists
         - sankey_export_app_password | trim | length < 16
 
-    # Reuses the exact same shared task file nextcloud-tools.yml uses, with
-    # its nextcloud_tools_* variable names shadowed for this account instead
-    # -- see its own header comment; it already generates via `occ
-    # user:auth-tokens:add`, extracts, and validates the result, which is
-    # identical work for any dedicated Nextcloud service account.
+    # Reuses the shared task file generate_and_validate_nextcloud_app_password.yml,
+    # with its nextcloud_tools_* variable names shadowed for this account
+    # instead -- see its own header comment; it already generates via
+    # `occ user:auth-tokens:add`, extracts, and validates the result,
+    # which is identical work for any dedicated Nextcloud service
+    # account.
     - name: Generate and validate a Nextcloud app password
       ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/generate_and_validate_nextcloud_app_password.yml"
       vars:

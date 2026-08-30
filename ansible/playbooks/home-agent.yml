@@ -1,9 +1,0 @@
----
-- name: Configure private homeserver agent
-  hosts: home_servers
-  become: true
-  gather_facts: true
-
-  roles:
-    - role: nextcloud_tools
-    - role: home_agent

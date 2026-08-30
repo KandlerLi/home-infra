@@ -1,19 +1,20 @@
 # open_webui
 
-Opt-in chat frontend for `home_agent` (`open_webui_enabled`, default
-`false`). Runs upstream Open WebUI, digest-pinned, loopback-only --
-`shared_ingress` is what actually exposes it, at `ai.jkandler.de`.
+Host prerequisites for Open WebUI: a dedicated service account and its
+real data directory. Open WebUI itself -- the Docker container that
+used to run here -- is retired, superseded by `infra/k3s-apps`'
+`modules/open_webui/` (cut over, together with `home_agent`, to
+`ai.jkandler.de` on 2026-08-30). Always applied (no enable flag any
+more) -- the k3s-native copy still depends on this account and
+directory existing identically, the same reason `deluge`'s own role
+was reshaped this way rather than deleted outright.
 
-- Pre-wired to `home_agent` as its only OpenAI-compatible provider
-  (`open_webui_provider_base_url`), including its transcription endpoint
-  for voice input -- `open_webui_stt_model` is cosmetic only, since
-  `home_agent` always ignores the caller-stated model and uses its own
-  configured one.
-- Joins the shared `home-agent-frontend` Docker network (see
-  `home_agent_frontend_network_enabled`) to reach the agent by container
-  name rather than the host loopback.
-- User data lives on `open_webui_data_dir`; enable
-  `shared_ingress_open_webui_enabled` (alongside `shared_ingress_agent_enabled`)
-  to publish it -- both share `ai.jkandler.de`, split by path: `home_agent`
-  answers `/healthz` and `/v1/chat` directly, everything else goes to
-  Open WebUI's own UI.
+- `open_webui_data_dir` (`/var/lib/open-webui`) holds the real,
+  already-live data (accounts, chat history, `WEBUI_SECRET_KEY_FILE`)
+  -- migrated over a new NFS export to the k3s cluster rather than
+  started fresh, see `nfs_server_exports` in `home-infra`'s own
+  `group_vars` and `infra/k3s-apps`' `modules/open_webui/storage.tf`.
+- The service account's uid (995) is validated against what
+  `infra/k3s-apps`' Deployment hardcodes as `run_as_user` -- see the
+  task's own comment for why (and why its *group* is deliberately
+  `root`, not this account's own).

@@ -119,160 +119,43 @@ Edit the encrypted secret with the existing GPG key:
 sops ansible/inventory/group_vars/all/secrets.sops.yml
 ```
 
-## Private homeserver agent
+## Private homeserver agent, Nextcloud tools, and the chat frontend
 
-The `home_agent` role (always applied) installs two deliberately separate
-components:
+`home_agent` (the OpenAI-backed HTTP API), `nextcloud_tools` (restricted
+Nextcloud file/shopping-list access), and `open_webui` (the chat
+frontend) all used to run as Docker containers managed by this repo.
+As of 2026-08-30 they run as a personal, single-node k3s cluster
+instead (`infra/k3s-apps`, a sibling repository, Terraform-managed) --
+see `docs/home-infra-ai-context/context/current-state.md`'s "k3s
+learning cluster" section for the full cutover history. This repo now
+only owns the host-level prerequisites those k3s Pods still depend on:
 
-- `home-tools`, a hardened host systemd service that exposes only fixed,
-  read-only JSON checks over `/run/home-tools/home-tools.sock`
-- `home-agent`, an unprivileged Docker container that uses the OpenAI Responses
-  API and can call only those checks
+- **`home_agent` role** (always applied): `home-tools`, a hardened
+  host systemd service exposing fixed, read-only JSON checks (host
+  disks, systemd units, Docker containers) over
+  `/run/home-tools/home-tools.sock` -- the one dependency that
+  couldn't move into the k3s Pod as a sidecar, since it reports this
+  homeserver's own hardware. Reached by the k3s Pod over an opt-in TCP
+  listener, scoped to only the k3s VM's isolated network address. The
+  role also keeps `home_agent`'s own Python application source
+  (`files/agent/`) as the canonical copy a self-hosted CI workflow
+  (`.github/workflows/build-home-agent.yml`) builds the k3s Pod's GHCR
+  image from -- never built on the homeserver itself.
+- **`nextcloud_tools` role**: retired outright, not reshaped -- its
+  only consumer (home_agent's own Docker container) is gone. Its
+  Python service source (`files/nextcloud_tools_service.py`) stays on
+  as the canonical original `infra/k3s-apps` vendors its own Pod
+  sidecar's copy from; see that role's own README.
+- **`open_webui` role** (always applied): a dedicated service account
+  and `open_webui_data_dir` (`/var/lib/open-webui`), holding the real
+  accounts and chat history the k3s Pod reads over a new NFS export
+  rather than starting fresh. The service account's uid is validated
+  against what `infra/k3s-apps`' Deployment hardcodes.
 
-The model-facing container does not receive the Docker socket, shell access,
-root privileges, host environment variables, or write tools. Docker data is
-sanitized by `home-tools` to container name, image, state, and status. The
-agent API is published only on `127.0.0.1:8090` unless the guarded shared
-ingress migration is deliberately completed.
-
-Add the API key to the encrypted SOPS file:
-
-```yaml
-home_agent_openai_api_key: "sk-..."
-```
-
-Then deploy just the agent stack (faster than a full `site.yml` run, e.g.
-after an image or code change):
-
-```bash
-.venv/bin/ansible-playbook ansible/playbooks/home-agent.yml \
-  --ask-become-pass
-```
-
-A normal `site.yml` run applies it too -- the role has no enable flag.
-The model defaults to `gpt-5.4-mini` and can be changed with
-`home_agent_model`.
-
-After deployment, make a local request from the homeserver:
-
-```bash
-curl --fail-with-body \
-  --header 'Content-Type: application/json' \
-  --data '{"message":"Check my homeserver."}' \
-  http://127.0.0.1:8090/v1/chat
-```
-
-Host data selected by the tools, including container names and health metrics,
-is sent to the configured cloud model when needed. Nextcloud data remains
-unavailable unless the separate read-only tool role is explicitly configured
-and deployed.
-
-The agent also exposes an OpenAI-compatible API on its container port. This
-compatibility layer accepts bounded conversation history, ignores caller
-system/developer messages, and advertises only the synthetic `home-agent`
-model. The existing `/healthz` and `/v1/chat` endpoints remain available.
-
-## Read-only Nextcloud tools
-
-The disabled-by-default `nextcloud_tools` role prepares a separate hardened
-systemd service. It holds one dedicated Nextcloud app password and talks only
-to AIO Apache on `127.0.0.1:11000`. The `home-agent` container receives a
-read-only mount of the service's Unix socket, never the credential or direct
-WebDAV access. Open WebUI remains only a chat frontend.
-
-The first milestone exposes three bounded operations below one configured
-folder: list files, search names and paths, and read UTF-8 text files up to
-256 KiB. Search scans at most 500 entries to depth four and returns at most 50
-matches. Metadata includes file type, size, modification time, content type,
-preview availability, and identifiers. The service implements no WebDAV write
-method. Images and binary documents can be found by name and metadata but their
-contents cannot be read or analysed.
-
-The guarded bootstrap playbook creates the non-admin `home-agent` Nextcloud
-account with an unrevealed generated login password, creates a limited
-`home-agent-readonly` app password non-interactively, and installs that token
-directly as a service-owned `0400` file. The token is protected by Ansible
-`no_log` and is never written to the controller, SOPS, Docker environment, or
-chat. If the account or token file already exists, the play reuses it; it
-refuses to silently orphan a token after partial state loss.
-
-Use the dedicated playbook only after separately approving both the Nextcloud
-account/token mutation and production service deployment:
-
-```bash
-.venv/bin/ansible-playbook ansible/playbooks/nextcloud-tools.yml \
-  --ask-become-pass \
-  --extra-vars \
-  nextcloud_tools_bootstrap_confirmation=BOOTSTRAP_NEXTCLOUD_TOOLS
-```
-
-After the play creates the account, create or select `AI Workspace` under your
-normal Nextcloud account and share it with `home-agent` with editing disabled.
-That one share remains manual so Ansible never needs a credential for the
-account that owns your personal files.
-
-After private list/search/text-read checks and an Open WebUI acceptance passed,
-`nextcloud_tools_enabled` was persisted in inventory so aggregate applies
-retain the validated socket integration. File metadata or
-text content selected by these tools is sent to the configured cloud model only
-when the user explicitly requests a Nextcloud operation. Writes, bulk indexing,
-PDF/Office extraction, and image-content recognition require separate reviewed
-milestones.
-
-Token rotation is separately guarded. It validates the replacement token over
-loopback WebDAV before installing it and revokes only older tokens with the
-managed name:
-
-```bash
-.venv/bin/ansible-playbook \
-  ansible/playbooks/rotate-nextcloud-tools-token.yml \
-  --ask-become-pass \
-  --extra-vars \
-  nextcloud_tools_rotation_confirmation=ROTATE_NEXTCLOUD_TOOLS_TOKEN
-```
-
-To detach the socket and stop the credential-bearing service without deleting
-its configuration, use the dedicated rollback playbook after explicit approval:
-
-```bash
-.venv/bin/ansible-playbook ansible/playbooks/disable-nextcloud-tools.yml \
-  --ask-become-pass
-```
-
-## Open WebUI frontend
-
-The `open_webui` role provides the deployed chat window at
-`ai.jkandler.de`. It is enabled by ordinary `site.yml` runs. Open WebUI
-connects only to the restricted `home-agent` compatibility API over an
-isolated, non-masqueraded Docker bridge; it receives neither the real OpenAI
-key nor host access. The bridge blocks external egress while still allowing
-the container to publish only `127.0.0.1:8091`.
-
-The role pins Open WebUI by version and image digest, drops all Linux
-capabilities, uses a non-login host identity, and disables uploads, workspace
-tools, plugins, code execution, web search, image generation, API keys, and
-community sharing. Chat and account state persists under
-`/var/lib/open-webui`. The image root filesystem must remain writable because
-the upstream startup script rewrites bundled static assets; this is a known
-residual risk, mitigated by the other container restrictions and isolated
-network. Offline and RAG-bypass settings prevent startup from attempting to
-download local embedding models.
-
-Deploy the private frontend without changing the public route:
-
-```bash
-.venv/bin/ansible-playbook ansible/playbooks/open-webui.yml \
-  --ask-become-pass
-```
-
-The initial administrator setup and authenticated public chat validation are
-complete. The separately guarded publication playbook requires the exact
-confirmation `PUBLISH_OPEN_WEBUI`; the rollback playbook requires
-`ROLL_BACK_OPEN_WEBUI` and restores the existing direct agent API route.
-Follow the documentation repository's Open WebUI runbook before either
-operation. The UI route uses Open WebUI authentication because its Bearer token
-and HTTP Basic Auth cannot share one `Authorization` header. The retained direct
-`/healthz` and `/v1/chat` routes continue to require Basic Auth.
+`ai.jkandler.de` is split by path between the two (`home_agent`
+answers `/healthz` and `/v1/chat`, `open_webui` gets everything else)
+-- see `shared_ingress` below, and `infra/k3s-apps`' own
+`ai_ingress.tf` for how that split is replicated on the cluster side.
 
 ## Shared HTTPS ingress
 

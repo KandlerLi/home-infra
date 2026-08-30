@@ -1,39 +1,38 @@
 ---
+# home_agent itself now runs as infra/k3s-apps' modules/home_agent
+# Pod, not a Docker container here -- this role's own job narrows down
+# to home_tools_service, the one dependency that couldn't move into
+# the k3s Pod as a sidecar (it reports this homeserver's own hardware,
+# so it has to keep running here). Reached from the k3s Pod over its
+# TCP listener (home_agent_tools_tcp_bind_address), same as before.
+#
+# files/agent/ (home_agent's actual Python application) stays in this
+# repo even though it's no longer built/run here -- it's the canonical
+# source build-home-agent.yml's CI workflow builds the k3s Pod's GHCR
+# image from.
+
 - name: Validate home agent configuration
   ansible.builtin.assert:
     that:
-      - home_agent_openai_api_key | trim | length >= 20
-      - home_agent_openai_api_key | trim != "CHANGE_ME"
-      - home_agent_bind_address == "127.0.0.1"
-      - home_agent_port | int >= 1024
-      - home_agent_port | int <= 65535
-      - home_agent_frontend_network_name | length > 3
       - home_agent_tools_filesystems is sequence
       - home_agent_tools_filesystems is not string
       - home_agent_tools_filesystems | length > 0
       - >-
         home_agent_tools_socket_path | dirname
         == home_agent_tools_socket_dir
-      - >-
-        not home_agent_nextcloud_tools_enabled | bool
-        or home_agent_nextcloud_tools_socket_path | dirname
-           == home_agent_nextcloud_tools_socket_dir
       # 192.168.101.1 is this homeserver's own address on the k3s VM's
       # isolated libvirt NAT network, not a public or LAN-wide one --
       # same trust boundary as nextcloud_aio_apache_ip_binding and
-      # shared_ingress's own home/deluge upstream exceptions. Unlike
-      # those, this is additive (the Unix socket keeps working
-      # regardless), so there's no live value to switch in lockstep --
-      # just a closed allowlist of one address.
+      # shared_ingress's own home/deluge upstream exceptions. A closed
+      # allowlist of one address, not an open door.
       - >-
         home_agent_tools_tcp_bind_address | length == 0
         or home_agent_tools_tcp_bind_address == "192.168.101.1"
       - home_agent_tools_tcp_port | int >= 1024
       - home_agent_tools_tcp_port | int <= 65535
     fail_msg: >-
-      Configure home_agent_openai_api_key through SOPS, keep the initial
-      API bound to a loopback address, and keep home_agent_tools_tcp_bind_address
-      empty or pinned to the k3s VM's isolated network address.
+      Keep home_agent_tools_tcp_bind_address empty or pinned to the k3s
+      VM's isolated network address.
   no_log: true
 
 - name: Check Docker group
@@ -58,43 +57,6 @@
     create_home: false
     shell: /usr/sbin/nologin
 
-- name: Create home agent container account
-  ansible.builtin.user:
-    name: "{{ home_agent_tools_container_user }}"
-    group: "{{ home_agent_tools_client_group }}"
-    system: true
-    create_home: false
-    shell: /usr/sbin/nologin
-
-- name: Read home agent container account
-  ansible.builtin.getent:
-    database: passwd
-    key: "{{ home_agent_tools_container_user }}"
-
-- name: Read home tools client group
-  ansible.builtin.getent:
-    database: group
-    key: "{{ home_agent_tools_client_group }}"
-
-- name: Record home agent runtime identity
-  ansible.builtin.set_fact:
-    home_agent_container_uid: >-
-      {{ ansible_facts.getent_passwd[home_agent_tools_container_user][1] }}
-    home_agent_container_gid: >-
-      {{ ansible_facts.getent_group[home_agent_tools_client_group][1] }}
-
-- name: Read Nextcloud tools client group
-  ansible.builtin.getent:
-    database: group
-    key: "{{ home_agent_nextcloud_tools_client_group }}"
-  when: home_agent_nextcloud_tools_enabled | bool
-
-- name: Record Nextcloud tools client group
-  ansible.builtin.set_fact:
-    home_agent_nextcloud_tools_client_gid: >-
-      {{ ansible_facts.getent_group[home_agent_nextcloud_tools_client_group][1] }}
-  when: home_agent_nextcloud_tools_enabled | bool
-
 - name: Create home tools installation directory
   ansible.builtin.file:
     path: "{{ home_agent_tools_install_dir }}"
@@ -113,188 +75,3 @@
     socket_service_unit_name: home-tools.service
     socket_service_socket_path: "{{ home_agent_tools_socket_path }}"
     socket_service_handler: Restart home tools
-
-- name: Create home agent directories
-  ansible.builtin.file:
-    path: "{{ item.path }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "{{ item.mode }}"
-  loop:
-    - path: "{{ home_agent_build_dir }}"
-      mode: "0755"
-    - path: "{{ home_agent_config_dir }}"
-      mode: "0750"
-  loop_control:
-    label: "{{ item.path }}"
-
-- name: Install home agent build context
-  ansible.builtin.copy:
-    src: agent/
-    dest: "{{ home_agent_build_dir }}/"
-    owner: root
-    group: root
-    directory_mode: "0755"
-    mode: preserve
-  register: home_agent_application_files
-
-- name: Install OpenAI API key file
-  ansible.builtin.copy:
-    content: "{{ home_agent_openai_api_key | trim }}\n"
-    dest: "{{ home_agent_openai_api_key_path }}"
-    owner: "{{ home_agent_tools_container_user }}"
-    group: root
-    mode: "0400"
-  no_log: true
-  register: home_agent_api_key_file
-
-- name: Build home agent image
-  community.docker.docker_image:
-    name: "{{ home_agent_image_name }}"
-    tag: "{{ home_agent_image_tag }}"
-    source: build
-    force_source: "{{ home_agent_application_files.changed }}"
-    build:
-      path: "{{ home_agent_build_dir }}"
-      pull: true
-    state: present
-  register: home_agent_image
-
-- name: Inspect home agent frontend network
-  community.docker.docker_network_info:
-    name: "{{ home_agent_frontend_network_name }}"
-  register: home_agent_frontend_network_current
-  when: home_agent_frontend_network_enabled | bool
-
-- name: Create non-masqueraded home agent frontend network
-  community.docker.docker_network:
-    name: "{{ home_agent_frontend_network_name }}"
-    driver: bridge
-    internal: false
-    enable_ipv6: false
-    driver_options:
-      com.docker.network.bridge.enable_ip_masquerade: "false"
-    force: >-
-      {{
-        home_agent_frontend_network_current.exists
-        and (
-          home_agent_frontend_network_current.network.Internal
-          | default(false)
-          or (
-            home_agent_frontend_network_current.network.Options
-            | default({})
-          ).get(
-            'com.docker.network.bridge.enable_ip_masquerade',
-            'true'
-          ) != 'false'
-        )
-      }}
-    state: present
-  when: home_agent_frontend_network_enabled | bool
-
-- name: Ensure home agent container is running
-  community.docker.docker_container:
-    name: "{{ home_agent_container_name }}"
-    image: "{{ home_agent_image_name }}:{{ home_agent_image_tag }}"
-    state: started
-    recreate: >-
-      {{
-        home_agent_image.changed
-        or home_agent_api_key_file.changed
-        or home_agent_force_recreate | bool
-      }}
-    restart_policy: "{{ home_agent_restart_policy }}"
-    user: "{{ home_agent_container_uid }}:{{ home_agent_container_gid }}"
-    groups: >-
-      {{
-        [home_agent_nextcloud_tools_client_gid]
-        if home_agent_nextcloud_tools_enabled | bool
-        else omit
-      }}
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opts:
-      - no-new-privileges:true
-    memory: "{{ home_agent_memory_limit }}"
-    cpus: "{{ home_agent_cpu_limit }}"
-    pids_limit: "{{ home_agent_pids_limit }}"
-    published_ports:
-      - "{{ home_agent_bind_address }}:{{ home_agent_port }}:8000"
-    networks: >-
-      {{
-        [
-          {'name': 'bridge'},
-          {
-            'name': home_agent_frontend_network_name,
-            'aliases': ['home-agent']
-          }
-        ]
-        if home_agent_frontend_network_enabled | bool
-        else omit
-      }}
-    volumes: >-
-      {{
-        [
-          home_agent_tools_socket_dir + ':/run/home-tools:ro',
-          home_agent_openai_api_key_path + ':/run/secrets/openai_api_key:ro'
-        ]
-        + (
-          [
-            home_agent_nextcloud_tools_socket_dir
-            + ':/run/nextcloud-tools:ro'
-          ]
-          if home_agent_nextcloud_tools_enabled | bool
-          else []
-        )
-      }}
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=16m
-    env: >-
-      {{
-        {
-          'HOME_AGENT_MODEL': home_agent_model,
-          'HOME_AGENT_STT_MODEL': home_agent_stt_model,
-          'HOME_TOOLS_SOCKET': '/run/home-tools/home-tools.sock',
-          'OPENAI_API_KEY_FILE': '/run/secrets/openai_api_key',
-          'PYTHONDONTWRITEBYTECODE': '1'
-        }
-        | combine(
-            {
-              'NEXTCLOUD_TOOLS_SOCKET':
-                '/run/nextcloud-tools/nextcloud-tools.sock'
-            }
-            if home_agent_nextcloud_tools_enabled | bool
-            else {}
-          )
-      }}
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - >-
-          import urllib.request;
-          urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).read()
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    log_driver: json-file
-    log_options:
-      max-size: 10m
-      max-file: "3"
-
-- name: Verify home agent API is ready
-  ansible.builtin.uri:
-    url: >-
-      http://{{ home_agent_bind_address }}:{{ home_agent_port }}/healthz
-    method: GET
-    return_content: false
-    status_code: 200
-  register: home_agent_health
-  retries: 10
-  delay: 2
-  until: home_agent_health.status == 200
-  when: not ansible_check_mode

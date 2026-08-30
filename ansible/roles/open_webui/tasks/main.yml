@@ -1,198 +1,58 @@
 ---
-- name: Configure Open WebUI
-  when: open_webui_enabled | bool
-  block:
-    - name: Validate Open WebUI configuration
-      ansible.builtin.assert:
-        that:
-          - open_webui_image_tag == "v0.11.0-slim"
-          - >-
-            open_webui_image_digest
-            == "sha256:88da9f0e08b8ada8e40bc6d6291494e2c6775a62d24b67b0cefb74ffee4ce621"
-          - open_webui_bind_address == "127.0.0.1"
-          - open_webui_port | int >= 1024
-          - open_webui_port | int <= 65535
-          - open_webui_public_url == "https://ai.jkandler.de"
-          - open_webui_provider_base_url == "http://home-agent:8000/v1"
-          - open_webui_provider_model == "home-agent"
-          - open_webui_frontend_network_name == "home-agent-frontend"
-        fail_msg: >-
-          Keep Open WebUI pinned, loopback-only, and connected only to the
-          restricted home-agent compatibility API.
+# Host prerequisites for Open WebUI: a dedicated service account and
+# its real data directory. This role used to also run Open WebUI
+# itself as a Docker container; that's retired now (cut over to
+# ai.jkandler.de together with home_agent on 2026-08-30, see
+# infra/k3s-apps' modules/open_webui/), but this prerequisite stays --
+# the k3s-native copy reads the exact same real data (accounts, chat
+# history) over a new NFS export of open_webui_data_dir (see
+# nfs_server's exports in group_vars) as this exact service account
+# (its uid is hardcoded in k3s-apps' Deployment), so a homeserver
+# rebuild still needs Ansible to recreate it identically rather than
+# leaving that as undocumented manual state.
 
-    - name: Inspect non-masqueraded home agent frontend network
-      community.docker.docker_network_info:
-        name: "{{ open_webui_frontend_network_name }}"
-      register: open_webui_frontend_network
+- name: Create Open WebUI container account
+  ansible.builtin.user:
+    name: "{{ open_webui_container_user }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
 
-    - name: Require non-masqueraded home agent frontend network
-      ansible.builtin.assert:
-        that:
-          - open_webui_frontend_network.exists
-          - not open_webui_frontend_network.network.Internal
-          - >-
-            open_webui_frontend_network.network.Options[
-              'com.docker.network.bridge.enable_ip_masquerade'
-            ] == 'false'
-        fail_msg: >-
-          Deploy home-agent with its non-masqueraded frontend network enabled
-          before Open WebUI.
+- name: Read Open WebUI container account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ open_webui_container_user }}"
 
-    - name: Create Open WebUI container account
-      ansible.builtin.user:
-        name: "{{ open_webui_container_user }}"
-        system: true
-        create_home: false
-        shell: /usr/sbin/nologin
+- name: Record Open WebUI runtime identity
+  ansible.builtin.set_fact:
+    open_webui_container_uid: >-
+      {{ ansible_facts.getent_passwd[open_webui_container_user][1] }}
 
-    - name: Read Open WebUI container account
-      ansible.builtin.getent:
-        database: passwd
-        key: "{{ open_webui_container_user }}"
+# infra/k3s-apps' Deployment hardcodes run_as_user=995 (and, notably,
+# run_as_group=0/root -- not this account's own default group, matching
+# how this role has always started the container: "995:0", not
+# "995:988") rather than looking the uid up dynamically -- confirmed
+# live to match this account when it was created. If a homeserver
+# rebuild ever assigned a different uid here, the k3s Pod would
+# silently mount the NFS export as the wrong uid instead of failing
+# loudly -- catch that drift here instead.
+- name: Validate the Open WebUI service account matches what k3s-apps hardcodes
+  ansible.builtin.assert:
+    that:
+      - open_webui_container_uid == "995"
+    fail_msg: >-
+      open-webui-container's uid drifted from 995, which infra/k3s-apps'
+      Deployment hardcodes as run_as_user. Either recreate the account
+      with the expected uid, or update k3s-apps' open_webui module and
+      re-apply it to match the new value.
 
-    - name: Record Open WebUI runtime identity
-      ansible.builtin.set_fact:
-        open_webui_container_uid: >-
-          {{ ansible_facts.getent_passwd[open_webui_container_user][1] }}
-
-    - name: Create Open WebUI state directories
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        owner: "{{ open_webui_container_user }}"
-        group: root
-        mode: "0750"
-      loop:
-        - "{{ open_webui_data_dir }}"
-        - "{{ open_webui_data_dir }}/home"
-
-    - name: Pull pinned Open WebUI image
-      community.docker.docker_image:
-        name: "{{ open_webui_image }}"
-        source: pull
-        state: present
-
-    - name: Ensure Open WebUI container is running
-      community.docker.docker_container:
-        name: "{{ open_webui_container_name }}"
-        image: "{{ open_webui_image }}"
-        state: started
-        restart_policy: "{{ open_webui_restart_policy }}"
-        user: "{{ open_webui_container_uid }}:0"
-        read_only: false
-        cap_drop:
-          - ALL
-        security_opts:
-          - no-new-privileges:true
-        memory: "{{ open_webui_memory_limit }}"
-        cpus: "{{ open_webui_cpu_limit }}"
-        pids_limit: "{{ open_webui_pids_limit }}"
-        published_ports:
-          - "{{ open_webui_bind_address }}:{{ open_webui_port }}:8080"
-        networks:
-          - name: "{{ open_webui_frontend_network_name }}"
-        volumes:
-          - "{{ open_webui_data_dir }}:/app/backend/data"
-        tmpfs:
-          - /tmp:rw,noexec,nosuid,nodev,size=64m
-        env:
-          HOME: /app/backend/data/home
-          WEBUI_SECRET_KEY_FILE: /app/backend/data/.webui_secret_key
-          WEBUI_NAME: Home Agent
-          WEBUI_URL: "{{ open_webui_public_url }}"
-          CORS_ALLOW_ORIGIN: "{{ open_webui_public_url }}"
-          WEBUI_AUTH: "True"
-          ENABLE_LOGIN_FORM: "True"
-          ENABLE_SIGNUP: "True"
-          DEFAULT_USER_ROLE: pending
-          ENABLE_PASSWORD_VALIDATION: "True"
-          PASSWORD_VALIDATION_REGEX_PATTERN: >-
-            ^(?=.{12,72}$)(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).*$
-          PASSWORD_VALIDATION_HINT: >-
-            Use 12-72 characters with upper and lower case, a number, and a symbol.
-          WEBUI_SESSION_COOKIE_SECURE: "True"
-          WEBUI_AUTH_COOKIE_SECURE: "True"
-          WEBUI_SESSION_COOKIE_SAME_SITE: strict
-          WEBUI_AUTH_COOKIE_SAME_SITE: strict
-          ENABLE_OLLAMA_API: "False"
-          ENABLE_OPENAI_API: "True"
-          OPENAI_API_BASE_URL: "{{ open_webui_provider_base_url }}"
-          OPENAI_API_KEY: "{{ open_webui_provider_placeholder_key }}"
-          # Route speech-to-text through home-agent (ADR 0012) instead of the
-          # built-in local Whisper engine, which needs a Hugging Face Hub
-          # download this container's OFFLINE_MODE (below) deliberately
-          # blocks -- this sidesteps that restriction rather than loosening
-          # it, since the openai STT engine never touches HF Hub at all.
-          AUDIO_STT_ENGINE: openai
-          AUDIO_STT_OPENAI_API_BASE_URL: "{{ open_webui_provider_base_url }}"
-          AUDIO_STT_OPENAI_API_KEY: "{{ open_webui_provider_placeholder_key }}"
-          AUDIO_STT_MODEL: "{{ open_webui_stt_model }}"
-          OFFLINE_MODE: "True"
-          ENABLE_VERSION_UPDATE_CHECK: "False"
-          RAG_EMBEDDING_ENGINE: openai
-          RAG_OPENAI_API_BASE_URL: "{{ open_webui_provider_base_url }}"
-          RAG_OPENAI_API_KEY: "{{ open_webui_provider_placeholder_key }}"
-          BYPASS_EMBEDDING_AND_RETRIEVAL: "True"
-          RAG_EMBEDDING_MODEL_AUTO_UPDATE: "False"
-          RAG_RERANKING_MODEL_AUTO_UPDATE: "False"
-          DEFAULT_MODELS: "{{ open_webui_provider_model }}"
-          DEFAULT_PINNED_MODELS: "{{ open_webui_provider_model }}"
-          ENABLE_TITLE_GENERATION: "False"
-          ENABLE_TAGS_GENERATION: "False"
-          ENABLE_FOLLOW_UP_GENERATION: "False"
-          ENABLE_AUTOCOMPLETE_GENERATION: "False"
-          ENABLE_EVALUATION_ARENA_MODELS: "False"
-          ENABLE_MESSAGE_RATING: "False"
-          ENABLE_COMMUNITY_SHARING: "False"
-          ENABLE_API_KEYS: "False"
-          ENABLE_PLUGINS: "False"
-          ENABLE_PIP_INSTALL_FRONTMATTER_REQUIREMENTS: "False"
-          SAFE_MODE: "True"
-          ENABLE_CODE_EXECUTION: "False"
-          ENABLE_CODE_INTERPRETER: "False"
-          ENABLE_WEB_SEARCH: "False"
-          ENABLE_IMAGE_GENERATION: "False"
-          ENABLE_SUBAGENTS: "False"
-          USER_PERMISSIONS_CHAT_FILE_UPLOAD: "False"
-          USER_PERMISSIONS_CHAT_WEB_UPLOAD: "False"
-          USER_PERMISSIONS_CHAT_SYSTEM_PROMPT: "False"
-          USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS: "False"
-          USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS: "False"
-          USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS: "False"
-          USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS: "False"
-          USER_PERMISSIONS_WORKSPACE_SKILLS_ACCESS: "False"
-          AIOHTTP_CLIENT_ALLOW_REDIRECTS: "False"
-          SCARF_NO_ANALYTICS: "True"
-          DO_NOT_TRACK: "True"
-          ANONYMIZED_TELEMETRY: "False"
-          LOGURU_DIAGNOSE: "False"
-        healthcheck:
-          test:
-            - CMD
-            - curl
-            - --fail
-            - --silent
-            - http://127.0.0.1:8080/health
-          interval: 30s
-          timeout: 5s
-          retries: 5
-          start_period: 90s
-        log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
-
-    - name: Verify Open WebUI is ready on host loopback
-      ansible.builtin.uri:
-        url: >-
-          http://{{ open_webui_bind_address }}:{{ open_webui_port }}/health
-        method: GET
-        return_content: true
-        status_code: 200
-      register: open_webui_health
-      retries: 90
-      delay: 2
-      until:
-        - open_webui_health.status == 200
-        - open_webui_health.json.status | default(false) | bool
-      when: not ansible_check_mode
+- name: Create Open WebUI state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ open_webui_container_user }}"
+    group: root
+    mode: "0750"
+  loop:
+    - "{{ open_webui_data_dir }}"
+    - "{{ open_webui_data_dir }}/home"

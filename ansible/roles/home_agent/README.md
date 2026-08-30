@@ -1,24 +1,22 @@
 # home_agent
 
-The private homeserver assistant. Always applied (no enable flag). A
-small OpenAI-backed HTTP API, loopback-only, exposing an OpenAI-compatible
-`/v1/chat/completions` endpoint plus a legacy `/v1/chat` and
-`/v1/audio/transcriptions` (so Open WebUI can use it as both a chat
-backend and its speech-to-text engine).
+Host prerequisites for `home_agent`: just `home_tools_service` now.
+`home_agent` itself -- the OpenAI-backed HTTP API, the Docker container
+that used to run here -- is retired, superseded by `infra/k3s-apps`'
+`modules/home_agent/` (cut over, together with `open_webui`, to
+`ai.jkandler.de` on 2026-08-30). Always applied (no enable flag), same
+as before.
 
-- Runs a Docker container built from `files/agent/` (its own Python
-  package), read-only, capabilities dropped, non-root, with a fixed
-  server-side system prompt the caller can never override.
-- Tool access is deliberately narrow and read-mostly: a host-side
-  `home_tools_service.py` (system/Docker health, no arguments accepted)
-  plus, when `nextcloud_tools_enabled` is set, the Nextcloud file and
-  shopping-list tools from that role -- both reached over Unix sockets,
-  never given the container broader access.
-- The model and tool round/call counts are capped in code
-  (`max_tool_rounds`, `max_tool_calls`); the caller-stated `model` field
-  is always ignored in favor of `HOME_AGENT_MODEL`.
-- The OpenAI API key is mounted as a file (`OPENAI_API_KEY_FILE`), not a
-  plain env var, so it doesn't show up in `docker inspect`.
-
-Set `home_agent_frontend_network_enabled: true` to let `open_webui` reach
-it by container name instead of only the host loopback.
+- `home_tools_service.py` is the one dependency that couldn't move
+  into the k3s Pod as a sidecar -- it reports this homeserver's own
+  hardware (disks, systemd units, Docker containers), so it has to
+  keep running here. Restricted, argument-free, read-only, reached
+  over a Unix socket by anything on this host and, when
+  `home_agent_tools_tcp_bind_address` is set, over TCP too -- the
+  mechanism the k3s Pod actually uses, since it can't reach a Unix
+  socket on this host.
+- `files/agent/` (`home_agent`'s own Python application) stays in this
+  repo even though it's no longer built or run here -- it's the
+  canonical source `build-home-agent.yml`'s CI workflow (on the
+  self-hosted runner, never the homeserver) builds the k3s Pod's GHCR
+  image from.

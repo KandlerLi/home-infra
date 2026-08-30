@@ -8,92 +8,55 @@ ROLE_ROOT = PROJECT_ROOT / "ansible/roles/open_webui"
 
 
 class OpenWebUITests(unittest.TestCase):
-    def test_defaults_are_opt_in_loopback_only_and_digest_pinned(self) -> None:
+    def test_defaults_define_the_service_account_and_data_directory(self) -> None:
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 
-        self.assertIn("open_webui_enabled: false", defaults)
-        self.assertIn("open_webui_bind_address: 127.0.0.1", defaults)
-        self.assertIn("open_webui_port: 8091", defaults)
-        self.assertIn("open_webui_image_tag: v0.11.0-slim", defaults)
         self.assertIn(
-            "sha256:88da9f0e08b8ada8e40bc6d6291494e2c6775a62d24b67b0cefb74ffee4ce621",
-            defaults,
+            "open_webui_container_user: open-webui-container", defaults
         )
+        self.assertIn("open_webui_data_dir: /var/lib/open-webui", defaults)
 
-    def test_container_has_no_host_control_surface_or_provider_secret(self) -> None:
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        self.assertNotIn("/var/run/docker.sock", tasks)
-        self.assertNotIn("network_mode: host", tasks)
-        self.assertNotIn("sk-", tasks)
-        self.assertIn("no-new-privileges:true", tasks)
-        self.assertIn("cap_drop:", tasks)
-        self.assertIn("- ALL", tasks)
-        self.assertIn("home-agent-internal", (ROLE_ROOT / "defaults/main.yml").read_text())
-        self.assertIn("home-agent-frontend", tasks)
-
-    def test_frontend_network_allows_loopback_publish_without_external_egress(self) -> None:
-        home_agent_tasks = (
-            PROJECT_ROOT / "ansible/roles/home_agent/tasks/main.yml"
-        ).read_text(encoding="utf-8")
-        open_webui_tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        self.assertIn("internal: false", home_agent_tasks)
-        self.assertIn(
-            'com.docker.network.bridge.enable_ip_masquerade: "false"',
-            home_agent_tasks,
-        )
-        self.assertIn("home_agent_frontend_network_current.exists", home_agent_tasks)
-        self.assertIn("not open_webui_frontend_network.network.Internal", open_webui_tasks)
-
-    def test_unneeded_execution_and_upload_features_are_disabled(self) -> None:
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        disabled_settings = [
-            "ENABLE_OLLAMA_API",
-            "ENABLE_PLUGINS",
-            "ENABLE_CODE_EXECUTION",
-            "ENABLE_CODE_INTERPRETER",
-            "ENABLE_WEB_SEARCH",
-            "ENABLE_IMAGE_GENERATION",
-            "ENABLE_SUBAGENTS",
-            "USER_PERMISSIONS_CHAT_FILE_UPLOAD",
-            "USER_PERMISSIONS_CHAT_WEB_UPLOAD",
-            "USER_PERMISSIONS_CHAT_SYSTEM_PROMPT",
-            "RAG_EMBEDDING_MODEL_AUTO_UPDATE",
-            "RAG_RERANKING_MODEL_AUTO_UPDATE",
-        ]
-        for setting in disabled_settings:
-            self.assertIn(f'{setting}: "False"', tasks)
-
-    def test_speech_to_text_routes_through_home_agent_not_local_whisper(self) -> None:
-        # ADR 0012: local Whisper needs a Hugging Face Hub download this
-        # container's OFFLINE_MODE deliberately blocks (no egress by
-        # design). Routing STT through home-agent -- the one component
-        # with real internet access -- sidesteps that rather than loosening
-        # the network hardening OFFLINE_MODE/no-masquerade provide.
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+    def test_tasks_run_unconditionally_now_container_is_retired(self) -> None:
+        # This role used to gate everything behind open_webui_enabled
+        # (opt-in Docker container). Open WebUI itself now runs as a
+        # k3s-native copy (infra/k3s-apps) -- this role only keeps the
+        # host prerequisites (service account, data directory) that
+        # copy still depends on, so those need to always run, not be
+        # conditional on a flag that no longer exists.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        self.assertIn("AUDIO_STT_ENGINE: openai", tasks)
-        self.assertIn(
-            "AUDIO_STT_OPENAI_API_BASE_URL: \"{{ open_webui_provider_base_url }}\"",
-            tasks,
-        )
-        self.assertIn(
-            "AUDIO_STT_OPENAI_API_KEY: \"{{ open_webui_provider_placeholder_key }}\"",
-            tasks,
-        )
-        self.assertIn('OFFLINE_MODE: "True"', tasks)
-        self.assertIn("open_webui_stt_model: whisper-1", defaults)
+        self.assertNotIn("open_webui_enabled", defaults)
+        self.assertNotIn("open_webui_enabled", tasks)
+        self.assertNotIn("docker_container", tasks)
+        self.assertNotIn("docker_image", tasks)
+        self.assertNotIn("open-webui/open-webui", tasks)
+        self.assertNotIn("home-agent-frontend", tasks)
 
-    def test_dedicated_playbook_keeps_model_access_in_home_agent(self) -> None:
-        playbook = (
-            PROJECT_ROOT / "ansible/playbooks/open-webui.yml"
-        ).read_text(encoding="utf-8")
+    def test_service_account_uid_is_validated_against_k3s_apps(self) -> None:
+        # infra/k3s-apps' Deployment hardcodes run_as_user=995 rather
+        # than looking it up dynamically -- a homeserver rebuild that
+        # ever assigned this account a different uid would otherwise
+        # let the k3s copy silently mount the NFS export as the wrong
+        # uid instead of failing loudly.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        self.assertLess(playbook.index("role: home_agent"), playbook.index("role: open_webui"))
-        self.assertIn("home_agent_frontend_network_enabled: true", playbook)
+        self.assertIn("Create Open WebUI container account", tasks)
+        self.assertIn('open_webui_container_uid == "995"', tasks)
+
+    def test_data_directories_are_owned_by_the_service_account_and_root_group(
+        self,
+    ) -> None:
+        # Deliberately group: root, not this account's own default
+        # group -- matches how this role has always started the
+        # container ("995:0"), which is what infra/k3s-apps' Deployment
+        # also hardcodes as run_as_group. Getting this wrong would
+        # break the shared NFS export's permissions for the k3s Pod.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("Create Open WebUI state directories", tasks)
+        self.assertIn('group: root', tasks)
+        self.assertIn('mode: "0750"', tasks)
 
 
 if __name__ == "__main__":

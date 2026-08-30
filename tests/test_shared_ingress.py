@@ -201,13 +201,17 @@ class SharedIngressTests(unittest.TestCase):
         self.assertNotIn("shared-auth", open_webui_chain)
 
     def test_initial_open_webui_publication_requires_confirmation(self) -> None:
+        # publish-open-webui.yml (the dedicated confirmation-flag
+        # playbook this guard originally shipped with) is gone now --
+        # open_webui went live via ai.jkandler.de's 2026-08-30 cutover
+        # to the k3s cluster instead, applied through site.yml like
+        # everything else. The guard itself stays in this role
+        # unchanged, satisfied by 'service: open-webui' already being
+        # present in the live routes.yml from before that cutover.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-        publish_playbook = (
-            PROJECT_ROOT / "ansible/playbooks/publish-open-webui.yml"
-        ).read_text(encoding="utf-8")
 
         self.assertIn("PUBLISH_OPEN_WEBUI", tasks)
-        self.assertIn("open_webui_publish_confirmation", publish_playbook)
+        self.assertIn("open_webui_publish_confirmation", tasks)
 
     def test_apex_redirect_is_opt_in_and_targets_www(self) -> None:
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")

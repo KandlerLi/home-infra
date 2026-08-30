@@ -54,18 +54,19 @@ shared_ingress_agent_enabled: true
 # Confirmed live before this cutover: the Docker open-webui container
 # stopped cleanly, the k3s copy read the existing accounts/chat
 # history correctly over the new NFS export (persisted database
-# settings came back, not fresh env-var defaults). Not yet reshaped
-# down like the deluge role was -- the old home_agent/open_webui/
-# nextcloud_tools Docker containers are still here, just no longer
-# reachable from outside, a distinct follow-up step once this routing
-# cutover itself is confirmed working end-to-end.
+# settings came back, not fresh env-var defaults). The home_agent and
+# open_webui roles are reshaped now too, the same way deluge's own
+# role was -- down to just the host prerequisites (home_tools_service;
+# the open-webui service account and data directory) their k3s copies
+# still depend on, no more Docker container/image logic, no more
+# enable flags of their own. nextcloud_tools' role is gone outright
+# (not reshaped) -- nothing on this host consumed it once home_agent's
+# own Docker container, its only client, was retired; its Python
+# source stays on as infra/k3s-apps' own vendored copy's canonical
+# original, see that role's own README.
 shared_ingress_agent_upstream: http://192.168.101.10:80
-home_agent_frontend_network_enabled: true
-open_webui_enabled: true
 shared_ingress_open_webui_enabled: true
 shared_ingress_open_webui_upstream: http://192.168.101.10:80
-nextcloud_tools_enabled: true
-nextcloud_tools_allowed_root: Shared/AI Workspace
 
 # Deluge itself runs as a k3s-native copy (infra/k3s-apps,
 # Terraform-managed), not by anything in this repo -- confirmed live in
@@ -117,7 +118,9 @@ sankey_export_enabled: true
 # shows source-path "/admin/files/Documents/Finanzen" but target-path
 # "/Shared/Finanzen". The dedicated account's WebDAV root therefore sees
 # it at Shared/Finanzen, not Documents/Finanzen (same Shared/ prefix
-# nextcloud_tools_allowed_root already has to account for above).
+# nextcloud_tools' own NEXTCLOUD_ALLOWED_ROOT already has to account
+# for -- see infra/k3s-apps' modules/home_agent/main.tf now that this
+# repo's own nextcloud_tools role is retired).
 sankey_export_remote_dir: Shared/Finanzen
 
 # Prometheus/Grafana/Alertmanager monitoring stack (ADR 0019). Needs

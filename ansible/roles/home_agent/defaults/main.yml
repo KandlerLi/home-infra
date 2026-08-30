@@ -1,29 +1,6 @@
 ---
-home_agent_force_recreate: false
-
-home_agent_container_name: home-agent
-home_agent_image_name: home-agent
-home_agent_image_tag: local
-home_agent_build_dir: /opt/home-agent
-home_agent_config_dir: /etc/home-agent
-
-home_agent_model: gpt-5.4-mini
-home_agent_stt_model: whisper-1
-home_agent_bind_address: 127.0.0.1
-home_agent_port: 8090
-home_agent_restart_policy: unless-stopped
-home_agent_memory_limit: 256M
-home_agent_cpu_limit: 1.0
-home_agent_pids_limit: 128
-home_agent_frontend_network_enabled: false
-home_agent_frontend_network_name: home-agent-frontend
-
-home_agent_openai_api_key: ""
-home_agent_openai_api_key_path: /etc/home-agent/openai-api-key
-
 home_agent_tools_service_user: home-tools
 home_agent_tools_client_group: home-tools-client
-home_agent_tools_container_user: home-agent-container
 home_agent_tools_install_dir: /usr/local/lib/home-tools
 home_agent_tools_socket_dir: /run/home-tools
 home_agent_tools_socket_path: /run/home-tools/home-tools.sock
@@ -42,11 +19,3 @@ home_agent_tools_filesystems:
 # comment for the full reasoning.
 home_agent_tools_tcp_bind_address: ""
 home_agent_tools_tcp_port: 8095
-
-home_agent_nextcloud_tools_enabled: "{{ nextcloud_tools_enabled | default(false) }}"
-home_agent_nextcloud_tools_client_group: >-
-  {{ nextcloud_tools_client_group | default('nextcloud-tools-client') }}
-home_agent_nextcloud_tools_socket_dir: >-
-  {{ nextcloud_tools_socket_dir | default('/run/nextcloud-tools') }}
-home_agent_nextcloud_tools_socket_path: >-
-  {{ nextcloud_tools_socket_path | default('/run/nextcloud-tools/nextcloud-tools.sock') }}

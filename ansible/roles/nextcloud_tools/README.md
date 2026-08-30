@@ -1,26 +1,30 @@
 # nextcloud_tools
 
-Opt-in restricted Nextcloud file/shopping-list access for `home_agent`
-(`nextcloud_tools_enabled`, default `false`).
+Not deployed on the homeserver any more -- home_agent's own Docker
+container (the only thing that ever talked to this over a Unix socket)
+is retired, superseded by `infra/k3s-apps`' `modules/home_agent/`,
+which runs its own copy of `nextcloud_tools` as a sidecar in the same
+Pod, authenticating to Nextcloud with its own independently-revocable
+app password rather than this role's.
 
-- Runs a hardened Python service (not a container) on a Unix socket,
-  authenticating to Nextcloud as one dedicated, non-admin account
-  (`nextcloud_tools_username`) via an app password.
-- WebDAV access is bounded to a single allowed root folder
-  (`nextcloud_tools_allowed_root`) -- an account's DAV namespace always
-  exposes its whole home directory, so this restriction is enforced in
-  the service itself, not by Nextcloud. Shopping List access needs no
-  such restriction: scope there comes entirely from which lists are
-  shared with the account.
-- Writes (create/update/delete/move) execute immediately once validated
-  -- no confirmation round-trip (superseded by ADR 0013) -- protected
-  instead by scope, an extension/size allowlist, and conditional WebDAV
-  headers against conflicting changes.
-- `home_agent` receives only the Unix socket, never the Nextcloud
-  credentials themselves.
+`files/nextcloud_tools_service.py` stays here as the **canonical
+source** `infra/k3s-apps` vendors its own copy from (`modules/
+home_agent/files/nextcloud_tools_service.py`) -- the same reason
+`home_agent`'s own `files/agent/` Python package stays in this repo
+even though its Docker deployment is retired too (the self-hosted CI
+runner builds `home_agent`'s image straight from that source; this
+file has no equivalent build pipeline yet, so it's synced by hand --
+confirmed identical via `diff` each time it changes). Keep both copies
+in sync deliberately, the same way, until/unless this file gets a real
+build pipeline of its own.
 
-Bootstrap with `ansible-playbook ansible/playbooks/nextcloud-tools.yml`
-(creates the dedicated account and its first app password); rotate the
-password with `rotate-nextcloud-tools-token.yml`; both playbooks require
-an exact typed confirmation string. Disable with
-`disable-nextcloud-tools.yml`.
+`tests/test_nextcloud_tools_service.py` still exercises this file's
+own logic directly (WebDAV client behavior, shopping-list resolution,
+the endpoint-host allowlist, request/response validation) --
+independent of whichever role or Kubernetes Pod actually runs it.
+
+Bootstrapping a fresh app password, rotating one, or disabling the
+service are all `infra/k3s-apps`-side concerns now (see that repo's
+own `modules/home_agent/secret.tf` and its comment on how the current
+token was generated) -- this repo no longer has dedicated playbooks
+for any of that.

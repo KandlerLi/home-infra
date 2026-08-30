@@ -24,6 +24,44 @@ home_tools_service = importlib.util.module_from_spec(_home_tools_service_spec)
 _home_tools_service_spec.loader.exec_module(home_tools_service)
 
 
+class HomeAgentRoleReshapeTests(unittest.TestCase):
+    # This role used to also build and run home_agent's own Docker
+    # container. home_agent itself now runs as infra/k3s-apps'
+    # modules/home_agent Pod (cut over to ai.jkandler.de 2026-08-30) --
+    # this role only keeps home_tools_service, the one dependency that
+    # couldn't move into that Pod as a sidecar (it reports this
+    # homeserver's own hardware).
+
+    def test_no_longer_builds_or_runs_a_container(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertNotIn("docker_container", tasks)
+        self.assertNotIn("docker_image", tasks)
+        self.assertNotIn("docker_network", tasks)
+        self.assertNotIn("home_agent_openai_api_key", tasks)
+
+    def test_defaults_no_longer_carry_dead_container_or_nextcloud_tools_vars(
+        self,
+    ) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        for dead_var in (
+            "home_agent_container_name",
+            "home_agent_image_name",
+            "home_agent_bind_address",
+            "home_agent_openai_api_key",
+            "home_agent_frontend_network",
+            "home_agent_nextcloud_tools",
+        ):
+            self.assertNotIn(dead_var, defaults)
+
+    def test_still_deploys_home_tools_service(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("Deploy and wait for the home tools socket service", tasks)
+        self.assertIn("home_tools_service.py", tasks)
+
+
 class FakeResponses:
     def __init__(self) -> None:
         self.requests = []
