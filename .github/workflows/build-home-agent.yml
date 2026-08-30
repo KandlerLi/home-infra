@@ -1,0 +1,57 @@
+name: Build home-agent image
+
+# Builds and pushes home_agent's image to GHCR on the self-hosted CI
+# runner (a dedicated VM, see the github_runner role -- deliberately
+# never on the homeserver itself, so its Docker daemon and workloads
+# stay untouched by CI). Mirrors checks.yml's own CI-image build/push
+# job -- same runner, same GITHUB_TOKEN-based GHCR login, no long-lived
+# write credential needed for this at all.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ansible/roles/home_agent/files/agent/**
+      - .github/workflows/build-home-agent.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    name: Build and push
+    runs-on: [self-hosted, home, debian]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Log in to GHCR
+        run: >-
+          echo "${{ secrets.GITHUB_TOKEN }}"
+          | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build home-agent image
+        run: >-
+          docker build
+          -t ghcr.io/kandlerli/home-agent:${{ github.sha }}
+          ansible/roles/home_agent/files/agent
+
+      - name: Push home-agent image
+        run: docker push ghcr.io/kandlerli/home-agent:${{ github.sha }}
+
+      # Prints the real, immutable pushed digest -- this repo pins every
+      # image by digest, not a moving tag (see e.g. deluge/blocky/
+      # monitoring), so this is what actually gets copied into
+      # infra/k3s-apps' Deployment once this image is ready to use.
+      - name: Print pushed image digest
+        run: >-
+          docker inspect
+          --format='{{index .RepoDigests 0}}'
+          ghcr.io/kandlerli/home-agent:${{ github.sha }}
