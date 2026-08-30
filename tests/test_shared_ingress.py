@@ -141,6 +141,25 @@ class SharedIngressTests(unittest.TestCase):
             'Host: "{{ shared_ingress_deluge_domain }}"', verify_task
         )
 
+    def test_open_webui_health_check_sends_the_real_host_header(
+        self,
+    ) -> None:
+        # Found live, same bug class as Deluge's and the landing page's
+        # own checks: once shared_ingress_open_webui_upstream points at
+        # the k3s cluster's Ingress, a bare request by IP 404s even
+        # though the backend is healthy -- Traefik there routes purely
+        # on Host. shared_ingress_agent_domain, not a separate
+        # open_webui-specific variable -- ai.jkandler.de is one hostname
+        # shared by both home_agent and open_webui.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        verify_task = tasks.split(
+            "Verify Open WebUI before publishing it", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn(
+            'Host: "{{ shared_ingress_agent_domain }}"', verify_task
+        )
+
     def test_proxy_has_no_docker_socket_and_keeps_hardening(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 

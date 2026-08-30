@@ -129,6 +129,15 @@
       ansible.builtin.uri:
         url: "{{ shared_ingress_open_webui_upstream }}/health"
         method: GET
+        # Needed once shared_ingress_open_webui_upstream points at the
+        # k3s cluster's Ingress -- Traefik there routes purely on Host,
+        # so a bare request by IP 404s even though the backend is
+        # healthy (the same fix already applied to Deluge's and the
+        # landing page's own checks). shared_ingress_agent_domain, not
+        # a separate open_webui-specific variable -- ai.jkandler.de is
+        # one hostname shared by both.
+        headers:
+          Host: "{{ shared_ingress_agent_domain }}"
         return_content: true
         status_code: 200
       register: shared_ingress_open_webui_health
