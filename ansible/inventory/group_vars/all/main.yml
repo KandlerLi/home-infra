@@ -30,6 +30,15 @@ nextcloud_aio_apache_ip_binding: 192.168.101.1
 # see its comment for the full reasoning.
 shared_ingress_nextcloud_upstream: http://192.168.101.1:11000
 
+# Second half of the same migration step: home_tools_service can't move
+# into the k3s cluster the way nextcloud_tools does (it reports this
+# homeserver's own hardware, not something that makes sense to run
+# anywhere else), so home_agent reaches it over this TCP listener
+# instead once home_agent itself runs in the cluster. Purely additive --
+# the Unix socket every other consumer keeps using is unaffected. See
+# home_agent's own README/role comments for the full reasoning.
+home_agent_tools_tcp_bind_address: 192.168.101.1
+
 shared_ingress_enabled: true
 shared_ingress_start: true
 shared_ingress_apex_redirect_enabled: true
