@@ -130,6 +130,17 @@ sankey_export_remote_dir: Shared/Finanzen
 # validate checks.
 monitoring_enabled: true
 shared_ingress_grafana_enabled: true
+# First step of moving Grafana into the k3s cluster (infra/k3s-apps) --
+# Prometheus and Postgres stay on this host (node_exporter/cAdvisor/
+# blackbox_exporter/Blocky itself all have to, see monitoring's and
+# blocky's own comments), but Grafana's two datasources need to be
+# reachable from the k3s VM once it runs there instead of here.
+# Additive on both -- see monitoring_prometheus_k3s_bind_address's and
+# blocky_postgres_k3s_bind_address's own comments for why neither one
+# is a switch away from loopback the way nextcloud_aio_apache_ip_binding
+# was. Grafana itself hasn't moved into k3s yet -- this proves the
+# network path works first, before building on top of it.
+monitoring_prometheus_k3s_bind_address: 192.168.101.1
 
 # home.jkandler.de -- served by the k3s-native copy of this service
 # (infra/k3s-apps, Terraform-managed), not by anything in this repo.
@@ -146,3 +157,6 @@ shared_ingress_home_upstream: http://192.168.101.10:80
 # API correctly. Needs blocky_postgres_password set via sops before a
 # site.yml run against this flag will pass its own validate checks.
 blocky_enabled: true
+# Same Grafana-in-k3s migration step as monitoring_prometheus_k3s_bind_address
+# above -- see its own comment.
+blocky_postgres_k3s_bind_address: 192.168.101.1
