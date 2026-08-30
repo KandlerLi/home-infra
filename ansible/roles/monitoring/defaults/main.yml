@@ -109,6 +109,15 @@ monitoring_prometheus_retention_time: 30d
 monitoring_prometheus_retention_size: 2GB
 monitoring_prometheus_container_user: monitoring-prometheus
 
+# Off by default (loopback only). When set, Prometheus additionally
+# listens on this address (Prometheus's own --web.listen-address flag
+# can be repeated, confirmed via `prometheus --help`) -- exists so
+# Grafana can reach this as its own datasource once it runs in the k3s
+# VM instead of on this host. 192.168.101.1 (this homeserver's own
+# address on the k3s VM's isolated network) is the only value the
+# role's own validation allows.
+monitoring_prometheus_k3s_bind_address: ""
+
 monitoring_grafana_container_name: grafana
 monitoring_grafana_image_name: grafana/grafana
 monitoring_grafana_image_tag: "13.1.4"

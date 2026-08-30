@@ -166,6 +166,28 @@ class BlockyRoleTests(unittest.TestCase):
 
         self.assertIn("listen_addresses=127.0.0.1", tasks)
 
+    def test_postgres_k3s_bind_address_defaults_to_disabled(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn('blocky_postgres_k3s_bind_address: ""', defaults)
+
+    def test_postgres_k3s_bind_address_is_additive_and_allowlisted(self) -> None:
+        # Additive (Postgres's own listen_addresses takes a comma-
+        # separated list), not a switch away from loopback -- unlike
+        # nextcloud_aio_apache_ip_binding's single-consumer case, nothing
+        # local stops needing loopback access here. 192.168.101.1 is
+        # this homeserver's own address on the k3s VM's isolated
+        # network, the same trust boundary every other such exception in
+        # this repo uses -- a closed allowlist of one address.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'blocky_postgres_k3s_bind_address | length == 0\n'
+            '            or blocky_postgres_k3s_bind_address == "192.168.101.1"',
+            tasks,
+        )
+        self.assertIn("',' + blocky_postgres_k3s_bind_address", tasks)
+
     def test_postgres_does_not_drop_capabilities(self) -> None:
         # Deliberate exception: the official postgres image's entrypoint
         # needs to start as root to gosu/chown into its own postgres user

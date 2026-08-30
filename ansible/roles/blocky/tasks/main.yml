@@ -16,10 +16,23 @@
           - blocky_bootstrap_dns | length > 0
           - blocky_denylists | length > 0
           - blocky_postgres_data_dir != blocky_config_dir
+          # Additive, not a switch -- unlike nextcloud_aio_apache_ip_binding
+          # (one real consumer, moved wholesale), loopback access to
+          # Postgres still matters here (nothing local stopped needing
+          # it), so this only ever adds a second listen_addresses entry,
+          # never replaces the first. 192.168.101.1 is this homeserver's
+          # own address on the k3s VM's isolated network -- same trust
+          # boundary as every other such exception. A closed allowlist of
+          # one address, not an open door.
+          - >-
+            blocky_postgres_k3s_bind_address | length == 0
+            or blocky_postgres_k3s_bind_address == "192.168.101.1"
         fail_msg: >-
           Configure blocky_postgres_password through SOPS, keep the
-          Blocky HTTP/Postgres ports off the DNS port, and configure at
-          least one upstream, bootstrap resolver, and denylist group.
+          Blocky HTTP/Postgres ports off the DNS port, configure at
+          least one upstream, bootstrap resolver, and denylist group,
+          and keep blocky_postgres_k3s_bind_address empty or pinned to
+          the k3s VM's isolated network address.
       no_log: true
 
     - name: Create Blocky config directory
@@ -126,11 +139,19 @@
         # every host interface by default (including the LAN-facing IP)
         # -- confirmed against the official image's own default
         # postgresql.conf. Constraining listen_addresses here is what
-        # actually keeps this loopback-only, not the network_mode.
+        # actually keeps this loopback-only (plus, additively, the k3s
+        # VM's isolated-network address when blocky_postgres_k3s_bind_address
+        # is set -- Postgres's own listen_addresses takes a comma-separated
+        # list natively, so this is one flag value, not a second bind).
         command:
           - postgres
           - -c
-          - listen_addresses=127.0.0.1
+          - >-
+            listen_addresses=127.0.0.1{{
+              ',' + blocky_postgres_k3s_bind_address
+              if blocky_postgres_k3s_bind_address | length > 0
+              else ''
+            }}
         healthcheck:
           test:
             - CMD-SHELL

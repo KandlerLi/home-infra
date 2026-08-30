@@ -73,4 +73,11 @@ blocky_postgres_memory_limit: 256M
 blocky_postgres_cpu_limit: 0.5
 blocky_postgres_pids_limit: 96
 
+# Off by default (loopback only). When set, Postgres additionally
+# listens on this address -- exists so Grafana can reach this database
+# as its own datasource once it runs in the k3s VM instead of on this
+# host. 192.168.101.1 (this homeserver's own address on the k3s VM's
+# isolated network) is the only value the role's own validation allows.
+blocky_postgres_k3s_bind_address: ""
+
 blocky_query_log_retention_days: 7

@@ -16,10 +16,27 @@
           - monitoring_ses_smtp_password | trim != "CHANGE_ME"
           - monitoring_probe_targets | length > 0
           - monitoring_ntfy_relay_port | int > 1024
+          # Additive, not a switch -- monitoring_bind_address stays
+          # loopback-only for everything in this role (Prometheus's own
+          # scrape config hardcodes 127.0.0.1:<port> targets for
+          # node_exporter/cAdvisor/blackbox/self-scrape, independent of
+          # whatever Prometheus's own listen address is, so those must
+          # keep working regardless). This only ever adds a second
+          # --web.listen-address, never replaces the first -- confirmed
+          # Prometheus supports repeating that flag (`prometheus --help`:
+          # "Can be repeated"). 192.168.101.1 is this homeserver's own
+          # address on the k3s VM's isolated network -- same trust
+          # boundary as every other such exception, never 0.0.0.0
+          # (Prometheus's API has no auth of its own at all).
+          - >-
+            monitoring_prometheus_k3s_bind_address | length == 0
+            or monitoring_prometheus_k3s_bind_address == "192.168.101.1"
         fail_msg: >-
           Configure monitoring_grafana_admin_password, monitoring_ntfy_topic,
           and the SES SMTP credentials (from infra/ses-relay's outputs)
-          through SOPS before the first deploy.
+          through SOPS before the first deploy, and keep
+          monitoring_prometheus_k3s_bind_address empty or pinned to the
+          k3s VM's isolated network address.
       no_log: true
 
     # Account creation is safely looped -- ansible.builtin.user has no
@@ -482,12 +499,24 @@
           - /tmp:rw,noexec,nosuid,nodev,size=32m
         comparisons:
           volumes: strict
-        command:
-          - --config.file=/etc/prometheus/prometheus.yml
-          - --storage.tsdb.path=/prometheus
-          - --storage.tsdb.retention.time={{ monitoring_prometheus_retention_time }}
-          - --storage.tsdb.retention.size={{ monitoring_prometheus_retention_size }}
-          - --web.listen-address={{ monitoring_bind_address }}:{{ monitoring_prometheus_port }}
+        command: >-
+          {{
+            [
+              '--config.file=/etc/prometheus/prometheus.yml',
+              '--storage.tsdb.path=/prometheus',
+              '--storage.tsdb.retention.time=' + monitoring_prometheus_retention_time,
+              '--storage.tsdb.retention.size=' + monitoring_prometheus_retention_size,
+              '--web.listen-address=' + monitoring_bind_address + ':' + monitoring_prometheus_port | string
+            ]
+            + (
+              [
+                '--web.listen-address=' + monitoring_prometheus_k3s_bind_address
+                + ':' + monitoring_prometheus_port | string
+              ]
+              if monitoring_prometheus_k3s_bind_address | length > 0
+              else []
+            )
+          }}
         healthcheck:
           test:
             - CMD

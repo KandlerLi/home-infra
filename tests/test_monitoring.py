@@ -130,6 +130,33 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn("monitoring_prometheus_retention_time: 30d", defaults)
         self.assertIn("monitoring_prometheus_retention_size: 2GB", defaults)
 
+    def test_prometheus_k3s_bind_address_defaults_to_disabled(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn('monitoring_prometheus_k3s_bind_address: ""', defaults)
+
+    def test_prometheus_k3s_bind_address_is_additive_and_allowlisted(self) -> None:
+        # Additive (Prometheus's own --web.listen-address flag can be
+        # repeated), not a switch away from monitoring_bind_address --
+        # node_exporter/cAdvisor/blackbox/self-scrape all stay hardcoded
+        # to 127.0.0.1 in prometheus.yml.j2 regardless of Prometheus's
+        # own listen address, so loopback must keep working. 192.168.101.1
+        # is this homeserver's own address on the k3s VM's isolated
+        # network, the same trust boundary every other such exception in
+        # this repo uses -- a closed allowlist of one address, never
+        # 0.0.0.0 (Prometheus's API has no auth of its own at all).
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'monitoring_prometheus_k3s_bind_address | length == 0\n'
+            '            or monitoring_prometheus_k3s_bind_address == "192.168.101.1"',
+            tasks,
+        )
+        self.assertIn(
+            "'--web.listen-address=' + monitoring_prometheus_k3s_bind_address",
+            tasks,
+        )
+
     def test_blackbox_probes_every_public_service_and_traefiks_own_ping(self) -> None:
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 
