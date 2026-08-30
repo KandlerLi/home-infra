@@ -23,10 +23,23 @@ class HomeToolsError(RuntimeError):
 
 
 class HomeToolsClient:
-    """Call only predeclared, argument-free home-tools endpoints."""
+    """Call only predeclared, argument-free home-tools endpoints.
 
-    def __init__(self, socket_path: str, timeout: float = 5.0) -> None:
+    socket_path is the normal case (home-tools reachable only on this
+    same host, over its Unix socket). Pass socket_path=None with a real
+    base_url instead when home_agent runs elsewhere and needs
+    home_tools_service's optional TCP listener -- see
+    unix_socket_client.py's module docstring.
+    """
+
+    def __init__(
+        self,
+        socket_path: str | None,
+        base_url: str = "http://home-tools",
+        timeout: float = 5.0,
+    ) -> None:
         self.socket_path = socket_path
+        self.base_url = base_url
         self.timeout = timeout
 
     def call(self, tool_name: str) -> dict[str, Any]:
@@ -36,7 +49,7 @@ class HomeToolsClient:
 
         return call_unix_socket_json(
             socket_path=self.socket_path,
-            base_url="http://home-tools",
+            base_url=self.base_url,
             method="GET",
             path=path,
             timeout=self.timeout,

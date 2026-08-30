@@ -41,11 +41,20 @@ def create_provider() -> OpenAIResponsesProvider:
     key_path = os.environ.get("OPENAI_API_KEY_FILE", "/run/secrets/openai_api_key")
     model = os.environ.get("HOME_AGENT_MODEL", "gpt-5.4-mini")
     socket_path = os.environ.get("HOME_TOOLS_SOCKET", "/run/home-tools/home-tools.sock")
+    # Set only when home_agent runs off the homeserver itself (the k3s
+    # cluster) and needs home_tools_service's TCP listener instead --
+    # see HomeToolsClient's own docstring. Takes precedence over
+    # socket_path so a deployment that sets both doesn't silently keep
+    # trying (and failing) the Unix socket.
+    home_tools_tcp_base_url = os.environ.get("HOME_TOOLS_TCP_BASE_URL")
     nextcloud_socket_path = os.environ.get("NEXTCLOUD_TOOLS_SOCKET")
     return OpenAIResponsesProvider(
         api_key=read_secret(key_path),
         model=model,
-        home_tools=HomeToolsClient(socket_path),
+        home_tools=HomeToolsClient(
+            socket_path=None if home_tools_tcp_base_url else socket_path,
+            base_url=home_tools_tcp_base_url or "http://home-tools",
+        ),
         nextcloud_tools=(
             NextcloudToolsClient(nextcloud_socket_path)
             if nextcloud_socket_path

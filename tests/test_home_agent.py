@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROLE_ROOT / "files/agent"))
 
 from home_agent.agent import OpenAIResponsesProvider
 from home_agent.api import AgentHTTPServer, AgentRequestHandler, normalize_conversation
+from home_agent.home_tools import HomeToolsClient
 
 _home_tools_service_spec = importlib.util.spec_from_file_location(
     "home_tools_service", ROLE_ROOT / "files/home_tools_service.py"
@@ -500,6 +501,21 @@ class HomeToolsServiceTcpListenerTests(unittest.TestCase):
 
     def test_tcp_listener_still_refuses_unknown_paths(self) -> None:
         self.assertEqual(self._get("/v1/does-not-exist").status, 404)
+
+    def test_home_tools_client_reaches_the_tcp_listener_directly(self) -> None:
+        # The actual integration point this migration depends on: with
+        # socket_path=None, HomeToolsClient must go over plain TCP to
+        # base_url instead of trying (and failing) a Unix socket -- proven
+        # here against a real running server, not mocked.
+        port = self.server.server_address[1]
+        client = HomeToolsClient(
+            socket_path=None, base_url=f"http://127.0.0.1:{port}"
+        )
+
+        result = client.call("get_cpu_and_load")
+
+        self.assertIn("load", result)
+        self.assertIn("cpu_count", result)
 
 
 class HomeToolsServiceTcpBindingConfigTests(unittest.TestCase):
