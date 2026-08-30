@@ -111,28 +111,23 @@ monitoring_prometheus_container_user: monitoring-prometheus
 
 # Off by default (loopback only). When set, Prometheus additionally
 # listens on this address (Prometheus's own --web.listen-address flag
-# can be repeated, confirmed via `prometheus --help`) -- exists so
-# Grafana can reach this as its own datasource once it runs in the k3s
-# VM instead of on this host. 192.168.101.1 (this homeserver's own
-# address on the k3s VM's isolated network) is the only value the
-# role's own validation allows.
+# can be repeated, confirmed via `prometheus --help`) -- lets the
+# k3s-native Grafana (infra/k3s-apps, modules/grafana) reach this as
+# its own datasource. 192.168.101.1 (this homeserver's own address on
+# the k3s VM's isolated network) is the only value the role's own
+# validation allows.
 monitoring_prometheus_k3s_bind_address: ""
 
-monitoring_grafana_container_name: grafana
-monitoring_grafana_image_name: grafana/grafana
-monitoring_grafana_image_tag: "13.1.4"
-monitoring_grafana_image_digest: >-
-  sha256:9be3a3ccdb06bcbb127f888b0c4c1d151837443e478887897a63a27d7b348043
-monitoring_grafana_image: >-
-  {{ monitoring_grafana_image_name }}:{{ monitoring_grafana_image_tag }}@{{ monitoring_grafana_image_digest }}
-monitoring_grafana_port: 3000
-monitoring_grafana_memory_limit: 256M
-monitoring_grafana_cpu_limit: 0.5
-monitoring_grafana_pids_limit: 128
+# Grafana itself is no longer deployed by this role -- it runs as a
+# k3s-native copy instead (infra/k3s-apps, modules/grafana), reached
+# through shared_ingress_grafana_upstream (see shared_ingress' own
+# defaults). This one variable survives purely as documentation of the
+# real login username for scripts/sync_secrets_to_pass.py's own
+# convenience copy into `pass` -- monitoring_grafana_admin_password's
+# real value lives only in secrets.sops.yml now (that same script reads
+# it directly from there), not as a role default, since nothing in this
+# role consumes it any more.
 monitoring_grafana_admin_user: admin
-# Set through SOPS before the first deploy, same as deluge_web_password.
-monitoring_grafana_admin_password: ""
-monitoring_grafana_container_user: monitoring-grafana
 
 monitoring_alertmanager_container_name: alertmanager
 monitoring_alertmanager_image_name: prom/alertmanager

@@ -16,8 +16,9 @@ and an isolated GitHub Actions runner VM.
 - Opt-in BitTorrent client (Deluge)
 - Opt-in static landing page linking the other home services
 - Opt-in shared Traefik ingress fronting the services above
-- Opt-in Prometheus/Grafana monitoring stack (host health, container
-  health, service reachability, certificate expiry)
+- Opt-in Prometheus monitoring stack (host health, container health,
+  service reachability, certificate expiry), with Grafana itself now a
+  k3s-native copy (`infra/k3s-apps`) instead of a Docker container here
 - Opt-in network-wide DNS ad-blocking (Blocky), with a Pi-hole-style
   query-log dashboard in Grafana
 - KVM/QEMU and libvirt

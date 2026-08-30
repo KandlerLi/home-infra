@@ -45,31 +45,22 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn("monitoring_bind_address: 127.0.0.1", defaults)
 
     def test_secrets_are_required_not_left_default(self) -> None:
-        # Grafana's admin password, the ntfy topic, and the SES SMTP
-        # credentials all have empty-string defaults and must be set
-        # through SOPS before the first deploy, same as
-        # deluge_web_password.
+        # The ntfy topic and the SES SMTP credentials all have
+        # empty-string defaults and must be set through SOPS before the
+        # first deploy, same as deluge_web_password.
+        # monitoring_grafana_admin_password isn't among these any more
+        # -- Grafana no longer runs as a Docker container this role
+        # manages (see GrafanaK3sMigrationTests), so nothing here
+        # consumes that variable.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 
-        self.assertIn('monitoring_grafana_admin_password: ""', defaults)
         self.assertIn('monitoring_ntfy_topic: ""', defaults)
         self.assertIn('monitoring_ses_smtp_username: ""', defaults)
         self.assertIn('monitoring_ses_smtp_password: ""', defaults)
-        self.assertIn("monitoring_grafana_admin_password | trim | length >= 16", tasks)
         self.assertIn("monitoring_ntfy_topic | trim | length >= 20", tasks)
         self.assertIn("monitoring_ses_smtp_username | trim | length > 0", tasks)
         self.assertIn("monitoring_ses_smtp_password | trim | length > 0", tasks)
-
-    def test_grafana_admin_password_is_file_based_not_a_raw_env_var(self) -> None:
-        # Grafana's own docker image supports the "_FILE" env-var suffix
-        # convention specifically so a secret doesn't sit in plain env,
-        # visible to anyone with `docker inspect` access -- the same
-        # reasoning home_agent's OPENAI_API_KEY_FILE already follows.
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        self.assertIn("GF_SECURITY_ADMIN_PASSWORD__FILE", tasks)
-        self.assertNotIn("GF_SECURITY_ADMIN_PASSWORD:", tasks)
 
     def test_every_container_uses_host_networking_consistently(self) -> None:
         # Mixing host and bridge networking would mean 127.0.0.1 inside a
@@ -81,8 +72,9 @@ class MonitoringRoleTests(unittest.TestCase):
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         # node_exporter, cAdvisor, blackbox_exporter, Prometheus,
-        # Alertmanager, Grafana -- every container this role runs.
-        self.assertEqual(tasks.count("        network_mode: host"), 6)
+        # Alertmanager -- every container this role runs now that
+        # Grafana's own container is gone (see GrafanaK3sMigrationTests).
+        self.assertEqual(tasks.count("        network_mode: host"), 5)
         self.assertNotIn("published_ports:", tasks)
 
     def test_cadvisor_port_does_not_collide_with_nextcloud_aio_admin_ui(
@@ -280,19 +272,15 @@ class MonitoringRoleTests(unittest.TestCase):
             receiver["email_configs"][0]["to"], "julian.kandler@outlook.com"
         )
 
-    def test_grafana_datasource_points_at_prometheus_on_host_loopback(self) -> None:
-        rendered = render("grafana_datasources.yml.j2")
-        parsed = yaml.safe_load(rendered)
-
-        self.assertEqual(len(parsed["datasources"]), 1)
-        datasource = parsed["datasources"][0]
-        self.assertEqual(datasource["type"], "prometheus")
-        self.assertEqual(datasource["url"], "http://127.0.0.1:9090")
-        self.assertTrue(datasource["isDefault"])
-
     def test_dashboards_are_valid_json_and_reference_the_prometheus_datasource(
         self,
     ) -> None:
+        # These files are no longer installed by this role -- Grafana
+        # itself runs as a k3s-native copy now (see
+        # GrafanaK3sMigrationTests) -- but files/dashboards/ stays as
+        # the canonical source infra/k3s-apps' own modules/grafana
+        # vendors a synced copy from, same pattern as
+        # nextcloud_tools_service.py's own role.
         dashboards_dir = ROLE_ROOT / "files/dashboards"
         expected = {
             "host-health.json",
@@ -308,20 +296,6 @@ class MonitoringRoleTests(unittest.TestCase):
                     for target in panel.get("targets", []):
                         self.assertEqual(target["datasource"]["uid"], "prometheus")
 
-    def test_dashboards_are_installed_and_referenced_by_the_provider_config(
-        self,
-    ) -> None:
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-        rendered = render("grafana_dashboards_provider.yml.j2")
-        parsed = yaml.safe_load(rendered)
-
-        self.assertIn("host-health.json", tasks)
-        self.assertIn("container-health.json", tasks)
-        self.assertIn("service-reachability.json", tasks)
-        self.assertEqual(
-            parsed["providers"][0]["options"]["path"], "/var/lib/grafana-dashboards"
-        )
-
     def test_role_is_registered_in_site_yml_after_shared_ingress(self) -> None:
         # After shared_ingress specifically: by the time monitoring
         # deploys, every service it probes/monitors should already exist.
@@ -335,27 +309,26 @@ class MonitoringRoleTests(unittest.TestCase):
 
 
 class BlockyIntegrationTests(unittest.TestCase):
-    def test_scrape_job_and_datasource_only_appear_when_blocky_is_enabled(
-        self,
-    ) -> None:
+    def test_scrape_job_only_appears_when_blocky_is_enabled(self) -> None:
         prometheus_off = yaml.safe_load(render("prometheus.yml.j2"))
-        datasources_off = yaml.safe_load(render("grafana_datasources.yml.j2"))
 
         job_names_off = {job["job_name"] for job in prometheus_off["scrape_configs"]}
         self.assertNotIn("blocky", job_names_off)
-        self.assertEqual(len(datasources_off["datasources"]), 1)
 
-    def test_scrape_job_and_datasource_render_correctly_when_enabled(self) -> None:
+    def test_scrape_job_renders_correctly_when_enabled(self) -> None:
+        # The Blocky datasource half of this used to be checked here too
+        # (including the "database belongs in jsonData, not as a
+        # top-level field" fix confirmed live 2026-08-28), but that
+        # datasource is now provisioned by infra/k3s-apps' own
+        # modules/grafana (templates/datasources.yaml.tftpl) instead of
+        # a template in this role -- see that file for the equivalent
+        # fixed structure, confirmed live 2026-08-30 via Grafana's own
+        # /api/datasources response.
         overrides = {
             "monitoring_blocky_enabled": True,
             "monitoring_blocky_http_port": 4000,
-            "monitoring_blocky_postgres_port": 5432,
-            "monitoring_blocky_postgres_database": "blocky_query_log",
-            "monitoring_blocky_postgres_user": "blocky",
-            "monitoring_blocky_postgres_password": "a-generated-password-1234",
         }
         prometheus_on = yaml.safe_load(render("prometheus.yml.j2", **overrides))
-        datasources_on = yaml.safe_load(render("grafana_datasources.yml.j2", **overrides))
 
         blocky_job = next(
             job
@@ -365,35 +338,6 @@ class BlockyIntegrationTests(unittest.TestCase):
         self.assertIn(
             "127.0.0.1:4000", blocky_job["static_configs"][0]["targets"]
         )
-
-        blocky_datasource = next(
-            ds
-            for ds in datasources_on["datasources"]
-            if ds["uid"] == "blocky-postgres"
-        )
-        self.assertEqual(blocky_datasource["type"], "postgres")
-        self.assertEqual(blocky_datasource["url"], "127.0.0.1:5432")
-        # database belongs in jsonData, not as a top-level field --
-        # confirmed live (2026-08-28): with it only at the top level,
-        # Grafana 13.1.4 showed "You do not currently have a default
-        # database configured for this data source" on every panel, even
-        # though the datasource's own health check reported OK.
-        self.assertEqual(
-            blocky_datasource["jsonData"]["database"], "blocky_query_log"
-        )
-        self.assertNotIn("database", blocky_datasource)
-        self.assertEqual(
-            blocky_datasource["secureJsonData"]["password"],
-            "a-generated-password-1234",
-        )
-
-    def test_datasource_install_task_never_logs_the_postgres_password(self) -> None:
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        install_task = tasks.split(
-            "Install Grafana datasource provisioning", 1
-        )[1].split("- name:", 1)[0]
-        self.assertIn("no_log: true", install_task)
 
     def test_dashboards_are_valid_json_with_the_right_datasource_uids(self) -> None:
         dashboards_dir = ROLE_ROOT / "files/dashboards"
@@ -447,43 +391,69 @@ class BlockyIntegrationTests(unittest.TestCase):
             with self.subTest(variable=variable["name"]):
                 self.assertEqual(variable["refresh"], 1)
 
-    def test_dashboards_are_installed_only_when_blocky_is_enabled_and_cleaned_up_otherwise(
-        self,
-    ) -> None:
+
+class GrafanaK3sMigrationTests(unittest.TestCase):
+    def test_no_container_image_or_verify_tasks_remain(self) -> None:
+        # Grafana itself now runs as a k3s-native copy (infra/k3s-apps,
+        # modules/grafana), reached through
+        # shared_ingress_grafana_upstream -- confirmed live 2026-08-30
+        # (real admin login, both datasources healthy, a real PromQL
+        # query returning real scrape data) before this role's own
+        # Docker deployment was removed.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        install_task = tasks.split("Install Grafana dashboards", 1)[1].split(
-            "- name:", 1
-        )[0]
-        self.assertIn("blocky.json", install_task)
-        self.assertIn("blocky-postgres.json", install_task)
-        self.assertIn("monitoring_blocky_enabled", install_task)
+        self.assertNotIn("Ensure Grafana container is running", tasks)
+        self.assertNotIn("Verify Grafana is ready on host loopback", tasks)
+        self.assertNotIn("Install Grafana", tasks)
+        self.assertNotIn("monitoring_grafana_image", tasks)
+        self.assertNotIn("monitoring_grafana_container_user", tasks)
 
-        self.assertIn(
-            "Remove Blocky Grafana dashboards when Blocky is disabled", tasks
-        )
-        cleanup_task = tasks.split(
-            "Remove Blocky Grafana dashboards when Blocky is disabled", 1
-        )[1]
+    def test_dead_defaults_and_templates_are_gone(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        # Checked as an actual variable assignment ("name:"), not a bare
+        # substring -- monitoring_grafana_admin_password is legitimately
+        # still mentioned in prose, in the comment explaining why
+        # monitoring_grafana_admin_user (unlike it) survives.
+        for dead_default in (
+            "monitoring_grafana_container_name",
+            "monitoring_grafana_image_name",
+            "monitoring_grafana_port",
+            "monitoring_grafana_memory_limit",
+            "monitoring_grafana_admin_password",
+            "monitoring_grafana_container_user",
+        ):
+            with self.subTest(default=dead_default):
+                self.assertNotIn(f"{dead_default}:", defaults)
+
+        # monitoring_grafana_admin_user survives on purpose -- see its
+        # own comment in defaults/main.yml.
+        self.assertIn("monitoring_grafana_admin_user: admin", defaults)
+
+        for dead_template in (
+            "grafana_datasources.yml.j2",
+            "grafana_dashboards_provider.yml.j2",
+        ):
+            with self.subTest(template=dead_template):
+                self.assertFalse((ROLE_ROOT / "templates" / dead_template).exists())
+
+    def test_old_local_state_is_actively_removed(self) -> None:
+        # Learned directly from a real near-miss during open_webui's own
+        # reshape this same session: an unrelated site.yml run can
+        # silently resurrect an already-stopped container as long as its
+        # role still manages one. Removing the old config/data/secrets
+        # here, unconditionally, closes that window rather than leaving
+        # stale state a future change could accidentally depend on.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("Remove retired local Grafana state", tasks)
+        cleanup_task = tasks.split("Remove retired local Grafana state", 1)[
+            1
+        ].split("- name:", 1)[0]
+        self.assertIn("monitoring_config_dir }}/grafana", cleanup_task)
+        self.assertIn("monitoring_data_dir }}/grafana", cleanup_task)
+        self.assertIn("monitoring_data_dir }}/secrets", cleanup_task)
         self.assertIn("state: absent", cleanup_task)
-
-    def test_pre_rename_datasource_file_is_actively_removed(self) -> None:
-        # Renaming grafana_datasources.yml.j2's destination away from
-        # prometheus.yml (to make room for the Blocky datasource) doesn't
-        # itself clean up the old file on an already-deployed homeserver
-        # -- a dedicated removal task does.
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        self.assertIn(
-            "Remove pre-rename Grafana datasource provisioning file", tasks
-        )
-        cleanup_task = tasks.split(
-            "Remove pre-rename Grafana datasource provisioning file", 1
-        )[1]
-        self.assertIn(
-            "datasources/prometheus.yml", cleanup_task.split("- name:", 1)[0]
-        )
-        self.assertIn("state: absent", cleanup_task.split("- name:", 1)[0])
 
 
 class GrafanaIngressTests(unittest.TestCase):
@@ -593,8 +563,12 @@ class NtfyRelayServiceTests(unittest.TestCase):
         )
 
     def test_relay_gets_its_own_directory_not_grafanas_shared_secrets_dir(self) -> None:
-        # The shared secrets/ dir is owned by Grafana's service account
-        # (0750) -- a different user can't read a file dropped in there.
+        # Historically the shared secrets/ dir was owned by Grafana's own
+        # service account (0750) -- a different user couldn't read a file
+        # dropped in there, so the relay always needed its own directory.
+        # That secrets/ dir is gone now that Grafana's own container is
+        # (see GrafanaK3sMigrationTests), but the relay's independence
+        # from it is still the point being tested here.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn("monitoring_data_dir }}/ntfy-relay/ntfy_topic", tasks)
