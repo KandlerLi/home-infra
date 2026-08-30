@@ -14,6 +14,10 @@ UMask=0007
 Environment=HOME_TOOLS_SOCKET={{ home_agent_tools_socket_path }}
 Environment=HOME_TOOLS_DOCKER_SOCKET={{ home_agent_tools_docker_socket_path }}
 Environment=HOME_TOOLS_FILESYSTEMS={{ home_agent_tools_filesystems | join(',') }}
+{% if home_agent_tools_tcp_bind_address | length > 0 %}
+Environment=HOME_TOOLS_TCP_BIND_ADDRESS={{ home_agent_tools_tcp_bind_address }}
+Environment=HOME_TOOLS_TCP_PORT={{ home_agent_tools_tcp_port }}
+{% endif %}
 ExecStart=/usr/bin/python3 {{ home_agent_tools_install_dir }}/home_tools_service.py
 Restart=on-failure
 RestartSec=5s
@@ -33,7 +37,7 @@ LockPersonality=true
 MemoryDenyWriteExecute=true
 CapabilityBoundingSet=
 AmbientCapabilities=
-RestrictAddressFamilies=AF_UNIX
+RestrictAddressFamilies=AF_UNIX{{ ' AF_INET' if home_agent_tools_tcp_bind_address | length > 0 else '' }}
 SystemCallArchitectures=native
 
 [Install]

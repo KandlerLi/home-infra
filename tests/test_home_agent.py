@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import http.client
+import importlib.util
 import json
 import sys
 import threading
@@ -9,10 +10,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT / "ansible/roles/home_agent/files/agent"))
+ROLE_ROOT = PROJECT_ROOT / "ansible/roles/home_agent"
+sys.path.insert(0, str(ROLE_ROOT / "files/agent"))
 
 from home_agent.agent import OpenAIResponsesProvider
 from home_agent.api import AgentHTTPServer, AgentRequestHandler, normalize_conversation
+
+_home_tools_service_spec = importlib.util.spec_from_file_location(
+    "home_tools_service", ROLE_ROOT / "files/home_tools_service.py"
+)
+home_tools_service = importlib.util.module_from_spec(_home_tools_service_spec)
+_home_tools_service_spec.loader.exec_module(home_tools_service)
 
 
 class FakeResponses:
@@ -435,6 +443,111 @@ class HomeAgentAPITests(unittest.TestCase):
 
         self.assertEqual(response.status, 413)
         self.assertEqual(self.server.transcriber.calls, [])
+
+
+class HomeToolsServiceTcpListenerTests(unittest.TestCase):
+    # home_tools_service can't move into the k3s cluster the way
+    # nextcloud_tools does -- it reports the homeserver's own hardware
+    # (uptime, memory, disk usage, its own Docker socket), so it has to
+    # keep running here. This second, optional TCP listener is what lets
+    # a k3s-hosted home_agent still reach it, alongside the Unix socket
+    # every other consumer keeps using unchanged.
+
+    def setUp(self) -> None:
+        self.server = home_tools_service.ThreadingTCPServer(
+            ("127.0.0.1", 0), home_tools_service.HomeToolsRequestHandler
+        )
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+
+        def stop_server() -> None:
+            # addCleanup runs in LIFO order -- a naive separate
+            # addCleanup per call would join() the still-serving thread
+            # before shutdown() ever unblocks it, deadlocking. shutdown()
+            # must run first, then join(), then server_close().
+            self.server.shutdown()
+            self.thread.join()
+            self.server.server_close()
+
+        self.addCleanup(stop_server)
+
+    def _get(self, path: str) -> http.client.HTTPResponse:
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_address[1], timeout=2
+        )
+        connection.request("GET", path)
+        response = connection.getresponse()
+        response.read()
+        connection.close()
+        return response
+
+    def test_tcp_listener_serves_the_same_fixed_read_only_endpoints(self) -> None:
+        # Same handler class as the Unix socket -- no separate, possibly
+        # divergent, API surface for the network-reachable listener.
+        self.assertEqual(self._get("/v1/health").status, 200)
+        self.assertEqual(self._get("/v1/system").status, 200)
+
+    def test_tcp_listener_still_rejects_writes(self) -> None:
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.server.server_address[1], timeout=2
+        )
+        connection.request("POST", "/v1/system")
+        response = connection.getresponse()
+        response.read()
+        connection.close()
+
+        self.assertEqual(response.status, 405)
+
+    def test_tcp_listener_still_refuses_unknown_paths(self) -> None:
+        self.assertEqual(self._get("/v1/does-not-exist").status, 404)
+
+
+class HomeToolsServiceTcpBindingConfigTests(unittest.TestCase):
+    def test_defaults_to_disabled_unix_socket_only(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn('home_agent_tools_tcp_bind_address: ""', defaults)
+
+    def test_validation_allows_only_empty_or_the_k3s_vm_address(self) -> None:
+        # 192.168.101.1 is this homeserver's own address on the k3s VM's
+        # isolated network -- the same trust boundary
+        # nextcloud_aio_apache_ip_binding and shared_ingress's own
+        # home/deluge upstream exceptions already rely on. A closed
+        # allowlist, not an open door: widening it to accept anything
+        # would defeat the point.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'home_agent_tools_tcp_bind_address | length == 0\n'
+            '        or home_agent_tools_tcp_bind_address == "192.168.101.1"',
+            tasks,
+        )
+
+    def test_systemd_unit_only_widens_address_families_when_tcp_is_enabled(
+        self,
+    ) -> None:
+        # RestrictAddressFamilies=AF_UNIX is a real kernel-level guard
+        # (confirmed live: it blocks the process from creating any
+        # AF_INET socket at all) -- must only widen to admit AF_INET when
+        # the operator has actually opted into the TCP listener, not
+        # unconditionally.
+        unit = (ROLE_ROOT / "templates/home-tools.service.j2").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("RestrictAddressFamilies=AF_UNIX{{", unit)
+        self.assertIn("AF_INET", unit)
+
+    def test_systemd_unit_only_sets_tcp_env_vars_when_enabled(self) -> None:
+        unit = (ROLE_ROOT / "templates/home-tools.service.j2").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "{% if home_agent_tools_tcp_bind_address | length > 0 %}", unit
+        )
+        self.assertIn("HOME_TOOLS_TCP_BIND_ADDRESS", unit)
+        self.assertIn("HOME_TOOLS_TCP_PORT", unit)
 
 
 if __name__ == "__main__":

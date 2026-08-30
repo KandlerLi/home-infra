@@ -32,6 +32,17 @@ home_agent_tools_filesystems:
   - /
   - /mnt/black-hdd
 
+# Off by default (Unix socket only, unreachable off this host). When set,
+# home_tools_service also listens on this address/port with the exact
+# same fixed, read-only, argument-free handler as the Unix socket --
+# exists so home_agent can still reach this service once it runs in the
+# k3s VM instead of on this host. 192.168.101.1 (this homeserver's own
+# address on the k3s VM's isolated network) is the only value the role's
+# own validation allows -- see nextcloud_aio_apache_ip_binding's matching
+# comment for the full reasoning.
+home_agent_tools_tcp_bind_address: ""
+home_agent_tools_tcp_port: 8095
+
 home_agent_nextcloud_tools_enabled: "{{ nextcloud_tools_enabled | default(false) }}"
 home_agent_nextcloud_tools_client_group: >-
   {{ nextcloud_tools_client_group | default('nextcloud-tools-client') }}

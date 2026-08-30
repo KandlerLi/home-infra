@@ -18,9 +18,22 @@
         not home_agent_nextcloud_tools_enabled | bool
         or home_agent_nextcloud_tools_socket_path | dirname
            == home_agent_nextcloud_tools_socket_dir
+      # 192.168.101.1 is this homeserver's own address on the k3s VM's
+      # isolated libvirt NAT network, not a public or LAN-wide one --
+      # same trust boundary as nextcloud_aio_apache_ip_binding and
+      # shared_ingress's own home/deluge upstream exceptions. Unlike
+      # those, this is additive (the Unix socket keeps working
+      # regardless), so there's no live value to switch in lockstep --
+      # just a closed allowlist of one address.
+      - >-
+        home_agent_tools_tcp_bind_address | length == 0
+        or home_agent_tools_tcp_bind_address == "192.168.101.1"
+      - home_agent_tools_tcp_port | int >= 1024
+      - home_agent_tools_tcp_port | int <= 65535
     fail_msg: >-
-      Configure home_agent_openai_api_key through SOPS and keep the
-      initial API bound to a loopback address.
+      Configure home_agent_openai_api_key through SOPS, keep the initial
+      API bound to a loopback address, and keep home_agent_tools_tcp_bind_address
+      empty or pinned to the k3s VM's isolated network address.
   no_log: true
 
 - name: Check Docker group

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import http.client
+import http.server
 import json
 import logging
 import os
@@ -10,6 +11,7 @@ import shutil
 import socket
 import socketserver
 import subprocess
+import threading
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -17,6 +19,16 @@ from typing import Any
 
 SOCKET_PATH = os.environ.get("HOME_TOOLS_SOCKET", "/run/home-tools/home-tools.sock")
 DOCKER_SOCKET_PATH = os.environ.get("HOME_TOOLS_DOCKER_SOCKET", "/var/run/docker.sock")
+# Off by default. When set, a second listener joins the Unix socket above --
+# same fixed, argument-free, read-only handler either way, so widening
+# reachability doesn't widen what's actually exposed. Exists so home_agent
+# can still reach this service once it runs in the k3s VM instead of on
+# this host directly: TCP_BIND_ADDRESS is meant to be this homeserver's own
+# address on the k3s VM's isolated network (192.168.101.1), never 0.0.0.0
+# or a LAN-wide address -- enforced by the Ansible role's own validation,
+# not by this script, which only does what it's told.
+TCP_BIND_ADDRESS = os.environ.get("HOME_TOOLS_TCP_BIND_ADDRESS", "")
+TCP_PORT = int(os.environ.get("HOME_TOOLS_TCP_PORT", "0") or "0")
 FILESYSTEMS = tuple(
     path for path in os.environ.get("HOME_TOOLS_FILESYSTEMS", "/").split(",") if path
 )
@@ -245,17 +257,44 @@ class ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamSe
     daemon_threads = True
 
 
+class ThreadingTCPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    # Rebinding immediately after a restart matters here since this
+    # listens on a specific address, not an ephemeral port -- without
+    # this a quick Restart=on-failure cycle can hit "Address already in
+    # use" while the kernel still holds the old socket in TIME_WAIT.
+    allow_reuse_address = True
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     socket_path = Path(SOCKET_PATH)
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     socket_path.unlink(missing_ok=True)
+
+    tcp_server: ThreadingTCPServer | None = None
+    tcp_thread: threading.Thread | None = None
+    if TCP_BIND_ADDRESS and TCP_PORT:
+        tcp_server = ThreadingTCPServer(
+            (TCP_BIND_ADDRESS, TCP_PORT), HomeToolsRequestHandler
+        )
+        tcp_thread = threading.Thread(target=tcp_server.serve_forever, daemon=True)
+        tcp_thread.start()
+        LOGGER.info(
+            "listening on tcp %s:%d in addition to the unix socket",
+            TCP_BIND_ADDRESS,
+            TCP_PORT,
+        )
+
     try:
         with ThreadingUnixServer(str(socket_path), HomeToolsRequestHandler) as server:
             os.chmod(socket_path, 0o660)
             server.serve_forever()
     finally:
         socket_path.unlink(missing_ok=True)
+        if tcp_server is not None:
+            tcp_server.shutdown()
+            tcp_server.server_close()
 
 
 if __name__ == "__main__":
