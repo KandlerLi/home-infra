@@ -10,39 +10,40 @@ NEXTCLOUD_AIO_ROOT = PROJECT_ROOT / "ansible/roles/nextcloud_aio"
 
 
 class DelugeRoleTests(unittest.TestCase):
-    def test_defaults_are_opt_in_and_web_ui_is_loopback_only(self) -> None:
+    def test_defaults_define_the_service_account_and_directories(self) -> None:
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 
-        self.assertIn("deluge_enabled: false", defaults)
-        self.assertIn("deluge_web_bind_address: 127.0.0.1", defaults)
-        self.assertIn("linuxserver/deluge:", defaults)
+        self.assertIn("deluge_service_user: deluge", defaults)
+        self.assertIn("deluge_service_group: deluge", defaults)
+        self.assertIn("deluge_downloads_dir: /mnt/black-hdd/downloads", defaults)
+        self.assertIn("deluge_config_dir: /mnt/black-hdd/deluge-config", defaults)
 
-    def test_image_is_pinned_and_asserted(self) -> None:
+    def test_tasks_run_unconditionally_now_container_is_retired(self) -> None:
+        # This role used to gate everything behind deluge_enabled (opt-in
+        # Docker container). Deluge itself now runs as a k3s-native copy
+        # (infra/k3s-apps) -- this role only keeps the host prerequisites
+        # (service account, directories, ACL) that copy still depends on,
+        # so those need to always run, not be conditional on a flag that
+        # no longer exists.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        self.assertNotIn(":latest", defaults)
-        self.assertIn("deluge_image is match", tasks)
+        self.assertNotIn("deluge_enabled", defaults)
+        self.assertNotIn("deluge_enabled", tasks)
+        self.assertNotIn("linuxserver/deluge", tasks)
+        self.assertNotIn("docker_container", tasks)
 
-    def test_only_the_peer_port_binds_beyond_loopback(self) -> None:
-        # The web UI must stay loopback-only (reached only via Traefik). The
-        # BitTorrent peer port is a deliberate, narrow exception: it's a raw
-        # TCP/UDP protocol port, not an HTTP attack surface, and peer
-        # connectivity fundamentally requires a directly reachable port --
-        # it cannot be proxied through Traefik like the web UI can.
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        self.assertIn(
-            '"{{ deluge_web_bind_address }}:{{ deluge_web_port }}:8112"', tasks
-        )
-        self.assertIn('"{{ deluge_peer_port }}:{{ deluge_peer_port }}/tcp"', tasks)
-        self.assertIn('"{{ deluge_peer_port }}:{{ deluge_peer_port }}/udp"', tasks)
-
-    def test_service_runs_as_a_dedicated_unprivileged_account(self) -> None:
+    def test_service_account_uid_gid_is_validated_against_k3s_apps(self) -> None:
+        # infra/k3s-apps' Deployment hardcodes PUID=993/PGID=986 rather
+        # than looking them up dynamically -- a homeserver rebuild that
+        # ever assigned this account a different uid/gid would otherwise
+        # let the k3s copy silently write into these directories as the
+        # wrong uid instead of failing loudly.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn("Create Deluge service account", tasks)
-        self.assertIn("no-new-privileges:true", tasks)
+        self.assertIn('deluge_uid == "993"', tasks)
+        self.assertIn('deluge_gid == "986"', tasks)
 
     def test_downloads_and_config_directories_are_kept_separate(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
@@ -102,145 +103,6 @@ class DelugeRoleTests(unittest.TestCase):
             'entity: "{{ deluge_downloads_nextcloud_user }}"',
             tasks,
         )
-
-    def test_web_ui_password_is_required_not_left_default(self) -> None:
-        # Deluge has no "no login required" mode -- deluge/ui/web/auth.py's
-        # check_password() returns False for every password when pwd_sha1
-        # is missing, which locks out login rather than bypassing it. So a
-        # real password must be set and validated, the same way
-        # home_agent_openai_api_key is.
-        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        self.assertIn('deluge_web_password: ""', defaults)
-        self.assertIn("deluge_web_password | trim | length >= 16", tasks)
-        self.assertIn('deluge_web_password | trim != "CHANGE_ME"', tasks)
-        self.assertNotIn("Disable Deluge's own login", tasks)
-
-    def test_web_conf_password_hash_matches_deluges_own_algorithm(self) -> None:
-        # deluge/ui/web/auth.py's Auth._change_password():
-        #   salt = sha1(random); s = sha1(salt); s.update(password)
-        # sha1.update(a); sha1.update(b) == sha1(a + b) for the same digest,
-        # so (salt ~ password) | hash('sha1') must reproduce that exactly.
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        self.assertIn(
-            "deluge_web_pwd_sha1: \"{{ (deluge_web_pwd_salt ~ deluge_web_password)"
-            " | hash('sha1') }}\"",
-            tasks,
-        )
-
-    def test_web_conf_template_renders_as_two_valid_json_objects(self) -> None:
-        # Deluge's config loader (deluge/config.py) requires exactly this
-        # shape: a {"file": ..., "format": ...} header immediately followed
-        # by the actual config object, found via brace-matching (not a
-        # naive split), each parsed independently as JSON.
-        #
-        # "file": 2 matters, not just cosmetically: deluge/ui/web/server.py
-        # constructs its ConfigManager with file_version=2. A first version
-        # of this template said "file": 1, one version behind -- Deluge
-        # accepted the file but ran its 1-to-2 migration path, which
-        # (confirmed live, not just in theory) resulted in the well-known
-        # default pwd_sha1/salt taking effect instead of the configured
-        # password. Matching the current version exactly avoids that
-        # migration path running at all.
-        import json
-
-        from jinja2 import Environment, FileSystemLoader
-
-        env = Environment(
-            loader=FileSystemLoader(str(ROLE_ROOT / "templates"))
-        )
-        rendered = env.get_template("web.conf.j2").render(
-            deluge_web_pwd_salt="a" * 40,
-            deluge_web_pwd_sha1="b" * 40,
-        )
-
-        split_at = rendered.index("}{") + 1
-        header = json.loads(rendered[:split_at])
-        body = json.loads(rendered[split_at:])
-
-        self.assertEqual(header, {"file": 2, "format": 1})
-        self.assertEqual(body["pwd_salt"], "a" * 40)
-        self.assertEqual(body["pwd_sha1"], "b" * 40)
-        self.assertEqual(body["port"], 8112)
-        self.assertEqual(body["sessions"], {})
-        self.assertIs(body["first_login"], False)
-
-    def test_web_conf_template_matches_deluges_current_config_defaults(
-        self,
-    ) -> None:
-        # deluge/ui/web/server.py's CONFIG_DEFAULTS, as of the pinned image
-        # version -- every key it declares must be present in our seeded
-        # file too, or Deluge silently falls back to defaults for whatever
-        # is missing (harmless for most keys, but exactly how the
-        # file-version mismatch above went unnoticed for pwd_sha1/salt).
-        from jinja2 import Environment, FileSystemLoader
-
-        env = Environment(
-            loader=FileSystemLoader(str(ROLE_ROOT / "templates"))
-        )
-        rendered = env.get_template("web.conf.j2").render(
-            deluge_web_pwd_salt="a" * 40,
-            deluge_web_pwd_sha1="b" * 40,
-        )
-
-        expected_keys = {
-            "enabled_plugins",
-            "default_daemon",
-            "pwd_salt",
-            "pwd_sha1",
-            "session_timeout",
-            "sessions",
-            "sidebar_show_zero",
-            "sidebar_multiple_filters",
-            "show_session_speed",
-            "show_sidebar",
-            "theme",
-            "first_login",
-            "language",
-            "base",
-            "interface",
-            "port",
-            "https",
-            "pkey",
-            "cert",
-        }
-        for key in expected_keys:
-            with self.subTest(key=key):
-                self.assertIn(f'"{key}"', rendered)
-
-    def test_repairs_a_web_conf_left_with_the_default_password(self) -> None:
-        # Must re-detect and fix the specific known-bad state (file exists
-        # but still has the well-known default pwd_sha1) by content, not
-        # just skip because a file is now present.
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        self.assertIn("2ce1a410bcdcc53064129b6d950f2e9fee4edc1e", tasks)
-        self.assertIn("deluge_web_conf_slurp.content | b64decode", tasks)
-
-    def test_stops_the_old_container_before_rewriting_web_conf(self) -> None:
-        # A still-running deluge-web process holds its own in-memory copy of
-        # web.conf and periodically autosaves it. If that process is still
-        # alive while the password-repair template task writes a fresh
-        # web.conf, its next autosave silently overwrites the fix with its
-        # own stale (default-password) state before the container is ever
-        # recreated -- confirmed live via web.conf.bak's timestamp and
-        # content sitting *before* the file that clobbered it, both before
-        # the recreated container's own start time. The old container must
-        # be stopped before the file is rewritten, not just recreated after.
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        stop_index = tasks.index("Stop Deluge before rewriting its web.conf")
-        install_index = tasks.index("Install Deluge's web.conf with the configured password")
-        self.assertLess(
-            stop_index,
-            install_index,
-            "the container must be stopped before web.conf is rewritten,"
-            " or the old process can autosave over the fix",
-        )
-        self.assertIn("community.docker.docker_container_info", tasks)
-        self.assertIn("state: stopped", tasks)
 
 
 class DelugeIngressTests(unittest.TestCase):
@@ -441,21 +303,6 @@ class NextcloudAioMountTests(unittest.TestCase):
             "/files/{{ nextcloud_aio_mount_point_name }}",
             rescan_block,
         )
-
-    def test_container_is_torn_down_cleanly_when_disabled(self) -> None:
-        # Deluge is migrating to the k3s cluster (infra/k3s-apps), which
-        # reads the same config/downloads directories over NFS -- two
-        # Deluge daemons with the same session state open at once is a
-        # real corruption risk, confirmed live to actually be happening
-        # (both running concurrently) before this teardown existed. Only
-        # the container goes -- deluge_config_dir/deluge_downloads_dir
-        # on disk are never touched here.
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        teardown_task = tasks.split("Tear down Deluge when disabled", 1)[1]
-        self.assertIn("not (deluge_enabled | bool)", teardown_task)
-        self.assertIn("state: absent", teardown_task)
-        self.assertIn("deluge_container_name", teardown_task)
 
 
 if __name__ == "__main__":

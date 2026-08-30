@@ -15,15 +15,13 @@ shared_ingress_open_webui_enabled: true
 nextcloud_tools_enabled: true
 nextcloud_tools_allowed_root: Shared/AI Workspace
 
-# Deluge migrated to the k3s cluster (infra/k3s-apps), which reads the
-# exact same config/downloads directories over NFS -- two Deluge
-# daemons with the same session state open at once is a real
-# corruption risk, confirmed to actually be happening live (both ran
-# concurrently for about an hour) before the Docker container was
-# stopped. The k3s copy was then confirmed live to read the existing
-# session state cleanly (daemon connected, real external IP, real free
-# space through the NFS mount, no errors) before this cutover.
-deluge_enabled: false
+# Deluge itself runs as a k3s-native copy (infra/k3s-apps,
+# Terraform-managed), not by anything in this repo -- confirmed live in
+# production (real domain, real auth, real session state read cleanly
+# over NFS) before the old Docker container was stopped. The deluge
+# role here now only manages the host prerequisites the k3s copy still
+# depends on (service account, NFS-exported directories/ACL) -- see its
+# README -- so it has no enabled flag of its own any more.
 shared_ingress_deluge_enabled: true
 shared_ingress_deluge_upstream: http://192.168.101.10:80
 

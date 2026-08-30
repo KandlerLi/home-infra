@@ -1,16 +1,4 @@
 ---
-deluge_enabled: false
-deluge_force_recreate: false
-
-deluge_container_name: deluge
-# Digest fetched live from the registry for this exact tag, matching every
-# other pinned image in this repo (was previously tag-only, an oversight --
-# unlike nextcloud_aio's deliberate use of a moving tag, nothing here needs
-# Deluge to self-update).
-deluge_image: >-
-  linuxserver/deluge:2.2.0-ls381@sha256:33a939576f7ecfc1227db1a0cb2afce030ce983e620ec9d93c956e3700e21fe9
-deluge_restart_policy: unless-stopped
-
 deluge_service_user: deluge
 deluge_service_group: deluge
 deluge_downloads_dir: /mnt/black-hdd/downloads
@@ -27,17 +15,3 @@ deluge_config_dir: /mnt/black-hdd/deluge-config
 # so this role has no way to add a supplementary group to that container's
 # process the way docker_container's group_add would.
 deluge_downloads_nextcloud_user: www-data
-
-deluge_web_bind_address: 127.0.0.1
-deluge_web_port: 8112
-deluge_peer_port: 6881
-
-# Deluge's own web UI login. This cannot be disabled (verified against its
-# auth.py source -- a missing pwd_sha1 locks out login rather than bypassing
-# it), so it gets a real password too, even though Traefik Basic Auth is the
-# primary public gate. Set through SOPS before the first deploy.
-deluge_web_password: ""
-
-deluge_memory_limit: 512M
-deluge_cpu_limit: 1.0
-deluge_pids_limit: 256

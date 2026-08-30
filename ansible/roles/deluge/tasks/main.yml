@@ -1,265 +1,125 @@
 ---
-- name: Configure Deluge
-  when: deluge_enabled | bool
-  block:
-    - name: Validate Deluge configuration
-      ansible.builtin.assert:
-        that:
-          - deluge_image is match('^linuxserver/deluge:')
-          - deluge_web_bind_address == "127.0.0.1"
-          - deluge_web_port | int >= 1024
-          - deluge_web_port | int <= 65535
-          - deluge_downloads_dir != deluge_config_dir
-        fail_msg: >-
-          Keep the Deluge web UI bound to loopback only and the downloads
-          and config directories distinct (only downloads should ever be
-          exposed to Nextcloud via NEXTCLOUD_MOUNT).
-      no_log: true
+# Host prerequisites for Deluge: a dedicated service account and the
+# NFS-exported directories/ACL it needs. This role used to also run
+# Deluge itself as a Docker container; that's retired now (see
+# infra/k3s-apps, Terraform-managed) but these prerequisites stay --
+# the k3s-native copy reads these same two directories over NFS (see
+# nfs_server's exports in group_vars) as this exact service account
+# (its uid/gid are hardcoded as PUID/PGID in k3s-apps' Deployment), so
+# a homeserver rebuild still needs Ansible to recreate them identically
+# rather than leaving that as undocumented manual state.
 
-    - name: Create Deluge service group
-      ansible.builtin.group:
-        name: "{{ deluge_service_group }}"
-        system: true
-        state: present
+- name: Create Deluge service group
+  ansible.builtin.group:
+    name: "{{ deluge_service_group }}"
+    system: true
+    state: present
 
-    - name: Create Deluge service account
-      ansible.builtin.user:
-        name: "{{ deluge_service_user }}"
-        group: "{{ deluge_service_group }}"
-        system: true
-        create_home: false
-        shell: /usr/sbin/nologin
-      register: deluge_service_account
+- name: Create Deluge service account
+  ansible.builtin.user:
+    name: "{{ deluge_service_user }}"
+    group: "{{ deluge_service_group }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+  register: deluge_service_account
 
-    - name: Read Deluge service account
-      ansible.builtin.getent:
-        database: passwd
-        key: "{{ deluge_service_user }}"
+- name: Read Deluge service account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ deluge_service_user }}"
 
-    - name: Read Deluge service group
-      ansible.builtin.getent:
-        database: group
-        key: "{{ deluge_service_group }}"
+- name: Read Deluge service group
+  ansible.builtin.getent:
+    database: group
+    key: "{{ deluge_service_group }}"
 
-    - name: Record Deluge runtime identity
-      ansible.builtin.set_fact:
-        deluge_uid: "{{ ansible_facts.getent_passwd[deluge_service_user][1] }}"
-        deluge_gid: "{{ ansible_facts.getent_group[deluge_service_group][1] }}"
+- name: Record Deluge runtime identity
+  ansible.builtin.set_fact:
+    deluge_uid: "{{ ansible_facts.getent_passwd[deluge_service_user][1] }}"
+    deluge_gid: "{{ ansible_facts.getent_group[deluge_service_group][1] }}"
 
-    - name: Create Deluge directories
-      ansible.builtin.file:
-        path: "{{ item.path }}"
-        state: directory
-        owner: "{{ deluge_service_user }}"
-        group: "{{ deluge_service_group }}"
-        mode: "{{ item.mode }}"
-      loop:
-        # downloads is 0755, not 0750: Nextcloud's external storage mount
-        # reads this directory as its own container's runtime uid
-        # (www-data, confirmed live to not be in the deluge group), so
-        # "other" needs read+execute to traverse and list it -- this is
-        # the one directory the deluge role's own comment above says is
-        # meant to be exposed to Nextcloud. Deluge's own default umask
-        # already makes the per-torrent subfolders/files it creates
-        # world-readable, so this top-level directory was the only thing
-        # actually blocking visibility. config stays 0750 (private
-        # session state/password hash, never meant to be shared).
-        #
-        # 0755's "other" bits are read+execute only, not write -- Unix
-        # delete/rename needs write on the *containing* directory, so
-        # Nextcloud could list and open files but never delete them. Not
-        # widened to 0757: that would let any process on the host write
-        # here, not just www-data specifically. The ACL tasks below grant
-        # write access to exactly that one account instead.
-        - path: "{{ deluge_downloads_dir }}"
-          mode: "0755"
-        - path: "{{ deluge_config_dir }}"
-          mode: "0750"
-      loop_control:
-        label: "{{ item.path }}"
+# infra/k3s-apps' Deployment hardcodes PUID=993/PGID=986 rather than
+# looking these up dynamically -- confirmed live to match this account
+# when it was created. If a homeserver rebuild ever assigned different
+# uid/gid numbers here (e.g. some other system account taking 993
+# first), the k3s Deployment would silently write into these
+# directories as the wrong uid instead of failing loudly -- catch that
+# drift here instead.
+- name: Validate the Deluge service account matches what k3s-apps hardcodes
+  ansible.builtin.assert:
+    that:
+      - deluge_uid == "993"
+      - deluge_gid == "986"
+    fail_msg: >-
+      deluge's uid/gid drifted from 993/986, which infra/k3s-apps'
+      Deployment hardcodes as PUID/PGID. Either recreate the account
+      with the expected uid/gid, or update k3s-apps' deluge.tf and
+      re-apply it to match the new values.
 
-    # Grants www-data (Nextcloud AIO's own process, see
-    # deluge_downloads_nextcloud_user above) write access to the downloads
-    # directory and everything already inside it, so Nextcloud can delete
-    # files it can already see. "default: true" makes this the default ACL
-    # too, so any new per-torrent subfolder Deluge creates going forward
-    # inherits it automatically (Linux propagates a directory's default ACL
-    # into both the access and default ACL of anything created inside it) --
-    # the recursive pass below only needs to cover what already exists.
-    - name: Grant Nextcloud's process future write access to new downloads
-      ansible.posix.acl:
-        path: "{{ deluge_downloads_dir }}"
-        entity: "{{ deluge_downloads_nextcloud_user }}"
-        etype: user
-        permissions: rwx
-        default: true
-        state: present
+- name: Validate Deluge directories are distinct
+  ansible.builtin.assert:
+    that:
+      - deluge_downloads_dir != deluge_config_dir
+    fail_msg: >-
+      Keep the downloads and config directories distinct (only
+      downloads should ever be exposed to Nextcloud via
+      NEXTCLOUD_MOUNT).
 
-    - name: Grant Nextcloud's process write access to existing downloads
-      ansible.posix.acl:
-        path: "{{ deluge_downloads_dir }}"
-        entity: "{{ deluge_downloads_nextcloud_user }}"
-        etype: user
-        permissions: rwx
-        recursive: true
-        state: present
-
-    - name: Read Deluge's web.conf, if it exists
-      ansible.builtin.slurp:
-        path: "{{ deluge_config_dir }}/web.conf"
-      register: deluge_web_conf_slurp
-      failed_when: false
-
-    # Deluge has no "no login required" mode: its own auth.py source
-    # (deluge/ui/web/auth.py, check_password()) returns False for every
-    # password when pwd_sha1 is missing from config, which permanently
-    # locks out login rather than bypassing it. Traefik Basic Auth is still
-    # the primary public gate, but Deluge's own login can only be set, not
-    # disabled -- so it must have a real, strong password too. Pre-seed
-    # web.conf before first start rather than waiting for Deluge to create
-    # its own default: it doesn't write web.conf to disk until something
-    # triggers a config save (a password change, in the normal UI flow),
-    # so a fresh container never generates one on its own.
+- name: Create Deluge directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ deluge_service_user }}"
+    group: "{{ deluge_service_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    # downloads is 0755, not 0750: Nextcloud's external storage mount
+    # reads this directory as its own container's runtime uid
+    # (www-data, confirmed live to not be in the deluge group), so
+    # "other" needs read+execute to traverse and list it -- this is
+    # the one directory the deluge role's own comment above says is
+    # meant to be exposed to Nextcloud. Deluge's own default umask
+    # already makes the per-torrent subfolders/files it creates
+    # world-readable, so this top-level directory was the only thing
+    # actually blocking visibility. config stays 0750 (private
+    # session state/password hash, never meant to be shared).
     #
-    # Checked by content, not just existence: a first version of this task
-    # wrote "file": 1 in the header, one version behind what this Deluge
-    # release's ConfigManager targets (file_version=2). That mismatch ran a
-    # migration path which, empirically, ended up with the well-known
-    # default pwd_sha1/salt live instead of the configured password -- even
-    # though the migration function itself only touches the "language" key.
-    # Re-detect and repair that specific known-bad state, not just "file
-    # exists", so this stays self-healing rather than needing a manual fix
-    # every time the assumption turns out wrong again.
-    - name: Set Deluge's own web UI password
-      when: >-
-        deluge_web_conf_slurp.content is not defined
-        or 'pwd_sha1": "2ce1a410bcdcc53064129b6d950f2e9fee4edc1e"'
-           in (deluge_web_conf_slurp.content | b64decode)
-      no_log: true
-      block:
-        - name: Validate the Deluge web UI password is configured
-          ansible.builtin.assert:
-            that:
-              - deluge_web_password | trim | length >= 16
-              - deluge_web_password | trim != "CHANGE_ME"
-            fail_msg: >-
-              Configure deluge_web_password through SOPS before the first
-              deploy.
+    # 0755's "other" bits are read+execute only, not write -- Unix
+    # delete/rename needs write on the *containing* directory, so
+    # Nextcloud could list and open files but never delete them. Not
+    # widened to 0757: that would let any process on the host write
+    # here, not just www-data specifically. The ACL tasks below grant
+    # write access to exactly that one account instead.
+    - path: "{{ deluge_downloads_dir }}"
+      mode: "0755"
+    - path: "{{ deluge_config_dir }}"
+      mode: "0750"
+  loop_control:
+    label: "{{ item.path }}"
 
-        - name: Check whether the Deluge container already exists
-          community.docker.docker_container_info:
-            name: "{{ deluge_container_name }}"
-          register: deluge_container_info_before_repair
+# Grants www-data (Nextcloud AIO's own process, see
+# deluge_downloads_nextcloud_user above) write access to the downloads
+# directory and everything already inside it, so Nextcloud can delete
+# files it can already see. "default: true" makes this the default ACL
+# too, so any new per-torrent subfolder Deluge creates going forward
+# inherits it automatically (Linux propagates a directory's default ACL
+# into both the access and default ACL of anything created inside it) --
+# the recursive pass below only needs to cover what already exists.
+- name: Grant Nextcloud's process future write access to new downloads
+  ansible.posix.acl:
+    path: "{{ deluge_downloads_dir }}"
+    entity: "{{ deluge_downloads_nextcloud_user }}"
+    etype: user
+    permissions: rwx
+    default: true
+    state: present
 
-        # A running deluge-web process holds its own in-memory copy of
-        # web.conf and periodically autosaves it (Config.save() -- e.g. via
-        # Auth's session-cleanup timer scheduling a save on any config
-        # mutation). If that process is still alive while the next task
-        # writes a fresh web.conf, its next autosave silently overwrites the
-        # new file with its own stale in-memory state (still holding the
-        # default password) before the container is ever recreated. This
-        # was confirmed live: web.conf.bak held the correct, freshly
-        # generated password, timestamped seconds before the
-        # default-holding web.conf that replaced it -- and both writes
-        # happened before the recreated container's own start time,
-        # proving the *previous* container's still-alive process, not the
-        # new one, clobbered the fix during Docker's stop grace period.
-        # Stopping it first, before writing, closes that race.
-        - name: Stop Deluge before rewriting its web.conf
-          community.docker.docker_container:
-            name: "{{ deluge_container_name }}"
-            state: stopped
-          when: deluge_container_info_before_repair.exists
-
-        - name: Generate a random salt for the Deluge web UI password
-          ansible.builtin.set_fact:
-            deluge_web_pwd_salt: >-
-              {{
-                lookup('ansible.builtin.password', '/dev/null', length=40, chars=['hexdigits'])
-                | lower
-              }}
-
-        - name: Compute the Deluge web UI password hash
-          # Matches deluge/ui/web/auth.py's Auth._change_password() exactly:
-          # sha1(salt); sha1.update(password) == sha1(salt + password),
-          # since SHA1 produces the same digest for sequential updates as
-          # for the concatenated input in one call. Verified locally against
-          # Python's hashlib before use.
-          ansible.builtin.set_fact:
-            deluge_web_pwd_sha1: "{{ (deluge_web_pwd_salt ~ deluge_web_password) | hash('sha1') }}"
-
-        - name: Install Deluge's web.conf with the configured password
-          ansible.builtin.template:
-            src: web.conf.j2
-            dest: "{{ deluge_config_dir }}/web.conf"
-            owner: "{{ deluge_service_user }}"
-            group: "{{ deluge_service_group }}"
-            mode: "0600"
-          register: deluge_web_conf_installed
-
-    - name: Pull pinned Deluge image
-      community.docker.docker_image:
-        name: "{{ deluge_image }}"
-        source: pull
-        state: present
-      register: deluge_image_pull
-
-    - name: Ensure Deluge container is running
-      community.docker.docker_container:
-        name: "{{ deluge_container_name }}"
-        image: "{{ deluge_image }}"
-        state: started
-        recreate: >-
-          {{ deluge_image_pull.changed
-             or deluge_web_conf_installed.changed | default(false)
-             or deluge_force_recreate | bool }}
-        restart_policy: "{{ deluge_restart_policy }}"
-        # No read_only: true or cap_drop here, unlike home_agent/
-        # shared_ingress: the linuxserver/deluge image's s6-overlay init
-        # starts as root, remaps to PUID/PGID via chown/setuid (needs
-        # CAP_CHOWN/CAP_SETUID/CAP_SETGID -- dropping ALL would break that
-        # step), and writes supervision state outside the mounted volumes.
-        # no-new-privileges is still safe: it only blocks privilege
-        # escalation via setuid binaries, not the PUID-based remap.
-        security_opts:
-          - no-new-privileges:true
-        env:
-          PUID: "{{ deluge_uid }}"
-          PGID: "{{ deluge_gid }}"
-          TZ: Etc/UTC
-        memory: "{{ deluge_memory_limit }}"
-        cpus: "{{ deluge_cpu_limit }}"
-        pids_limit: "{{ deluge_pids_limit }}"
-        published_ports:
-          - "{{ deluge_web_bind_address }}:{{ deluge_web_port }}:8112"
-          - "{{ deluge_peer_port }}:{{ deluge_peer_port }}/tcp"
-          - "{{ deluge_peer_port }}:{{ deluge_peer_port }}/udp"
-        volumes:
-          - "{{ deluge_config_dir }}:/config"
-          - "{{ deluge_downloads_dir }}:/downloads"
-        log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
-      register: deluge_container
-
-    - name: Wait for the Deluge web UI to come up
-      ansible.builtin.wait_for:
-        host: "{{ deluge_web_bind_address }}"
-        port: "{{ deluge_web_port }}"
-        timeout: 60
-      when: not ansible_check_mode
-
-# Cleanly tears down the container this role itself created when
-# flipped off, rather than abandoning it as an orphan -- e.g. moving
-# to the k3s-native copy of this service (infra/k3s-apps), which reads
-# the exact same config/downloads directories over NFS. Only the
-# container goes; deluge_config_dir and deluge_downloads_dir on disk
-# are untouched, so nothing here is destructive or hard to reverse.
-- name: Tear down Deluge when disabled
-  when: not (deluge_enabled | bool)
-  block:
-    - name: Stop and remove Deluge container
-      community.docker.docker_container:
-        name: "{{ deluge_container_name }}"
-        state: absent
+- name: Grant Nextcloud's process write access to existing downloads
+  ansible.posix.acl:
+    path: "{{ deluge_downloads_dir }}"
+    entity: "{{ deluge_downloads_nextcloud_user }}"
+    etype: user
+    permissions: rwx
+    recursive: true
+    state: present
