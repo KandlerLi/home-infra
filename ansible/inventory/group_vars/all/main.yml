@@ -5,6 +5,31 @@ github_runner_github_owner: "KandlerLi"
 
 shared_ingress_acme_email: "julian.kandler@outlook.com"
 nextcloud_aio_reverse_proxy_enabled: true
+
+# First step of migrating home_agent + open_webui + nextcloud_tools to
+# the k3s cluster: nextcloud_tools is moving into the cluster alongside
+# home_agent (as a sidecar sharing a Unix socket, preserving its current
+# trust shape), which means it needs to reach Nextcloud AIO's Apache
+# from inside the k3s VM instead of on loopback. AIO's mastercontainer
+# only accepts one APACHE_IP_BINDING value at a time, so this is a
+# switch, not an addition -- 192.168.101.1 is this homeserver's own
+# address on the k3s VM's isolated libvirt NAT network, reachable from
+# both this host and that one VM, same trust boundary shared_ingress's
+# own home/deluge upstream exceptions already rely on (see both roles'
+# widened validation for the full reasoning). shared_ingress's own
+# nextcloud_upstream below must move in lockstep, or it loses its route
+# to Apache entirely. Applying this needs the guarded
+# MIGRATE_NEXTCLOUD_INGRESS confirmation flow, same as the original
+# Docker->shared_ingress cutover.
+#
+# nextcloud_tools/home_agent themselves haven't moved into k3s yet --
+# this proves the network path works with them still on this host,
+# before adding that variable too.
+nextcloud_aio_apache_ip_binding: 192.168.101.1
+# Must move in lockstep with nextcloud_aio_apache_ip_binding above --
+# see its comment for the full reasoning.
+shared_ingress_nextcloud_upstream: http://192.168.101.1:11000
+
 shared_ingress_enabled: true
 shared_ingress_start: true
 shared_ingress_apex_redirect_enabled: true
