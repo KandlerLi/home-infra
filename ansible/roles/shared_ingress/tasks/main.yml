@@ -9,7 +9,16 @@
             shared_ingress_image
             == "traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42"
           - shared_ingress_nextcloud_domain | length > 3
-          - shared_ingress_nextcloud_upstream == "http://127.0.0.1:11000"
+          # The same deliberate exception as shared_ingress_home_upstream/
+          # shared_ingress_deluge_upstream below: 192.168.101.1 is this
+          # homeserver's own address on the k3s VM's isolated network, not
+          # a public or LAN-wide one -- see nextcloud_aio's own matching
+          # comment on nextcloud_aio_apache_ip_binding, which this must be
+          # switched in lockstep with (AIO Apache only ever listens on one
+          # address at a time).
+          - >-
+            shared_ingress_nextcloud_upstream == "http://127.0.0.1:11000"
+            or shared_ingress_nextcloud_upstream == "http://192.168.101.1:11000"
           - shared_ingress_agent_domain | length > 3
           - shared_ingress_agent_upstream == "http://127.0.0.1:8090"
           - shared_ingress_health_address == "127.0.0.1"

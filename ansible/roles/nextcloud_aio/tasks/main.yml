@@ -52,9 +52,23 @@
           - >-
             not nextcloud_aio_reverse_proxy_enabled | bool
             or nextcloud_aio_apache_port | int == 11000
+          # The same deliberate exception shared_ingress's own upstream
+          # validation already uses for home.jkandler.de/
+          # torrent.jkandler.de: 192.168.101.1 is this homeserver's own
+          # address on the k3s VM's isolated libvirt NAT network, not a
+          # public or LAN-wide address -- confirmed (see nfs_server's own
+          # README) that network has no route from anywhere but this
+          # host. Binding Apache there instead of 127.0.0.1 doesn't
+          # actually leave the host's own trust boundary, it just adds
+          # reachability for the one VM attached to it (needed once
+          # nextcloud_tools runs there instead of on this host) alongside
+          # every process already on this host. shared_ingress's own
+          # nextcloud_upstream must be switched to match at the same
+          # time, or it loses its own route to Apache.
           - >-
             not nextcloud_aio_reverse_proxy_enabled | bool
             or nextcloud_aio_apache_ip_binding == "127.0.0.1"
+            or nextcloud_aio_apache_ip_binding == "192.168.101.1"
           - not nextcloud_aio_skip_domain_validation | bool
         fail_msg: >-
           Stop the AIO application containers through the AIO interface and

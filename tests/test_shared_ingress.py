@@ -69,6 +69,26 @@ class SharedIngressTests(unittest.TestCase):
             tasks,
         )
 
+    def test_nextcloud_upstream_allows_only_loopback_or_the_k3s_vm_address(
+        self,
+    ) -> None:
+        # A different shape from home/deluge's exception: nextcloud.jkandler.de
+        # itself isn't moving anywhere -- this is about nextcloud_tools
+        # (which talks to AIO Apache) potentially running inside the k3s
+        # VM instead of on this host, which means AIO Apache's single
+        # IP_BINDING has to switch from 127.0.0.1 to this host's own
+        # address on the k3s VM's isolated network (192.168.101.1) so
+        # both this host and that VM can still reach it. Not yet
+        # switched live -- this only widens what the guard accepts.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'shared_ingress_nextcloud_upstream == "http://127.0.0.1:11000"\n'
+            '            or shared_ingress_nextcloud_upstream == '
+            '"http://192.168.101.1:11000"',
+            tasks,
+        )
+
     def test_deluge_health_check_sends_the_real_host_header(self) -> None:
         # Same fix as the landing page's own health check: once
         # shared_ingress_deluge_upstream points at the k3s cluster's
