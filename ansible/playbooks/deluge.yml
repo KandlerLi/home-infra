@@ -21,8 +21,18 @@
         name: deluge
         state: absent
 
+    # name/tag deliberately kept separate, NOT a single "repo:tag@digest"
+    # string. Confirmed live and by reading the module's own source
+    # (parse_repository_tag splits on "@" first): a combined string
+    # leaves `tag` holding the digest and `name` still containing
+    # ":2.2.0-ls381", so absent()'s find_image(name, tag) lookup can
+    # never match the real locally-stored "linuxserver/deluge:2.2.0-ls381"
+    # image -- it silently reports "already absent" instead of removing
+    # anything or erroring. This exact bug is why the image was still
+    # sitting on the homeserver (215MB, confirmed via a live digest
+    # check) after this task had already run once.
     - name: Ensure the retired Deluge Docker image is gone
       community.docker.docker_image:
-        name: >-
-          linuxserver/deluge:2.2.0-ls381@sha256:33a939576f7ecfc1227db1a0cb2afce030ce983e620ec9d93c956e3700e21fe9
+        name: linuxserver/deluge
+        tag: 2.2.0-ls381
         state: absent

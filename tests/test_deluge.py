@@ -119,12 +119,27 @@ class DelugeLegacyCleanupTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("name: deluge", playbook)
-        self.assertIn(
-            "linuxserver/deluge:2.2.0-ls381@sha256:"
-            "33a939576f7ecfc1227db1a0cb2afce030ce983e620ec9d93c956e3700e21fe9",
-            playbook,
-        )
+        self.assertIn("name: linuxserver/deluge", playbook)
+        self.assertIn("tag: 2.2.0-ls381", playbook)
         self.assertEqual(playbook.count("state: absent"), 2)
+
+    def test_image_removal_uses_separate_name_and_tag_not_a_combined_string(
+        self,
+    ) -> None:
+        # Confirmed live and by reading community.docker.docker_image's
+        # own source: a single "repo:tag@digest" name string makes
+        # absent()'s find_image() lookup use the wrong repo/tag split
+        # (parse_repository_tag splits on "@" first, leaving `tag` as
+        # the digest and `name` still containing ":2.2.0-ls381"), so it
+        # can never match the real locally-stored image and silently
+        # no-ops instead of removing it or erroring. This is exactly why
+        # the image was still on the homeserver after this task had
+        # already run once with the combined-string form.
+        playbook = (
+            PROJECT_ROOT / "ansible/playbooks/deluge.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("2.2.0-ls381@sha256:", playbook)
 
 
 class DelugeIngressTests(unittest.TestCase):
