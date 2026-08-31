@@ -7,7 +7,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from sync_github_runner_repositories import render, runner_repositories
+import json
+
+from sync_github_runner_repositories import render, render_tfvars, runner_repositories
 
 
 class RunnerRepositoriesTests(unittest.TestCase):
@@ -45,6 +47,21 @@ class RunnerRepositoriesTests(unittest.TestCase):
         self.assertIn("GENERATED FILE", text)
         self.assertIn("github_runner_github_repositories:", text)
         self.assertIn("id: dyndns", text)
+
+    def test_render_tfvars_produces_valid_json_the_module_can_for_each_over(
+        self,
+    ) -> None:
+        repositories = [
+            {"id": "dyndns", "repository": "dyndns"},
+            {"id": "website", "repository": "website"},
+        ]
+
+        text = render_tfvars(repositories)
+        parsed = json.loads(text)
+
+        self.assertEqual(
+            parsed, {"github_runner_repositories": repositories}
+        )
 
 
 if __name__ == "__main__":
