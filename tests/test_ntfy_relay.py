@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from _load_module import load_module_from_path
 
@@ -105,6 +106,44 @@ class NtfyRelayFormattingTests(unittest.TestCase):
 
         self.assertEqual(title, "0 alerts firing")
         self.assertEqual(message, "(no alert detail in payload)")
+
+
+class NtfyRelayK3sListenerTests(unittest.TestCase):
+    def test_only_the_loopback_listener_starts_by_default(self) -> None:
+        with (
+            mock.patch.object(ntfy_relay, "LISTEN_HOST_K3S", ""),
+            mock.patch.object(ntfy_relay, "ThreadingHTTPServer") as server_cls,
+            mock.patch.object(ntfy_relay.threading, "Thread") as thread_cls,
+        ):
+            ntfy_relay.main()
+
+        server_cls.assert_called_once_with(
+            ("127.0.0.1", ntfy_relay.LISTEN_PORT), ntfy_relay.WebhookHandler
+        )
+        thread_cls.assert_not_called()
+
+    def test_second_listener_starts_additionally_when_k3s_bind_address_is_set(
+        self,
+    ) -> None:
+        # Additive, not a switch -- the loopback server still has to
+        # start too, so the still-Docker-based Alertmanager on this same
+        # host keeps working throughout the migration (see this
+        # constant's own comment).
+        with (
+            mock.patch.object(ntfy_relay, "LISTEN_HOST_K3S", "192.168.101.1"),
+            mock.patch.object(ntfy_relay, "ThreadingHTTPServer") as server_cls,
+            mock.patch.object(ntfy_relay.threading, "Thread") as thread_cls,
+        ):
+            ntfy_relay.main()
+
+        addresses = [call.args[0] for call in server_cls.call_args_list]
+        self.assertIn(("127.0.0.1", ntfy_relay.LISTEN_PORT), addresses)
+        self.assertIn(("192.168.101.1", ntfy_relay.LISTEN_PORT), addresses)
+        # The k3s listener runs in a background thread so the loopback
+        # server can still own the main thread the same way it always
+        # has -- daemon=True so it doesn't block process shutdown.
+        thread_cls.assert_called_once()
+        self.assertTrue(thread_cls.call_args.kwargs.get("daemon"))
 
 
 class MonitoringDataRootPermissionTests(unittest.TestCase):

@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -21,6 +22,15 @@ LOGGER = logging.getLogger(__name__)
 NTFY_URL = os.environ.get("NTFY_URL", "https://ntfy.sh")
 NTFY_TOPIC_FILE = os.environ.get("NTFY_TOPIC_FILE", "")
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "9096"))
+# Off by default (loopback only, via main()'s own hardcoded first
+# server below). When set, a second listener binds this address
+# additionally -- the existing loopback one keeps serving the
+# still-Docker-based Alertmanager on this same host, so the k3s-native
+# Alertmanager (infra/k3s-apps, once it exists) can reach this too
+# without breaking the one that's already working. 192.168.101.1 (this
+# homeserver's own address on the k3s VM's isolated network) is the
+# only value ansible/roles/monitoring's own validation allows.
+LISTEN_HOST_K3S = os.environ.get("LISTEN_HOST_K3S", "")
 MAX_REQUEST_BYTES = 262144
 
 SEVERITY_TAG = {
@@ -138,6 +148,14 @@ class WebhookHandler(BaseHTTPRequestHandler):
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     server = ThreadingHTTPServer(("127.0.0.1", LISTEN_PORT), WebhookHandler)
+    if LISTEN_HOST_K3S:
+        # A second, independent server instance -- not the same one
+        # bound twice, since ThreadingHTTPServer/socket.bind only takes
+        # one address. Runs in a background thread so the primary
+        # (loopback) server below can still own the main thread the
+        # same way it always has.
+        k3s_server = ThreadingHTTPServer((LISTEN_HOST_K3S, LISTEN_PORT), WebhookHandler)
+        threading.Thread(target=k3s_server.serve_forever, daemon=True).start()
     server.serve_forever()
 
 

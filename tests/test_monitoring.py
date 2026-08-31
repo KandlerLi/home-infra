@@ -149,6 +149,35 @@ class MonitoringRoleTests(unittest.TestCase):
             tasks,
         )
 
+    def test_ntfy_relay_k3s_bind_address_defaults_to_disabled(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn('monitoring_ntfy_relay_k3s_bind_address: ""', defaults)
+
+    def test_ntfy_relay_k3s_bind_address_is_additive_and_allowlisted(self) -> None:
+        # Same additive shape as monitoring_prometheus_k3s_bind_address
+        # above -- the still-Docker-based Alertmanager on this same host
+        # keeps needing the loopback listener throughout the migration,
+        # so this only ever adds a second one (see ntfy_relay.py's own
+        # LISTEN_HOST_K3S comment), never replaces it.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        rendered = render("ntfy-relay.service.j2")
+
+        self.assertIn(
+            'monitoring_ntfy_relay_k3s_bind_address | length == 0\n'
+            '            or monitoring_ntfy_relay_k3s_bind_address == "192.168.101.1"',
+            tasks,
+        )
+        self.assertNotIn("LISTEN_HOST_K3S", rendered)
+
+    def test_ntfy_relay_k3s_bind_address_is_rendered_when_set(self) -> None:
+        rendered = render(
+            "ntfy-relay.service.j2",
+            monitoring_ntfy_relay_k3s_bind_address="192.168.101.1",
+        )
+
+        self.assertIn('Environment="LISTEN_HOST_K3S=192.168.101.1"', rendered)
+
     def test_blackbox_probes_every_public_service_and_traefiks_own_ping(self) -> None:
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 

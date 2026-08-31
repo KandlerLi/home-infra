@@ -10,6 +10,9 @@ Group={{ monitoring_ntfy_relay_service_user }}
 Environment="NTFY_URL={{ monitoring_ntfy_url }}"
 Environment="NTFY_TOPIC_FILE={{ monitoring_data_dir }}/ntfy-relay/ntfy_topic"
 Environment="LISTEN_PORT={{ monitoring_ntfy_relay_port }}"
+{% if monitoring_ntfy_relay_k3s_bind_address | length > 0 %}
+Environment="LISTEN_HOST_K3S={{ monitoring_ntfy_relay_k3s_bind_address }}"
+{% endif %}
 ExecStart=/usr/bin/python3 {{ monitoring_ntfy_relay_install_dir }}/ntfy_relay.py
 Restart=on-failure
 RestartSec=5s

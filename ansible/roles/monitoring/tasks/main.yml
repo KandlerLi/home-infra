@@ -29,11 +29,18 @@
           - >-
             monitoring_prometheus_k3s_bind_address | length == 0
             or monitoring_prometheus_k3s_bind_address == "192.168.101.1"
+          # Same additive reasoning as monitoring_prometheus_k3s_bind_address
+          # above, for the ntfy relay's own second listener -- see
+          # ntfy_relay.py's own LISTEN_HOST_K3S comment.
+          - >-
+            monitoring_ntfy_relay_k3s_bind_address | length == 0
+            or monitoring_ntfy_relay_k3s_bind_address == "192.168.101.1"
         fail_msg: >-
           Configure monitoring_ntfy_topic and the SES SMTP credentials
           (from infra/ses-relay's outputs) through SOPS before the first
-          deploy, and keep monitoring_prometheus_k3s_bind_address empty
-          or pinned to the k3s VM's isolated network address.
+          deploy, and keep monitoring_prometheus_k3s_bind_address and
+          monitoring_ntfy_relay_k3s_bind_address empty or pinned to the
+          k3s VM's isolated network address.
       no_log: true
 
     # Account creation is safely looped -- ansible.builtin.user has no

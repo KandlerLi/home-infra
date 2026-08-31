@@ -167,11 +167,21 @@ monitoring_ntfy_topic: ""
 # nextcloud_tools/sankey_export's precedent for small standalone logic
 # rather than pulling in a new base image) sits between the two:
 # Alertmanager posts here, it reformats, then republishes to ntfy's own
-# JSON API. Loopback-only; only reachable from Alertmanager on the same
-# host.
+# JSON API. Loopback-only by default; only reachable from Alertmanager
+# on the same host.
 monitoring_ntfy_relay_port: 9096
 monitoring_ntfy_relay_service_user: monitoring-ntfy-relay
 monitoring_ntfy_relay_install_dir: /usr/local/lib/monitoring/ntfy-relay
+
+# Off by default (loopback only). When set, the relay additionally
+# listens on this address (a second server instance in its own thread
+# -- ntfy_relay.py's own comment on LISTEN_HOST_K3S has the full
+# reasoning) -- lets Alertmanager reach this once it runs in the k3s
+# VM instead of on this host, while the still-Docker-based Alertmanager
+# here keeps using the loopback listener throughout the migration.
+# 192.168.101.1 (this homeserver's own address on the k3s VM's isolated
+# network) is the only value this role's own validation allows.
+monitoring_ntfy_relay_k3s_bind_address: ""
 
 # SES SMTP credentials come from infra/ses-relay's Terraform outputs, not
 # generated here -- see that repo's README for the exact values to copy
