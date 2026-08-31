@@ -142,6 +142,20 @@ monitoring_alertmanager_cpu_limit: 0.25
 monitoring_alertmanager_pids_limit: 64
 monitoring_alertmanager_container_user: monitoring-alertmanager
 
+# Phase 2 of moving the monitoring stack into k3s: unlike
+# monitoring_prometheus_k3s_bind_address/monitoring_ntfy_relay_k3s_bind_address
+# above, this is a clean switch, not an addition -- Prometheus's own
+# alerting.alertmanagers target list notifies *every* address in it for
+# the same firing alert (unlike a scrape target list), so listing both
+# the homeserver's own Alertmanager and the k3s-native one
+# simultaneously would double-fire every real notification.
+# 192.168.101.10:9093 is infra/k3s-apps' own modules/alertmanager
+# LoadBalancer Service address (same port number, so no other value is
+# needed here) -- confirmed independently first (a real synthetic alert
+# reaching both ntfy and SES through the k3s copy) before ever pointing
+# Prometheus at it.
+monitoring_alertmanager_upstream: 127.0.0.1:9093
+
 # Alerting: deliberately dual-channel (ntfy push + email), both wired to
 # every alert rule so one channel being misconfigured doesn't mean
 # silence. Prometheus evaluates alert_rules.yml (its own native alerting)

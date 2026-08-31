@@ -245,6 +245,31 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn("127.0.0.1:9093", targets)
         self.assertIn("/etc/prometheus/alert_rules.yml", parsed["rule_files"])
 
+    def test_alertmanager_upstream_switches_cleanly_to_the_k3s_address(self) -> None:
+        # A real switch (rendering exactly one target), not an addition
+        # -- Alertmanager's own target list notifies every address in it
+        # for the same firing alert, so both at once would double-fire
+        # every real notification. See monitoring_alertmanager_upstream's
+        # own comment in defaults/main.yml.
+        rendered = yaml.safe_load(
+            render(
+                "prometheus.yml.j2",
+                monitoring_alertmanager_upstream="192.168.101.10:9093",
+            )
+        )
+
+        targets = rendered["alerting"]["alertmanagers"][0]["static_configs"][0]["targets"]
+        self.assertEqual(targets, ["192.168.101.10:9093"])
+
+    def test_alertmanager_upstream_is_a_closed_allowlist(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'monitoring_alertmanager_upstream == "127.0.0.1:9093"\n'
+            '            or monitoring_alertmanager_upstream == "192.168.101.10:9093"',
+            tasks,
+        )
+
     def test_alert_rules_cover_all_four_adr_0017_scope_areas(self) -> None:
         rendered = render("alert_rules.yml.j2")
         parsed = yaml.safe_load(rendered)
