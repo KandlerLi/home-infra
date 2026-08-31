@@ -1,0 +1,78 @@
+---
+# One-time teardown for the old VM-based github_runner role, now that
+# every repository has a proven, confirmed-live replacement runner in
+# infra/k3s-apps' own modules/github_runner/ (see that migration's own
+# plan). Every repository's old runner registration was already
+# deregistered from GitHub directly (gh api -X DELETE .../actions/
+# runners/<id>) before this runs, so nothing here needs to talk to
+# GitHub at all -- this only tears down the local libvirt resources
+# the role itself created, using the same community.libvirt modules
+# that created them (not raw virsh commands run by hand).
+#
+# Deliberately NOT part of site.yml, matching github-runner.yml's own
+# never-automatic precedent. Run explicitly, once:
+#   ansible-playbook ansible/playbooks/github-runner-teardown.yml --ask-become-pass
+#
+# This playbook, ansible/roles/github_runner/, and
+# ansible/playbooks/github-runner.yml are all deleted together in the
+# same change that lands once this has been confirmed applied --
+# there's nothing left for any of them to do afterward.
+
+- name: Tear down the old VM-based github_runner infrastructure
+  hosts: home_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    github_runner_vm_name: github-runner
+    github_runner_vm_storage_dir: /mnt/black-hdd/github-runner
+    github_runner_vm_disk_path: /mnt/black-hdd/github-runner/github-runner.qcow2
+    github_runner_cloud_init_dir: /var/lib/libvirt/cloud-init/github-runner
+    github_runner_cloud_init_iso_path: >-
+      {{ github_runner_vm_storage_dir }}/{{ github_runner_vm_name }}-cloud-init.iso
+    github_runner_network_name: github_runner_network
+
+  tasks:
+    - name: List defined libvirt virtual machines
+      community.libvirt.virt:
+        command: list_vms
+      register: github_runner_teardown_defined_vms
+      changed_when: false
+
+    - name: Stop the github-runner virtual machine
+      community.libvirt.virt:
+        name: "{{ github_runner_vm_name }}"
+        state: destroyed
+      when: github_runner_vm_name in github_runner_teardown_defined_vms.list_vms
+
+    - name: Undefine the github-runner virtual machine
+      community.libvirt.virt:
+        name: "{{ github_runner_vm_name }}"
+        command: undefine
+      when: github_runner_vm_name in github_runner_teardown_defined_vms.list_vms
+
+    - name: Remove the github-runner VM disk and cloud-init ISO
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ github_runner_vm_disk_path }}"
+        - "{{ github_runner_cloud_init_iso_path }}"
+
+    - name: Remove the github-runner cloud-init build directory
+      ansible.builtin.file:
+        path: "{{ github_runner_cloud_init_dir }}"
+        state: absent
+
+    - name: Remove the now-empty github-runner VM storage directory
+      ansible.builtin.file:
+        path: "{{ github_runner_vm_storage_dir }}"
+        state: absent
+
+    # state: absent stops (if active) and undefines in one step --
+    # confirmed via ansible-doc community.libvirt.virt_net, unlike the
+    # VM module above, which has no equivalent combined state.
+    - name: Remove the github_runner_network
+      community.libvirt.virt_net:
+        name: "{{ github_runner_network_name }}"
+        state: absent
