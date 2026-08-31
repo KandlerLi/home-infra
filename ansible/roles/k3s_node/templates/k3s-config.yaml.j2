@@ -1,7 +1,13 @@
 # k3s server config -- see https://docs.k3s.io/cli/server
-# Deliberately just one setting for now: everything else stays at k3s's
-# own defaults (embedded SQLite datastore, bundled Traefik ingress,
-# bundled ServiceLB, bundled local-path-provisioner) so the very first
+# Everything else stays at k3s's own defaults (embedded SQLite
+# datastore, bundled ServiceLB, bundled local-path-provisioner) so the
 # things learned via kubectl are k3s's real out-of-the-box behavior,
-# not a customized one.
+# not a customized one. Bundled Traefik is the one deliberate
+# departure: k3s-apps' own modules/ingress/ Deployment replaces it
+# entirely (real production ACME/Basic-Auth/rate-limit config has no
+# business living in a role that's meant to stay at defaults), and two
+# Traefik instances can't both hold the LoadBalancer ports or usefully
+# watch the same Ingress resources at once.
 write-kubeconfig-mode: "{{ k3s_node_kubeconfig_mode }}"
+disable:
+  - traefik

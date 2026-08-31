@@ -203,6 +203,16 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("write-kubeconfig-mode", config)
         self.assertIn('k3s_node_kubeconfig_mode: "0644"', defaults)
 
+    def test_bundled_traefik_is_disabled_in_favor_of_k3s_apps_ingress(
+        self,
+    ) -> None:
+        config = (ROLE_ROOT / "templates/k3s-config.yaml.j2").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("disable:", config)
+        self.assertIn("- traefik", config)
+
     def test_waits_for_node_ready_before_finishing(self) -> None:
         tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
             encoding="utf-8"

@@ -53,12 +53,18 @@ Two modes, run as two separate plays in `ansible/playbooks/k3s.yml`:
   hand-templated from k3s's own upstream unit file, so nothing runs
   unverified. `k3s_node_join_mode` picks which: `server` (default)
   renders `k3s server` with everything else left at k3s's own defaults
-  -- embedded SQLite datastore, bundled Traefik ingress, ServiceLB,
-  local-path-provisioner -- deliberately, so what gets learned via
-  `kubectl` is k3s's real out-of-the-box behavior, not a customized
-  one; `agent` renders `k3s agent --node-taint ... --node-label ...`
-  instead, joining over `K3S_URL`/`K3S_TOKEN` in a mode-`0600` env
-  file. An agent has no kubeconfig of its own (only a server generates
-  one), so its own Ready-wait polls its systemd unit's own
-  `ActiveState` rather than `kubectl get nodes` -- the real Ready
-  check happens from `k3s-node-1`'s own side instead.
+  -- embedded SQLite datastore, ServiceLB, local-path-provisioner --
+  deliberately, so what gets learned via `kubectl` is k3s's real
+  out-of-the-box behavior, not a customized one. Bundled Traefik is
+  the one deliberate exception (`config.yaml`'s `disable: [traefik]`):
+  `infra/k3s-apps`' own `modules/ingress/` Deployment replaces it
+  entirely, since real production ACME/Basic-Auth/rate-limit config
+  has no business living in a role that's meant to stay at defaults,
+  and two Traefik instances can't both hold the LoadBalancer ports or
+  usefully watch the same Ingress resources at once; `agent` renders
+  `k3s agent --node-taint ... --node-label ...` instead, joining over
+  `K3S_URL`/`K3S_TOKEN` in a mode-`0600` env file. An agent has no
+  kubeconfig of its own (only a server generates one), so its own
+  Ready-wait polls its systemd unit's own `ActiveState` rather than
+  `kubectl get nodes` -- the real Ready check happens from
+  `k3s-node-1`'s own side instead.
