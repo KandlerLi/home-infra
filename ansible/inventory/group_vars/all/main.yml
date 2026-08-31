@@ -151,6 +151,16 @@ monitoring_prometheus_k3s_bind_address: 192.168.101.1
 # the Host header this needs (see that role's tasks/main.yml).
 shared_ingress_grafana_upstream: http://192.168.101.10:80
 
+# Phase 2 of moving the monitoring stack into k3s: Alertmanager next.
+# Additive, same shape as monitoring_prometheus_k3s_bind_address above
+# -- the still-Docker-based Alertmanager on this host keeps needing the
+# loopback listener right up until Prometheus is switched over to the
+# new one (a later step in this migration), so this only ever adds a
+# second listener the k3s-native Alertmanager can reach, never replaces
+# the first. Alertmanager itself hasn't moved into k3s yet -- this
+# proves the network path works first, before building on top of it.
+monitoring_ntfy_relay_k3s_bind_address: 192.168.101.1
+
 # home.jkandler.de -- served by the k3s-native copy of this service
 # (infra/k3s-apps, Terraform-managed), not by anything in this repo.
 # The landing_page role that used to run this as a Docker container is
