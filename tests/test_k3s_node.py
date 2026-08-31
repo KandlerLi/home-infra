@@ -30,6 +30,21 @@ class K3sNodeTests(unittest.TestCase):
             defaults,
         )
 
+    def test_disk_existence_check_skips_hashing_the_whole_qcow2_file(
+        self,
+    ) -> None:
+        # get_checksum defaults to true on ansible.builtin.stat -- left
+        # alone, this task would SHA1 the entire multi-GB VM disk over
+        # SSH on every run just to answer .stat.exists.
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'path: "{{ k3s_node_vm_disk_path }}"\n'
+            "    # Only .stat.exists is ever read below",
+            tasks,
+        )
+        self.assertIn("get_checksum: false", tasks)
+
     def test_storage_mount_is_verified_before_disk_creation(self) -> None:
         # github_runner learned this the hard way in an earlier repo
         # history -- refuse to create the VM disk on the host's root

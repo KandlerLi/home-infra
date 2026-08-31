@@ -46,6 +46,11 @@
 - name: Check k3s node disk
   ansible.builtin.stat:
     path: "{{ k3s_node_vm_disk_path }}"
+    # Only .stat.exists is ever read below -- get_checksum defaults to
+    # true, which means this would otherwise SHA1 the entire qcow2
+    # disk (tens of GB) over SSH on every single run just to answer
+    # an existence check.
+    get_checksum: false
   register: k3s_node_vm_disk
 
 - name: Validate VM and disk recovery state
