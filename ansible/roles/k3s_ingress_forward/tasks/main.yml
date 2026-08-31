@@ -1,0 +1,93 @@
+---
+- name: Validate k3s ingress forward configuration
+  ansible.builtin.assert:
+    that:
+      - k3s_ingress_forward_target_ip == "192.168.101.10"
+      - k3s_ingress_forward_rules | length > 0
+    fail_msg: >-
+      k3s_ingress_forward_target_ip must stay pinned to k3s-node-1's own
+      static address -- this role forwards real public traffic, so a
+      silent typo here would relay it to the wrong place entirely.
+
+# debconf preseed avoids apt blocking on iptables-persistent's
+# interactive "Save current IPv4/IPv6 rules?" install-time prompt.
+- name: Preseed iptables-persistent to skip its install-time prompts
+  ansible.builtin.debconf:
+    name: iptables-persistent
+    question: "iptables-persistent/autosave_{{ item }}"
+    value: "false"
+    vtype: boolean
+  loop:
+    - v4
+    - v6
+
+- name: Install iptables-persistent
+  ansible.builtin.apt:
+    name: iptables-persistent
+    state: present
+    update_cache: true
+
+# Confirmed live on the homeserver (2026-08-31): FORWARD's own default
+# policy is ACCEPT, but libvirt's own LIBVIRT_FWI chain (its
+# auto-managed "forward into this NAT network" chain) only accepts
+# RELATED,ESTABLISHED traffic into a NAT-mode network by default --
+# the standard libvirt firewall pattern, REJECTing a fresh externally-
+# initiated connection otherwise. Inserted at rule_num 1 of the base
+# FORWARD chain -- ahead of Docker's own DOCKER-USER/DOCKER-FORWARD
+# chains and libvirt's own LIBVIRT_FWX/FWI/FWO chains alike -- so this
+# terminates before ever reaching either vendor's chains, and doesn't
+# depend on their internal contents at all. Scoped tightly to exactly
+# k3s_ingress_forward_target_ip and each rule's own target_port, never
+# a blanket FORWARD ACCEPT, so nothing else forwarded through this
+# host is affected. Return traffic (the VM responding back out) isn't
+# covered here deliberately -- libvirt's own LIBVIRT_FWO chain already
+# permits the NAT network's own subnet to send established/outbound
+# traffic freely, that being the entire point of a NAT-mode network.
+- name: Allow forwarded ingress traffic to reach k3s's own Traefik
+  ansible.builtin.iptables:
+    state: "{{ 'present' if k3s_ingress_forward_enabled else 'absent' }}"
+    action: insert
+    rule_num: 1
+    chain: FORWARD
+    destination: "{{ k3s_ingress_forward_target_ip }}"
+    protocol: tcp
+    destination_port: "{{ item.target_port }}"
+    ctstate:
+      - NEW
+      - ESTABLISHED
+      - RELATED
+    jump: ACCEPT
+    comment: >-
+      k3s_ingress_forward: allow ->
+      {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
+  loop: "{{ k3s_ingress_forward_rules }}"
+  loop_control:
+    label: "{{ item.public_port }} -> {{ item.target_port }}"
+  register: k3s_ingress_forward_accept_result
+
+- name: Relay ingress traffic to k3s's own Traefik via DNAT
+  ansible.builtin.iptables:
+    state: "{{ 'present' if k3s_ingress_forward_enabled else 'absent' }}"
+    table: nat
+    chain: PREROUTING
+    protocol: tcp
+    destination_port: "{{ item.public_port }}"
+    jump: DNAT
+    to_destination: "{{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}"
+    comment: >-
+      k3s_ingress_forward: {{ item.public_port }} ->
+      {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
+  loop: "{{ k3s_ingress_forward_rules }}"
+  loop_control:
+    label: "{{ item.public_port }} -> {{ item.target_port }}"
+  register: k3s_ingress_forward_dnat_result
+
+- name: Persist iptables rules across reboots
+  ansible.builtin.command:
+    argv:
+      - netfilter-persistent
+      - save
+  changed_when: true
+  when: >-
+    k3s_ingress_forward_accept_result is changed
+    or k3s_ingress_forward_dnat_result is changed

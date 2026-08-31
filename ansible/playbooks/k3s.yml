@@ -79,3 +79,19 @@
       k3s_node_join_token: "{{ hostvars['k3s-node-1'].k3s_node_join_token }}"
       k3s_node_agent_node_taint: "ci=github-runner:NoSchedule"
       k3s_node_agent_node_label: "role=github-runner"
+
+# The one iptables/firewall role in this repo -- runs on the
+# homeserver itself (it owns the physical ports being forwarded), not
+# inside either k3s VM. Opt-in, off by default -- see
+# k3s_ingress_forward's own README for the full DNAT/FORWARD-chain
+# reasoning. Deliberately its own play rather than folded into the
+# first one above -- this is the real cutover step in the
+# shared_ingress-to-k3s migration, worth being able to target and
+# reason about on its own.
+- name: Forward ingress traffic to k3s's own Traefik
+  hosts: home_servers
+  become: true
+  gather_facts: false
+
+  roles:
+    - role: k3s_ingress_forward

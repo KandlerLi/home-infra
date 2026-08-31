@@ -1,0 +1,30 @@
+# Opt-in, matching every other role's own convention -- forwards the
+# homeserver's own public-facing ports straight through to k3s's own
+# Traefik (infra/k3s-apps' own modules/ingress/), a plain L4 DNAT
+# relay so ACME's TLS-ALPN-01 challenge still reaches the real
+# cert-issuing Traefik instance directly, below the TLS layer. See
+# this role's own README for the full "why DNAT, not bridging the k3s
+# VM onto the LAN" reasoning.
+k3s_ingress_forward_enabled: false
+
+# k3s-node-1's own static address (k3s_node's own k3s_node_vm_ip
+# default) -- a literal here rather than a cross-role variable lookup,
+# matching ansible/playbooks/k3s.yml's own k3s_node_join_server_url
+# precedent for the same reason (role defaults aren't reliably
+# exposed across roles the way a real dependency would be). Asserted
+# against below -- this role forwards real public traffic, so a
+# silent typo here would relay it to the wrong place entirely.
+k3s_ingress_forward_target_ip: 192.168.101.10
+
+# public_port: what the homeserver itself listens on (the FRITZ!Box's
+# own port-forward already targets the homeserver's LAN IP, so this
+# is also what a manual router forward should point at). target_port:
+# what k3s's own Traefik actually has bound inside the cluster.
+# Overridable at apply time (e.g. -e for a throwaway rehearsal port)
+# without touching this file -- see the role's own README for the
+# staging-ACME rehearsal's own rule shape.
+k3s_ingress_forward_rules:
+  - public_port: 80
+    target_port: 80
+  - public_port: 443
+    target_port: 443
