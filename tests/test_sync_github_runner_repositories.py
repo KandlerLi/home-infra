@@ -9,7 +9,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 import json
 
-from sync_github_runner_repositories import render, render_tfvars, runner_repositories
+from sync_github_runner_repositories import render_tfvars, runner_repositories
 
 
 class RunnerRepositoriesTests(unittest.TestCase):
@@ -40,13 +40,6 @@ class RunnerRepositoriesTests(unittest.TestCase):
         config = {"testing": None}
 
         self.assertEqual(runner_repositories(config), [])
-
-    def test_render_produces_valid_yaml_with_header(self) -> None:
-        text = render([{"id": "dyndns", "repository": "dyndns"}])
-
-        self.assertIn("GENERATED FILE", text)
-        self.assertIn("github_runner_github_repositories:", text)
-        self.assertIn("id: dyndns", text)
 
     def test_render_tfvars_produces_valid_json_the_module_can_for_each_over(
         self,

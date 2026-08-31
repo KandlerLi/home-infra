@@ -1,8 +1,4 @@
 ---
-github_runner_github_owner: "KandlerLi"
-# github_runner_github_repositories is generated -- see
-# ansible/inventory/group_vars/all/github_runner_repositories.yml
-
 shared_ingress_acme_email: "julian.kandler@outlook.com"
 nextcloud_aio_reverse_proxy_enabled: true
 

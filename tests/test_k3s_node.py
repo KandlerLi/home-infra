@@ -71,44 +71,32 @@ class K3sNodeTests(unittest.TestCase):
         )[1].split("- name:", 1)[0]
         self.assertIn("creates: \"{{ k3s_node_vm_disk_path }}\"", create_disk_task)
 
-    def test_network_does_not_collide_with_lan_or_runner_network(
-        self,
-    ) -> None:
+    def test_network_does_not_collide_with_lan(self) -> None:
+        # 192.168.100.0/24 (virbr10) was the old VM-based github_runner
+        # role's own isolated network -- that role is gone now (moved
+        # to infra/k3s-apps entirely), so this only guards against the
+        # home LAN itself these days, not a cross-role collision.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
             encoding="utf-8"
         )
-        runner_defaults = (
-            PROJECT_ROOT / "ansible/roles/github_runner/defaults/main.yml"
-        ).read_text(encoding="utf-8")
 
         self.assertIn("192.168.101.1", defaults)
         self.assertNotIn("192.168.178.", defaults)
-        self.assertNotIn("192.168.100.", defaults)
-        # And the bridge/MAC are distinct from the runner VM's own,
-        # confirmed directly against that role's real current defaults
-        # rather than assumed.
-        self.assertIn("virbr10", runner_defaults)
         self.assertIn("virbr11", defaults)
-        self.assertIn('52:54:00:00:00:10', runner_defaults)
         self.assertIn('52:54:00:00:00:20', defaults)
 
-    def test_reuses_the_same_cached_debian_image_as_github_runner(
-        self,
-    ) -> None:
-        # Deliberate: both roles point at the same cache file so the
-        # image is only ever downloaded once, not once per VM.
+    def test_debian_image_is_cached_locally(self) -> None:
+        # Used to be shared with the old VM-based github_runner role's
+        # own identical cache path (both roles pointed at the same
+        # file so the image was only ever downloaded once) -- that
+        # role is gone now, so this just confirms the cache setup
+        # itself, not the cross-role sharing.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
             encoding="utf-8"
         )
-        runner_defaults = (
-            PROJECT_ROOT / "ansible/roles/github_runner/defaults/main.yml"
-        ).read_text(encoding="utf-8")
 
         self.assertIn(
             "debian-13-genericcloud-amd64.qcow2", defaults
-        )
-        self.assertIn(
-            "debian-13-genericcloud-amd64.qcow2", runner_defaults
         )
         self.assertIn(
             "k3s_node_image_cache_dir: /var/lib/libvirt/cloud-images",

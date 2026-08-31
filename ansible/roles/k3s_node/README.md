@@ -27,19 +27,19 @@ disk or committed anywhere.
 Two modes, run as two separate plays in `ansible/playbooks/k3s.yml`:
 
 - `k3s_node_role_mode: provision_vm` -- runs on the homeserver itself
-  (needs `libvirt_host` first). Mirrors `github_runner`'s own
-  `provision_vm` mode almost exactly (same storage-mount validation,
-  same VM/disk/network recovery-state safety checks, same cloud-init
-  seed pattern) since that's already a proven pattern in this repo for
-  "isolated Debian VM behind libvirt" -- no need to invent a new one.
-  Uses its own isolated NAT network (`k3s_network`, 192.168.101.0/24,
-  `virbr11`) distinct from both the home LAN and the `github_runner`
-  VM's network, and its own MAC/disk path so it can never collide with
-  the runner VM. Reuses the same cached Debian cloud image as
-  `github_runner` (same URL/checksum/path) so the image is only ever
-  downloaded once. Registers the running VM into the `k3s_nodes`
-  inventory group (SSH via `ProxyJump` through the homeserver, matching
-  `github_runner_vms`). `k3s-node-2`'s own provisioning play overrides
+  (needs `libvirt_host` first). Mirrors the shape of the old, now-
+  deleted VM-based `github_runner` role's own `provision_vm` mode
+  almost exactly (same storage-mount validation, same VM/disk/network
+  recovery-state safety checks, same cloud-init seed pattern) since
+  that was already a proven pattern in this repo for "isolated Debian
+  VM behind libvirt." Uses its own isolated NAT network (`k3s_network`,
+  192.168.101.0/24, `virbr11`) distinct from the home LAN, and its own
+  MAC/disk path. Reuses the same cached Debian cloud image path
+  `github_runner` used to (same URL/checksum/path convention) so the
+  image is only ever downloaded once even with two nodes now sharing
+  it. Registers the running VM into the `k3s_nodes` inventory group
+  (SSH via `ProxyJump` through the homeserver). `k3s-node-2`'s own
+  provisioning play overrides
   `k3s_node_vm_name`/`_disk_path`/`_ip`/`_mac`/`_ssh_host_key_alias`
   and `k3s_node_inventory_group: k3s_agent_nodes`, so it lands in a
   distinct inventory group from `k3s-node-1` rather than a generic

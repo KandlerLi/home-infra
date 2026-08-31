@@ -1,9 +1,10 @@
 name: Build home-agent image
 
 # Builds and pushes home_agent's image to GHCR on the self-hosted CI
-# runner (a dedicated VM, see the github_runner role -- deliberately
-# never on the homeserver itself, so its Docker daemon and workloads
-# stay untouched by CI). Mirrors checks.yml's own CI-image build/push
+# runner (a k3s-native Pod on its own dedicated, tainted node -- see
+# infra/k3s-apps' modules/github_runner/ -- deliberately never on the
+# homeserver itself, so its Docker daemon and workloads stay untouched
+# by CI). Mirrors checks.yml's own CI-image build/push
 # job -- same runner, same GITHUB_TOKEN-based GHCR login, no long-lived
 # write credential needed for this at all.
 

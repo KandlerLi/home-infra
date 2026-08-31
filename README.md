@@ -1,7 +1,7 @@
 # Home Infrastructure
 
-Ansible configuration for a Debian home server, its application services,
-and an isolated GitHub Actions runner VM.
+Ansible configuration for a Debian home server and its application
+services.
 
 ## Managed infrastructure
 
@@ -21,22 +21,12 @@ and an isolated GitHub Actions runner VM.
   k3s-native copy (`infra/k3s-apps`) instead of a Docker container here
 - Opt-in network-wide DNS ad-blocking (Blocky), with a Pi-hole-style
   query-log dashboard in Grafana
-- KVM/QEMU and libvirt
-- Debian 13 GitHub Actions runner VM on a private NAT network
+- KVM/QEMU and libvirt (needed for the k3s learning cluster below;
+  the isolated GitHub Actions runner VM that used to live here too is
+  gone -- see "Continuous integration")
 
 Each role has its own short `README.md` under `ansible/roles/<name>/`
 with its enable flag, key variables, and how it's invoked.
-
-The runner disk is stored at
-`/mnt/black-hdd/github-runner/github-runner.qcow2`. The role never recursively
-changes permissions below `/mnt/black-hdd` and never overwrites an orphaned
-VM disk automatically.
-
-The VM also keeps a generated NoCloud seed image at
-`/mnt/black-hdd/github-runner/github-runner-cloud-init.iso`. Keeping this
-read-only image attached makes first-boot identity, SSH, and network setup
-independent of virt-install's temporary cloud-init media lifecycle. It
-contains the controller's public SSH key, but no GitHub token.
 
 ## Current physical host
 
@@ -54,45 +44,6 @@ python3 -m venv .venv
 .venv/bin/ansible-galaxy collection install -r requirements.yml
 ```
 
-Set `github_runner_github_owner` and `github_runner_github_repositories` in
-`ansible/inventory/group_vars/all/main.yml`. Each repository gets its own
-runner installation, Unix service account, and root-owned systemd service
-below `/opt/actions-runner`, while sharing the VM and downloaded runner archive.
-Repository entries use a stable local identifier and the GitHub repository
-name:
-
-```yaml
-github_runner_github_repositories:
-  - id: dyndns
-    repository: dyndns
-```
-
-Repository-level runners are registered separately, so every entry starts its
-own runner service and can execute one job at a time. Increase the VM CPU and
-memory settings if several repositories will run jobs concurrently.
-
-The encrypted GitHub API token
-must be stored as `github_runner_github_token` in
-`ansible/inventory/group_vars/all/secrets.sops.yml`.
-
-The fine-grained token should be limited to the listed repositories and have
-repository `Administration: write` permission for each one. Its long-lived
-value remains on the Ansible controller; the VM receives only short-lived
-registration tokens.
-
-Use this persistent self-hosted runner only for mutually trusted workflows,
-preferably in private repositories. Repository runners use separate Unix
-accounts, but they still share one kernel and VM; this reduces accidental
-cross-repository access but is not a strong security boundary. They are
-isolated from the physical host. The VM intentionally receives no host SSH
-key, Docker socket, or mount from `/mnt/black-hdd`.
-
-To add another repository, grant the fine-grained token access to it and add
-another `id`/`repository` entry to `github_runner_github_repositories`.
-Removing an entry does not automatically unregister or delete that runner,
-because doing so would remove credentials and remote state; decommission it
-explicitly first.
-
 ## Usage
 
 Check connectivity:
@@ -105,13 +56,6 @@ Apply all infrastructure:
 
 ```bash
 .venv/bin/ansible-playbook ansible/playbooks/site.yml --ask-become-pass
-```
-
-Apply only the GitHub runner VM and guest configuration:
-
-```bash
-.venv/bin/ansible-playbook ansible/playbooks/github-runner.yml \
-  --ask-become-pass
 ```
 
 Edit the encrypted secret with the existing GPG key:
@@ -250,6 +194,18 @@ own machine, over the local network, exactly as before. Unlike
 `website`'s deploy pipeline, running these particular checks on the home
 runner has no real availability tradeoff — nothing here ever needs to run
 while the homeserver itself is down.
+
+That self-hosted runner itself used to be a standalone libvirt VM
+managed by this repo's own (now-deleted) `github_runner` role. As of
+2026-08-31 it's a k3s-native replacement instead
+(`infra/k3s-apps`' own `modules/github_runner/`), confirmed live across
+every repository with a real successful `Checks` run, `home-infra`
+itself included, before the old VM was deregistered and torn down.
+`bootstrap/repo-infra/config.yml`'s `runner: true` flag on a repository
+entry is still the source of truth for which repositories get one; only
+where that list now gets synced to changed (see
+`scripts/sync_github_runner_repositories.py`, which now emits only
+`infra/k3s-apps`' own Terraform variable, not an Ansible one).
 
 ## Hardware maintenance shutdown
 
