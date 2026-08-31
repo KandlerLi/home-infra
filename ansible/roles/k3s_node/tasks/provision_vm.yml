@@ -8,12 +8,14 @@
 - name: Validate k3s node storage configuration
   ansible.builtin.assert:
     that:
-      - k3s_node_vm_disk_path == "/mnt/black-hdd/k3s/k3s-node-1.qcow2"
+      - >-
+        k3s_node_vm_disk_path
+        == (k3s_node_vm_storage_dir ~ '/' ~ k3s_node_vm_name ~ '.qcow2')
       - k3s_node_vm_storage_dir == (k3s_node_vm_disk_path | dirname)
       - k3s_node_storage_mount == "/mnt/black-hdd"
     fail_msg: >-
       The k3s node disk must remain at
-      /mnt/black-hdd/k3s/k3s-node-1.qcow2.
+      {{ k3s_node_vm_storage_dir }}/{{ k3s_node_vm_name }}.qcow2.
 
 - name: Verify k3s node storage is a mounted filesystem
   ansible.builtin.command:
@@ -134,17 +136,18 @@
       - k3s_node_network_bridge in k3s_node_existing_network_xml.get_xml
       - k3s_node_network_address in k3s_node_existing_network_xml.get_xml
       - k3s_node_network_netmask in k3s_node_existing_network_xml.get_xml
-      - k3s_node_vm_ip in k3s_node_existing_network_xml.get_xml
       - >-
         'mode="nat"' in k3s_node_existing_network_xml.get_xml
         or "mode='nat'" in k3s_node_existing_network_xml.get_xml
-      - >-
-        (k3s_node_vm_mac | lower)
-        in (k3s_node_existing_network_xml.get_xml | lower)
     fail_msg: >-
       The existing {{ k3s_node_network_name }} network does not match
-      the configured bridge, subnet, or DHCP reservation. Refusing to
-      redefine an existing network automatically.
+      the configured bridge, subnet, or NAT mode. Refusing to modify it
+      automatically.
+  # Deliberately doesn't check this node's own DHCP reservation here --
+  # a second node joining an already-existing network (see "Add this
+  # node's DHCP reservation" below) never has one yet on its first run.
+  # Only the network-wide facts that must never drift across any node
+  # are asserted at this point.
   when: k3s_node_network_name in k3s_node_defined_networks.list_nets
 
 - name: Define k3s libvirt network
@@ -152,12 +155,49 @@
     name: "{{ k3s_node_network_name }}"
     state: present
     xml: "{{ lookup('template', 'libvirt-network.xml.j2') }}"
+  # Only for the network's very first creation (this node's own
+  # reservation is baked into the initial XML then). An already-running
+  # network is never redefined wholesale after that -- redefining only
+  # updates libvirt's *persistent* config, not the live dnsmasq
+  # instance, and a second node's reservation needs to reach the *live*
+  # network without ever restarting it out from under k3s-node-1's own
+  # active connections. See the live net-update task below instead.
+  when: k3s_node_network_name not in k3s_node_defined_networks.list_nets
 
 - name: Activate and enable k3s libvirt network
   community.libvirt.virt_net:
     name: "{{ k3s_node_network_name }}"
     state: active
     autostart: true
+
+- name: Check whether this node's DHCP reservation already exists
+  ansible.builtin.set_fact:
+    k3s_node_reservation_present: >-
+      {{ (k3s_node_vm_mac | lower) in (k3s_node_existing_network_xml.get_xml | lower) }}
+  when: k3s_node_network_name in k3s_node_defined_networks.list_nets
+
+# Adds this node's own reservation to an already-existing, already-live
+# network -- the second-node case. Uses --live --config specifically
+# (not a full net-define/redefine): it updates the running dnsmasq
+# instance and the persistent XML in one step, without ever restarting
+# the network or interrupting any other node's existing DHCP lease/NAT
+# state. Idempotent: skipped once the reservation is already present.
+- name: Add this node's DHCP reservation to the live network
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - net-update
+      - "{{ k3s_node_network_name }}"
+      - add
+      - ip-dhcp-host
+      - >-
+        <host mac='{{ k3s_node_vm_mac }}' name='{{ k3s_node_vm_name }}' ip='{{ k3s_node_vm_ip }}'/>
+      - --live
+      - --config
+  changed_when: true
+  when: >-
+    k3s_node_network_name in k3s_node_defined_networks.list_nets
+    and not (k3s_node_reservation_present | default(true))
 
 - name: Check Ansible controller SSH public key
   delegate_to: localhost
@@ -331,7 +371,7 @@
   ansible.builtin.add_host:
     name: "{{ k3s_node_vm_name }}"
     groups:
-      - k3s_nodes
+      - "{{ k3s_node_inventory_group }}"
     ansible_host: "{{ k3s_node_vm_ip }}"
     ansible_user: "{{ k3s_node_admin_user }}"
     ansible_python_interpreter: /usr/bin/python3

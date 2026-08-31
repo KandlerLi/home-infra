@@ -15,6 +15,25 @@
       - --wait
   changed_when: false
 
+- name: Validate k3s agent join configuration
+  ansible.builtin.assert:
+    that:
+      - k3s_node_join_server_url | length > 0
+      - k3s_node_join_token | length > 0
+      - k3s_node_agent_node_taint | length > 0
+      - k3s_node_agent_node_label | length > 0
+    fail_msg: >-
+      k3s_node_join_mode is "agent" but one of k3s_node_join_server_url
+      / k3s_node_join_token / k3s_node_agent_node_taint /
+      k3s_node_agent_node_label is empty -- see
+      ansible/playbooks/k3s.yml's own agent-node plays for where these
+      are meant to come from.
+  when: k3s_node_join_mode == "agent"
+
+- name: Select the systemd unit name for this join mode
+  ansible.builtin.set_fact:
+    k3s_node_systemd_unit_name: "{{ 'k3s-agent' if k3s_node_join_mode == 'agent' else 'k3s' }}"
+
 - name: Create k3s config directory
   ansible.builtin.file:
     path: "{{ k3s_node_config_dir }}"
@@ -31,6 +50,22 @@
     group: root
     mode: "0644"
   register: k3s_node_config_file
+  when: k3s_node_join_mode == "server"
+
+# Agent mode has no server config file -- it joins an already-running
+# server instead, over K3S_URL/K3S_TOKEN in this env file. Mode 0600:
+# unlike k3s-node-1's own world-readable kubeconfig (single-user
+# learning node, no real privilege boundary crossed -- see that file's
+# own comment), this holds the actual cluster-join secret.
+- name: Install k3s agent environment file
+  ansible.builtin.template:
+    src: k3s-agent.env.j2
+    dest: "{{ k3s_node_agent_env_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: k3s_node_agent_env_file
+  when: k3s_node_join_mode == "agent"
 
 - name: Download checksum-verified k3s binary
   ansible.builtin.get_url:
@@ -51,8 +86,8 @@
 
 - name: Install k3s systemd unit
   ansible.builtin.template:
-    src: k3s.service.j2
-    dest: /etc/systemd/system/k3s.service
+    src: "{{ 'k3s-agent.service.j2' if k3s_node_join_mode == 'agent' else 'k3s.service.j2' }}"
+    dest: "/etc/systemd/system/{{ k3s_node_systemd_unit_name }}.service"
     owner: root
     group: root
     mode: "0644"
@@ -63,18 +98,19 @@
     daemon_reload: true
   when: k3s_node_unit_file.changed
 
-- name: Restart k3s when its binary or config changed
+- name: Restart k3s when its binary, config, or unit changed
   ansible.builtin.systemd_service:
-    name: k3s
+    name: "{{ k3s_node_systemd_unit_name }}"
     state: restarted
   when: >-
     k3s_node_binary.changed
-    or k3s_node_config_file.changed
+    or k3s_node_config_file.changed | default(false)
+    or k3s_node_agent_env_file.changed | default(false)
     or k3s_node_unit_file.changed
 
 - name: Ensure k3s is enabled and running
   ansible.builtin.systemd_service:
-    name: k3s
+    name: "{{ k3s_node_systemd_unit_name }}"
     enabled: true
     state: started
 
@@ -131,6 +167,12 @@
     name: nfs-common
     state: present
 
+# Server mode only -- an agent never gets its own kubeconfig (only a
+# server generates one), so there's nothing local to poll here. Its
+# equivalent Ready confirmation happens from the *server's* own side --
+# see ansible/playbooks/k3s.yml's own agent-node play and this
+# project's plan/README for the live "kubectl get nodes" check run
+# against k3s-node-1 instead.
 - name: Wait for the k3s node to report Ready
   ansible.builtin.command:
     argv:
@@ -145,3 +187,18 @@
   until: "'Ready' in k3s_node_status.stdout"
   retries: 60
   delay: 10
+  when: k3s_node_join_mode == "server"
+
+- name: Wait for the k3s agent service to become active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ k3s_node_systemd_unit_name }}"
+  register: k3s_node_agent_active
+  changed_when: false
+  failed_when: false
+  until: k3s_node_agent_active.stdout == "active"
+  retries: 60
+  delay: 10
+  when: k3s_node_join_mode == "agent"

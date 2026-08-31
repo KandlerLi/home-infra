@@ -1,0 +1,26 @@
+[Unit]
+Description=Lightweight Kubernetes (agent)
+Documentation=https://k3s.io
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+EnvironmentFile={{ k3s_node_agent_env_path }}
+ExecStart={{ k3s_node_binary_path }} agent --node-taint {{ k3s_node_agent_node_taint }} --node-label {{ k3s_node_agent_node_label }}
+KillMode=process
+Delegate=yes
+# Same resource-accounting settings as k3s-node-1's own k3s.service.j2,
+# copied from k3s's own upstream unit for the same reason -- getting
+# these wrong causes real runtime breakage under containerd, not just
+# cosmetic issues.
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=0
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

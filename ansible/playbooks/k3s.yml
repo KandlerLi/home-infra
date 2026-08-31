@@ -13,6 +13,25 @@
     - role: libvirt_host
     - role: k3s_node
 
+# Second node: dedicated to infra/k3s-apps' own modules/github_runner/
+# workload, tainted so nothing else in the cluster schedules there.
+# Provisioned into its own inventory group (k3s_agent_nodes, not
+# k3s_nodes) so the "Install k3s on the learning node" play below --
+# which always renders a `k3s server` unit -- never runs against it.
+- name: Provision k3s runner node
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: k3s_node
+      k3s_node_vm_name: k3s-node-2
+      k3s_node_vm_disk_path: /mnt/black-hdd/k3s/k3s-node-2.qcow2
+      k3s_node_vm_ip: 192.168.101.11
+      k3s_node_vm_mac: "52:54:00:00:00:21"
+      k3s_node_ssh_host_key_alias: k3s-node-2-via-homeserver
+      k3s_node_inventory_group: k3s_agent_nodes
+
 - name: Install k3s on the learning node
   hosts: k3s_nodes
   become: true
@@ -21,3 +40,42 @@
   roles:
     - role: k3s_node
       k3s_node_role_mode: configure_guest
+
+# The agent node's own join needs k3s-node-1's live node-token --
+# read directly off it (never written to the controller's disk or
+# anywhere in this repo) and exposed as a hostvar the next play reads.
+- name: Retrieve k3s cluster join token
+  hosts: k3s_nodes
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Read k3s server node-token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: k3s_node_token_file
+      no_log: true
+
+    - name: Expose k3s node-token as a fact
+      ansible.builtin.set_fact:
+        k3s_node_join_token: "{{ k3s_node_token_file.content | b64decode | trim }}"
+      no_log: true
+
+- name: Install k3s on the runner node
+  hosts: k3s_agent_nodes
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: k3s_node
+      k3s_node_role_mode: configure_guest
+      k3s_node_join_mode: agent
+      # k3s-node-1's own static address (its k3s_node_vm_ip default,
+      # see ansible/roles/k3s_node/defaults/main.yml) -- a literal
+      # here rather than a hostvars lookup of that default, since role
+      # defaults aren't reliably exposed via hostvars across plays the
+      # way a real set_fact (the token, below) is.
+      k3s_node_join_server_url: "https://192.168.101.10:6443"
+      k3s_node_join_token: "{{ hostvars['k3s-node-1'].k3s_node_join_token }}"
+      k3s_node_agent_node_taint: "ci=github-runner:NoSchedule"
+      k3s_node_agent_node_label: "role=github-runner"

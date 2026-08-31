@@ -10,14 +10,19 @@ ROLE_ROOT = PROJECT_ROOT / "ansible/roles/k3s_node"
 class K3sNodeTests(unittest.TestCase):
     def test_disk_path_is_pinned_to_dedicated_directory(self) -> None:
         # Same convention every other stateful service here follows:
-        # persistent state goes on /mnt/black-hdd, never root.
+        # persistent state goes on /mnt/black-hdd, never root. The check
+        # is derived from k3s_node_vm_name rather than a literal
+        # "k3s-node-1" string specifically so it holds for k3s-node-2
+        # (the agent node) too, without weakening the original
+        # protection for either.
         tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
             encoding="utf-8"
         )
 
         self.assertIn(
-            'k3s_node_vm_disk_path == "/mnt/black-hdd/k3s/k3s-node-1.qcow2"',
+            "k3s_node_vm_disk_path\n        == (k3s_node_vm_storage_dir "
+            "~ '/' ~ k3s_node_vm_name ~ '.qcow2')",
             tasks,
         )
         self.assertIn(
@@ -258,6 +263,132 @@ class K3sNodeTests(unittest.TestCase):
             "k3s_node_terraform_binary.stat.exists",
             extract_task,
         )
+
+    def test_agent_mode_defaults_off_and_join_vars_are_empty(self) -> None:
+        # k3s-node-1 must be completely unaffected by default -- the
+        # join_* vars are only ever filled in by
+        # ansible/playbooks/k3s.yml's own agent-node play, never given
+        # a real default here.
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("k3s_node_join_mode: server", defaults)
+        self.assertIn('k3s_node_join_server_url: ""', defaults)
+        self.assertIn('k3s_node_join_token: ""', defaults)
+        self.assertIn('k3s_node_agent_node_taint: ""', defaults)
+        self.assertIn('k3s_node_agent_node_label: ""', defaults)
+        self.assertIn("k3s_node_inventory_group: k3s_nodes", defaults)
+
+    def test_agent_join_configuration_is_validated(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("Validate k3s agent join configuration", tasks)
+        self.assertIn('when: k3s_node_join_mode == "agent"', tasks)
+
+    def test_agent_unit_joins_with_a_taint_and_label(self) -> None:
+        # The taint is what actually keeps every other workload off
+        # this node -- infra/k3s-apps' own github_runner module supplies
+        # the matching toleration.
+        unit = (ROLE_ROOT / "templates/k3s-agent.service.j2").read_text(
+            encoding="utf-8"
+        )
+        env = (ROLE_ROOT / "templates/k3s-agent.env.j2").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("{{ k3s_node_binary_path }} agent", unit)
+        self.assertIn("--node-taint {{ k3s_node_agent_node_taint }}", unit)
+        self.assertIn("--node-label {{ k3s_node_agent_node_label }}", unit)
+        self.assertIn(
+            "EnvironmentFile={{ k3s_node_agent_env_path }}", unit
+        )
+        self.assertIn("K3S_URL={{ k3s_node_join_server_url }}", env)
+        self.assertIn("K3S_TOKEN={{ k3s_node_join_token }}", env)
+
+    def test_agent_env_file_is_not_world_readable(self) -> None:
+        # Unlike k3s-node-1's own 0644 kubeconfig (a documented,
+        # deliberate exception for a single-user learning node with no
+        # real privilege boundary), this file holds the actual
+        # cluster-join secret.
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        install_task = tasks.split(
+            "Install k3s agent environment file", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn('mode: "0600"', install_task)
+
+    def test_node_token_is_never_logged(self) -> None:
+        playbook = (
+            PROJECT_ROOT / "ansible/playbooks/k3s.yml"
+        ).read_text(encoding="utf-8")
+
+        token_play = playbook.split(
+            "Retrieve k3s cluster join token", 1
+        )[1].split("- name: Install k3s on the runner node", 1)[0]
+        self.assertIn("no_log: true", token_play)
+        self.assertIn(
+            "/var/lib/rancher/k3s/server/node-token", token_play
+        )
+
+    def test_agent_node_lands_in_its_own_inventory_group(self) -> None:
+        # A generic loop over both nodes would let configure_guest's
+        # server-only tasks run against the agent by accident -- two
+        # distinct groups (k3s_nodes / k3s_agent_nodes) rule that out
+        # structurally instead of relying on a conditional alone.
+        playbook = (
+            PROJECT_ROOT / "ansible/playbooks/k3s.yml"
+        ).read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("k3s_node_inventory_group: k3s_agent_nodes", playbook)
+        self.assertIn("hosts: k3s_agent_nodes", playbook)
+        self.assertIn(
+            'groups:\n      - "{{ k3s_node_inventory_group }}"', tasks
+        )
+
+    def test_second_node_reservation_added_live_not_by_redefining(
+        self,
+    ) -> None:
+        # A full net redefine only updates libvirt's persistent config,
+        # not the already-running dnsmasq instance -- restarting the
+        # network to pick it up could interrupt k3s-node-1's own active
+        # connections. net-update --live --config avoids that entirely.
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("net-update", tasks)
+        self.assertIn("--live", tasks)
+        self.assertIn("--config", tasks)
+        self.assertIn(
+            "when: k3s_node_network_name not in "
+            "k3s_node_defined_networks.list_nets",
+            tasks,
+        )
+
+    def test_second_node_uses_a_distinct_identity(self) -> None:
+        playbook = (
+            PROJECT_ROOT / "ansible/playbooks/k3s.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("k3s_node_vm_name: k3s-node-2", playbook)
+        self.assertIn(
+            "k3s_node_vm_disk_path: /mnt/black-hdd/k3s/k3s-node-2.qcow2",
+            playbook,
+        )
+        self.assertIn("k3s_node_vm_ip: 192.168.101.11", playbook)
+        self.assertIn('k3s_node_vm_mac: "52:54:00:00:00:21"', playbook)
+        # Same k3s_network/virbr11 as k3s-node-1 -- a deliberate choice
+        # (shared cluster trust boundary already accepted), not a new
+        # isolated network of its own.
+        self.assertNotIn("192.168.100.", playbook)
 
     def test_nfs_client_is_installed_for_pv_support(self) -> None:
         # k3s's kubelet shells out to the host's mount.nfs helper (from

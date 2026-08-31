@@ -43,6 +43,33 @@ k3s_node_vm_mac: "52:54:00:00:00:20"
 k3s_node_libvirt_user: libvirt-qemu
 k3s_node_libvirt_group: kvm
 
+# Which dynamic inventory group provision_vm.yml's own add_host task
+# registers this VM into. k3s-node-1 (the control-plane node) and any
+# agent node must land in different groups, since only the
+# control-plane node should ever run configure_guest's "server" tasks
+# against the original hosts: k3s_nodes play -- see
+# ansible/playbooks/k3s.yml's own dedicated agent-node plays.
+k3s_node_inventory_group: k3s_nodes
+
+# Second-node support: k3s_node_join_mode controls whether
+# configure_guest.yml renders a `k3s server` unit (default -- this is
+# k3s-node-1's own control plane) or a `k3s agent` unit joining an
+# already-running server instead. The join_* vars below are only
+# meaningful in agent mode, and deliberately left empty here rather
+# than given a real default -- ansible/playbooks/k3s.yml's own
+# agent-node play passes them explicitly (the token in particular
+# comes from a live slurp of k3s-node-1's own node-token, never a
+# static default that could end up committed).
+k3s_node_join_mode: server
+k3s_node_join_server_url: ""
+k3s_node_join_token: ""
+# Confines every CI runner Pod (infra/k3s-apps' own modules/
+# github_runner) to this node alone -- kept off k3s-node-1, which
+# every other, non-CI workload in the cluster already depends on.
+k3s_node_agent_node_taint: ""
+k3s_node_agent_node_label: ""
+k3s_node_agent_env_path: /etc/systemd/system/k3s-agent.service.env
+
 k3s_node_admin_user: ansible
 k3s_node_admin_ssh_public_key_path: >-
   {{ lookup('env', 'HOME') }}/.ssh/id_ed25519.pub
