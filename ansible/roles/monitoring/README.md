@@ -13,32 +13,44 @@ see ADR 0017). Loopback-only, not published through `shared_ingress`.
   strictly required, so Prometheus can scrape everything as a plain
   `127.0.0.1:<port>` without a host/bridge networking mismatch.
 - Alerting is dual-channel on purpose: Prometheus's own alert rules fire
-  into **Alertmanager**, which notifies both ntfy (via a small local
-  relay service, since Alertmanager can't template ntfy's payload shape)
-  and email (via AWS SES SMTP credentials from `infra/ses-relay`) -- one
-  channel being misconfigured shouldn't mean silence.
+  into **Alertmanager** (now a k3s-native copy, see below), which
+  notifies both ntfy (via a small local relay service, since
+  Alertmanager can't template ntfy's payload shape) and email (via AWS
+  SES SMTP credentials from `infra/ses-relay`) -- one channel being
+  misconfigured shouldn't mean silence.
 
-**Grafana itself no longer runs here.** It's a k3s-native copy instead
-(`infra/k3s-apps`, `modules/grafana`), reached at `grafana.jkandler.de`
-through `shared_ingress_grafana_upstream` -- Phase 1 of moving this
-stack into the k3s cluster, confirmed live 2026-08-30 (real admin
-login, both datasources healthy against the two additive listeners
-below, a real PromQL query returning real scrape data) before this
-role's own Docker deployment of it was removed. Prometheus/Alertmanager/
-the exporters/Blocky all stay on this host permanently -- they report
-*this physical host's* own hardware/Docker daemon, or are LAN-facing,
-so moving them into the k3s VM would monitor the wrong thing entirely.
-`files/dashboards/*.json` stay here as the canonical source
-`infra/k3s-apps`' own module vendors a synced copy from (same pattern
-as `nextcloud_tools_service.py`'s own role), even though nothing here
+**Grafana and Alertmanager no longer run here.** Both are k3s-native
+copies instead (`infra/k3s-apps`, `modules/grafana` and `modules/
+alertmanager`) -- Phases 1 and 2 of moving this stack into the k3s
+cluster. Grafana is reached at `grafana.jkandler.de` through
+`shared_ingress_grafana_upstream`, confirmed live 2026-08-30 (real
+admin login, both datasources healthy, a real PromQL query returning
+real scrape data). Alertmanager is reached by Prometheus over
+`monitoring_alertmanager_upstream`, confirmed live 2026-08-31 (a
+synthetic test alert posted straight to its own API reached both ntfy
+and the real SES inbox, and Prometheus's own `/api/v1/alertmanagers`
+showed exactly that target, healthy) before either role's own Docker
+deployment was removed. Prometheus, the exporters, and Blocky stay on
+this host permanently -- they report *this physical host's* own
+hardware/Docker daemon, or are LAN-facing, so moving them into the k3s
+VM would monitor the wrong thing entirely. `files/dashboards/*.json`
+stay here as the canonical source `infra/k3s-apps`' own `modules/
+grafana` vendors a synced copy from (same pattern as
+`nextcloud_tools_service.py`'s own role), even though nothing here
 installs them any more.
 
-Two listeners exist purely so the k3s-native Grafana can reach its
-datasources: `monitoring_prometheus_k3s_bind_address` (this role) and
-`blocky_postgres_k3s_bind_address` (the `blocky` role) -- both additive
-(loopback keeps working; this only ever adds a second bind), both
+Three listeners exist purely so the k3s-native pieces can reach what
+stays on this host: `monitoring_prometheus_k3s_bind_address` and
+`monitoring_ntfy_relay_k3s_bind_address` (both this role) and
+`blocky_postgres_k3s_bind_address` (the `blocky` role) -- all additive
+(loopback keeps working; each only ever adds a second bind), all
 locked to `192.168.101.1` (this homeserver's own address on the k3s
-VM's isolated network) by their own validation, never `0.0.0.0`.
+VM's isolated network) by their own validation, never `0.0.0.0`. The
+one exception is `monitoring_alertmanager_upstream` itself: a clean
+**switch**, not an addition -- Prometheus's own `alerting.alertmanagers`
+target list notifies every address in it for the same firing alert
+(unlike a scrape target list), so listing both Alertmanagers at once
+would double-fire every real notification.
 
 Needs `monitoring_ntfy_topic` and the SES SMTP credentials set through
 SOPS before first enabling. `monitoring_grafana_admin_password` still

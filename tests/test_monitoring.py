@@ -71,10 +71,11 @@ class MonitoringRoleTests(unittest.TestCase):
         # it must never appear alongside it.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        # node_exporter, cAdvisor, blackbox_exporter, Prometheus,
-        # Alertmanager -- every container this role runs now that
-        # Grafana's own container is gone (see GrafanaK3sMigrationTests).
-        self.assertEqual(tasks.count("        network_mode: host"), 5)
+        # node_exporter, cAdvisor, blackbox_exporter, Prometheus --
+        # every container this role runs now that Grafana's and
+        # Alertmanager's own containers are both gone (see
+        # GrafanaK3sMigrationTests/AlertmanagerK3sMigrationTests).
+        self.assertEqual(tasks.count("        network_mode: host"), 4)
         self.assertNotIn("published_ports:", tasks)
 
     def test_cadvisor_port_does_not_collide_with_nextcloud_aio_admin_ui(
@@ -303,29 +304,6 @@ class MonitoringRoleTests(unittest.TestCase):
 
         self.assertIn("max by (name) (container_last_seen", container_down["expr"])
 
-    def test_alertmanager_routes_to_both_ntfy_and_ses_email(self) -> None:
-        # Dual-channel on purpose: one channel being misconfigured
-        # shouldn't mean silence. ntfy goes through the local relay
-        # (which reformats Alertmanager's JSON before it ever reaches
-        # ntfy.sh), not straight to ntfy.sh itself.
-        rendered = render(
-            "alertmanager.yml.j2",
-            monitoring_ntfy_topic="a" * 25,
-            monitoring_ses_smtp_username="AKIAEXAMPLE",
-            monitoring_ses_smtp_password="examplepassword",
-        )
-        parsed = yaml.safe_load(rendered)
-
-        receiver = parsed["receivers"][0]
-        self.assertIn("webhook_configs", receiver)
-        self.assertIn("email_configs", receiver)
-        self.assertEqual(
-            receiver["webhook_configs"][0]["url"], "http://127.0.0.1:9096/webhook"
-        )
-        self.assertEqual(
-            receiver["email_configs"][0]["to"], "julian.kandler@outlook.com"
-        )
-
     def test_dashboards_are_valid_json_and_reference_the_prometheus_datasource(
         self,
     ) -> None:
@@ -497,17 +475,79 @@ class GrafanaK3sMigrationTests(unittest.TestCase):
         # silently resurrect an already-stopped container as long as its
         # role still manages one. Removing the old config/data/secrets
         # here, unconditionally, closes that window rather than leaving
-        # stale state a future change could accidentally depend on.
+        # stale state a future change could accidentally depend on. This
+        # same task also handles Alertmanager's own retired state --
+        # see AlertmanagerK3sMigrationTests.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        self.assertIn("Remove retired local Grafana state", tasks)
-        cleanup_task = tasks.split("Remove retired local Grafana state", 1)[
-            1
-        ].split("- name:", 1)[0]
+        self.assertIn("Remove retired local Grafana/Alertmanager state", tasks)
+        cleanup_task = tasks.split(
+            "Remove retired local Grafana/Alertmanager state", 1
+        )[1].split("- name:", 1)[0]
         self.assertIn("monitoring_config_dir }}/grafana", cleanup_task)
         self.assertIn("monitoring_data_dir }}/grafana", cleanup_task)
         self.assertIn("monitoring_data_dir }}/secrets", cleanup_task)
         self.assertIn("state: absent", cleanup_task)
+
+
+class AlertmanagerK3sMigrationTests(unittest.TestCase):
+    def test_no_container_image_or_config_tasks_remain(self) -> None:
+        # Alertmanager itself now runs as a k3s-native copy (infra/
+        # k3s-apps, modules/alertmanager), reached by Prometheus over
+        # monitoring_alertmanager_upstream -- confirmed live 2026-08-31
+        # (a synthetic test alert posted straight to its own API reached
+        # both ntfy and the real SES inbox, and Prometheus's own
+        # /api/v1/alertmanagers showed exactly that target, healthy,
+        # nothing dropped) before this role's own Docker deployment of
+        # it was removed.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertNotIn("Ensure Alertmanager container is running", tasks)
+        self.assertNotIn("Install Alertmanager configuration", tasks)
+        self.assertNotIn("monitoring_alertmanager_image", tasks)
+        self.assertNotIn("monitoring_alertmanager_container_user", tasks)
+
+    def test_dead_defaults_and_template_are_gone(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        for dead_default in (
+            "monitoring_alertmanager_container_name",
+            "monitoring_alertmanager_image_name",
+            "monitoring_alertmanager_port",
+            "monitoring_alertmanager_memory_limit",
+            "monitoring_alertmanager_container_user",
+        ):
+            with self.subTest(default=dead_default):
+                self.assertNotIn(f"{dead_default}:", defaults)
+
+        self.assertFalse(
+            (ROLE_ROOT / "templates" / "alertmanager.yml.j2").exists()
+        )
+
+    def test_upstream_defaults_to_the_homeserver_and_only_two_values_allowed(
+        self,
+    ) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "monitoring_alertmanager_upstream: 127.0.0.1:9093", defaults
+        )
+        self.assertIn(
+            'monitoring_alertmanager_upstream == "127.0.0.1:9093"\n'
+            '            or monitoring_alertmanager_upstream == '
+            '"192.168.101.10:9093"',
+            tasks,
+        )
+
+    def test_old_local_state_is_included_in_the_cleanup_task(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        cleanup_task = tasks.split(
+            "Remove retired local Grafana/Alertmanager state", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("monitoring_config_dir }}/alertmanager.yml", cleanup_task)
+        self.assertIn("monitoring_data_dir }}/alertmanager", cleanup_task)
 
 
 class GrafanaIngressTests(unittest.TestCase):
@@ -644,27 +684,18 @@ class NtfyRelayServiceTests(unittest.TestCase):
         self.assertIn("ExecStart=/usr/bin/python3", rendered)
         self.assertIn("ntfy_relay.py", rendered)
 
-    def test_relay_is_installed_before_alertmanager_and_health_checked(self) -> None:
+    def test_relay_is_health_checked(self) -> None:
+        # Used to also assert this installs before Alertmanager's own
+        # docker_container task -- moot now that Alertmanager isn't
+        # deployed by this role at all any more (see
+        # AlertmanagerK3sMigrationTests). The relay's own real config
+        # (webhook target, dual-channel routing) now lives in
+        # infra/k3s-apps' own modules/alertmanager templates/
+        # alertmanager.yml.tftpl instead of a template here.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        relay_index = tasks.index("Install ntfy relay script")
-        alertmanager_index = tasks.index("Ensure Alertmanager container is running")
-        self.assertLess(relay_index, alertmanager_index)
         self.assertIn("Verify ntfy relay is ready on host loopback", tasks)
         self.assertIn("/healthz", tasks)
-
-    def test_alertmanager_config_points_at_the_relay_not_ntfy_sh_directly(self) -> None:
-        rendered = render(
-            "alertmanager.yml.j2",
-            monitoring_ntfy_topic="a" * 25,
-            monitoring_ses_smtp_username="AKIAEXAMPLE",
-            monitoring_ses_smtp_password="examplepassword",
-        )
-
-        parsed = yaml.safe_load(rendered)
-        webhook_url = parsed["receivers"][0]["webhook_configs"][0]["url"]
-        self.assertNotIn("ntfy.sh", webhook_url)
-        self.assertEqual(webhook_url, "http://127.0.0.1:9096/webhook")
 
 
 if __name__ == "__main__":

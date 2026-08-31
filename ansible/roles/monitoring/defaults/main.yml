@@ -129,19 +129,9 @@ monitoring_prometheus_k3s_bind_address: ""
 # role consumes it any more.
 monitoring_grafana_admin_user: admin
 
-monitoring_alertmanager_container_name: alertmanager
-monitoring_alertmanager_image_name: prom/alertmanager
-monitoring_alertmanager_image_tag: v0.34.0
-monitoring_alertmanager_image_digest: >-
-  sha256:690c7b525f4367aa91f73e2f91c632206d32e97c6384bdbf2fb7a861b420340d
-monitoring_alertmanager_image: >-
-  {{ monitoring_alertmanager_image_name }}:{{ monitoring_alertmanager_image_tag }}@{{ monitoring_alertmanager_image_digest }}
-monitoring_alertmanager_port: 9093
-monitoring_alertmanager_memory_limit: 128M
-monitoring_alertmanager_cpu_limit: 0.25
-monitoring_alertmanager_pids_limit: 64
-monitoring_alertmanager_container_user: monitoring-alertmanager
-
+# Alertmanager itself is no longer deployed by this role -- it runs as
+# a k3s-native copy instead (infra/k3s-apps, modules/alertmanager),
+# reached by Prometheus over monitoring_alertmanager_upstream below.
 # Phase 2 of moving the monitoring stack into k3s: unlike
 # monitoring_prometheus_k3s_bind_address/monitoring_ntfy_relay_k3s_bind_address
 # above, this is a clean switch, not an addition -- Prometheus's own
@@ -181,20 +171,21 @@ monitoring_ntfy_topic: ""
 # nextcloud_tools/sankey_export's precedent for small standalone logic
 # rather than pulling in a new base image) sits between the two:
 # Alertmanager posts here, it reformats, then republishes to ntfy's own
-# JSON API. Loopback-only by default; only reachable from Alertmanager
-# on the same host.
+# JSON API. Stays on this host even though Alertmanager itself has
+# moved into k3s -- reached over the k3s listener below instead.
 monitoring_ntfy_relay_port: 9096
 monitoring_ntfy_relay_service_user: monitoring-ntfy-relay
 monitoring_ntfy_relay_install_dir: /usr/local/lib/monitoring/ntfy-relay
 
-# Off by default (loopback only). When set, the relay additionally
-# listens on this address (a second server instance in its own thread
-# -- ntfy_relay.py's own comment on LISTEN_HOST_K3S has the full
-# reasoning) -- lets Alertmanager reach this once it runs in the k3s
-# VM instead of on this host, while the still-Docker-based Alertmanager
-# here keeps using the loopback listener throughout the migration.
-# 192.168.101.1 (this homeserver's own address on the k3s VM's isolated
-# network) is the only value this role's own validation allows.
+# Off by default (loopback only); set live in inventory now that
+# Alertmanager has fully moved into k3s (infra/k3s-apps, modules/
+# alertmanager) -- the relay then listens on this address additionally
+# (a second server instance in its own thread -- see ntfy_relay.py's
+# own comment on LISTEN_HOST_K3S) so the k3s-native Alertmanager can
+# reach it, alongside the loopback listener every other consumer on
+# this host still uses. 192.168.101.1 (this homeserver's own address on
+# the k3s VM's isolated network) is the only value this role's own
+# validation allows.
 monitoring_ntfy_relay_k3s_bind_address: ""
 
 # SES SMTP credentials come from infra/ses-relay's Terraform outputs, not

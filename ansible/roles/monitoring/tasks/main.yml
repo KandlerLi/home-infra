@@ -67,7 +67,6 @@
         shell: /usr/sbin/nologin
       loop:
         - "{{ monitoring_prometheus_container_user }}"
-        - "{{ monitoring_alertmanager_container_user }}"
 
     # Confirmed live (2026-08-28, a real production failure on this
     # exact task): ansible.builtin.getent does NOT accumulate looped
@@ -86,16 +85,6 @@
       ansible.builtin.set_fact:
         monitoring_prometheus_uid: >-
           {{ ansible_facts.getent_passwd[monitoring_prometheus_container_user][1] }}
-
-    - name: Read Alertmanager service account
-      ansible.builtin.getent:
-        database: passwd
-        key: "{{ monitoring_alertmanager_container_user }}"
-
-    - name: Record Alertmanager runtime identity
-      ansible.builtin.set_fact:
-        monitoring_alertmanager_uid: >-
-          {{ ansible_facts.getent_passwd[monitoring_alertmanager_container_user][1] }}
 
     # Not a container, so no UID needs recording -- systemd's User=/Group=
     # take a plain username directly, unlike docker_container's user:
@@ -139,8 +128,6 @@
           owner: root
         - path: "{{ monitoring_data_dir }}/prometheus"
           owner: "{{ monitoring_prometheus_container_user }}"
-        - path: "{{ monitoring_data_dir }}/alertmanager"
-          owner: "{{ monitoring_alertmanager_container_user }}"
         - path: "{{ monitoring_data_dir }}/ntfy-relay"
           owner: "{{ monitoring_ntfy_relay_service_user }}"
       loop_control:
@@ -172,7 +159,13 @@
     # management is even removed below, closing that window entirely
     # rather than leaving stale state around that a future change could
     # accidentally depend on.
-    - name: Remove retired local Grafana state
+    # Alertmanager itself now runs as a k3s-native copy too (infra/
+    # k3s-apps, modules/alertmanager) instead of a Docker container on
+    # this host -- confirmed live 2026-08-31 (a synthetic test alert
+    # posted straight to its own API reached both ntfy and the real SES
+    # inbox) before Prometheus was switched over to it and this
+    # container's own management was removed below.
+    - name: Remove retired local Grafana/Alertmanager state
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
@@ -180,6 +173,8 @@
         - "{{ monitoring_config_dir }}/grafana"
         - "{{ monitoring_data_dir }}/grafana"
         - "{{ monitoring_data_dir }}/secrets"
+        - "{{ monitoring_config_dir }}/alertmanager.yml"
+        - "{{ monitoring_data_dir }}/alertmanager"
 
     - name: Install ntfy topic file for the relay
       ansible.builtin.copy:
@@ -259,24 +254,6 @@
         mode: "0644"
       register: monitoring_blackbox_config
 
-    # Contains the SES SMTP password and the ntfy topic name, so
-    # owner-only read access, matching home_agent's OPENAI_API_KEY_FILE
-    # and every other secret this repo installs this way. Must be owned
-    # by the container's own dedicated user, not root: the container
-    # runs as monitoring_alertmanager_uid (non-root),
-    # so a root-owned 0600 file is unreadable to it -- confirmed live via
-    # "open /etc/alertmanager/alertmanager.yml: permission denied" on the
-    # first real deploy.
-    - name: Install Alertmanager configuration
-      ansible.builtin.template:
-        src: alertmanager.yml.j2
-        dest: "{{ monitoring_config_dir }}/alertmanager.yml"
-        owner: "{{ monitoring_alertmanager_container_user }}"
-        group: "{{ monitoring_alertmanager_container_user }}"
-        mode: "0400"
-      register: monitoring_alertmanager_config
-      no_log: true
-
     - name: Pull pinned monitoring images
       community.docker.docker_image:
         name: "{{ item }}"
@@ -287,7 +264,6 @@
         - "{{ monitoring_cadvisor_image }}"
         - "{{ monitoring_blackbox_exporter_image }}"
         - "{{ monitoring_prometheus_image }}"
-        - "{{ monitoring_alertmanager_image }}"
       loop_control:
         label: "{{ item }}"
 
@@ -475,40 +451,6 @@
         log_options:
           max-size: 10m
           max-file: "3"
-
-    - name: Ensure Alertmanager container is running
-      community.docker.docker_container:
-        name: "{{ monitoring_alertmanager_container_name }}"
-        image: "{{ monitoring_alertmanager_image }}"
-        state: started
-        recreate: "{{ monitoring_alertmanager_config.changed }}"
-        restart_policy: "{{ monitoring_restart_policy }}"
-        network_mode: host
-        user: "{{ monitoring_alertmanager_uid }}:0"
-        read_only: true
-        cap_drop:
-          - ALL
-        security_opts:
-          - no-new-privileges:true
-        memory: "{{ monitoring_alertmanager_memory_limit }}"
-        cpus: "{{ monitoring_alertmanager_cpu_limit }}"
-        pids_limit: "{{ monitoring_alertmanager_pids_limit }}"
-        volumes:
-          - "{{ monitoring_config_dir }}/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"
-          - "{{ monitoring_data_dir }}/alertmanager:/alertmanager"
-        tmpfs:
-          - /tmp:rw,noexec,nosuid,nodev,size=16m
-        comparisons:
-          volumes: strict
-        command:
-          - --config.file=/etc/alertmanager/alertmanager.yml
-          - --storage.path=/alertmanager
-          - --web.listen-address={{ monitoring_bind_address }}:{{ monitoring_alertmanager_port }}
-        log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
-      no_log: true
 
     - name: Verify Prometheus is ready on host loopback
       ansible.builtin.uri:
