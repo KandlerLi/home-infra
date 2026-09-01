@@ -40,15 +40,20 @@ grafana` vendors a synced copy from (same pattern as
 directory for the same reason), even though nothing here installs
 them any more.
 
-Three listeners exist purely so the k3s-native pieces can reach what
+Two listeners exist purely so the k3s-native pieces can reach what
 stays on this host: `monitoring_prometheus_k3s_bind_address` and
-`monitoring_ntfy_relay_k3s_bind_address` (both this role) and
-`blocky_postgres_k3s_bind_address` (the `blocky` role) -- all additive
-(loopback keeps working; each only ever adds a second bind), all
+`monitoring_ntfy_relay_k3s_bind_address` (both this role) -- additive
+(loopback keeps working; each only ever adds a second bind), both
 locked to `192.168.101.1` (this homeserver's own address on the k3s
-VM's isolated network) by their own validation, never `0.0.0.0`. The
-one exception is `monitoring_alertmanager_upstream` itself: a clean
-**switch**, not an addition -- Prometheus's own `alerting.alertmanagers`
+VM's isolated network) by their own validation, never `0.0.0.0`. A
+third, `blocky_postgres_k3s_bind_address` (the `blocky` role), existed
+here too until Blocky itself moved fully into k3s and that role was
+deleted entirely (2026-09-01) -- `monitoring_blocky_upstream`
+(defaults/main.yml) is its replacement, but as a clean switch, not an
+addition, since Blocky no longer runs on this host at all. The other
+exception is
+`monitoring_alertmanager_upstream` itself: a clean **switch**, not an
+addition -- Prometheus's own `alerting.alertmanagers`
 target list notifies every address in it for the same firing alert
 (unlike a scrape target list), so listing both Alertmanagers at once
 would double-fire every real notification.

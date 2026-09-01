@@ -15,11 +15,13 @@ def render(name: str, **overrides: object) -> str:
     env = Environment(loader=FileSystemLoader(str(ROLE_ROOT / "templates")))
     env.filters["bool"] = bool
     defaults = yaml.safe_load((ROLE_ROOT / "defaults/main.yml").read_text())
-    # monitoring_blocky_* are default()-guarded cross-role references
-    # (see defaults/main.yml) -- their raw, un-rendered "{{ ... }}"
-    # string is truthy under a plain bool() call, so every render() that
-    # doesn't care about blocky must say so explicitly, the same way
-    # callers already pass real values for other required vars below.
+    # monitoring_blocky_enabled now defaults to a real, unconditional
+    # true in defaults/main.yml (the blocky role it used to be a
+    # default()-guarded cross-role reference into is gone entirely --
+    # see that file's own comment) -- forced off here so every render()
+    # that doesn't care about blocky stays isolated from it by default,
+    # the same way callers already pass real values for other required
+    # vars below, and must say so explicitly to test the "on" path.
     ctx = {**defaults, "monitoring_blocky_enabled": False, **overrides}
     return env.get_template(name).render(**ctx)
 
@@ -554,6 +556,56 @@ class AlertmanagerK3sMigrationTests(unittest.TestCase):
         )[1].split("- name:", 1)[0]
         self.assertIn("monitoring_config_dir }}/alertmanager.yml", cleanup_task)
         self.assertIn("monitoring_data_dir }}/alertmanager", cleanup_task)
+
+
+class BlockyK3sMigrationTests(unittest.TestCase):
+    def test_blocky_role_is_gone_entirely(self) -> None:
+        # Unlike Alertmanager/Grafana, Blocky's own Docker deployment
+        # never lived inside this role -- it was a fully separate role
+        # (ansible/roles/blocky), deleted entirely once infra/k3s-apps'
+        # own modules/blocky was confirmed serving real production LAN
+        # DNS traffic (2026-09-01), the same bar shared_ingress's own
+        # deletion was held to.
+        self.assertFalse((PROJECT_ROOT / "ansible/roles/blocky").exists())
+
+        site = (PROJECT_ROOT / "ansible/playbooks/site.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("- blocky", site)
+
+    def test_blocky_enabled_is_unconditional_not_a_dead_cross_role_reference(
+        self,
+    ) -> None:
+        # monitoring_blocky_enabled used to be a default()-guarded
+        # cross-role reference into the now-deleted blocky role's own
+        # blocky_enabled -- with that role gone, nothing sets
+        # blocky_enabled anywhere any more, so the reference would
+        # silently always resolve to the guard's own false default.
+        # Blocky itself is a permanent, always-on k3s fixture now, not
+        # optionally toggled by any Ansible role, so this is a plain,
+        # unconditional true instead.
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("monitoring_blocky_enabled: true", defaults)
+        self.assertNotIn("blocky_enabled | default", defaults)
+
+    def test_dead_postgres_cross_role_vars_are_gone(self) -> None:
+        # monitoring_blocky_postgres_port/_database/_user/_password
+        # were already unused anywhere in this role even before the
+        # blocky role's own deletion -- Grafana's own blocky-postgresql
+        # datasource is provisioned by infra/k3s-apps' own
+        # modules/grafana (templates/datasources.yaml.tftpl), not by
+        # anything reading these.
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        for dead_default in (
+            "monitoring_blocky_postgres_port",
+            "monitoring_blocky_postgres_database",
+            "monitoring_blocky_postgres_user",
+            "monitoring_blocky_postgres_password",
+        ):
+            with self.subTest(default=dead_default):
+                self.assertNotIn(f"{dead_default}:", defaults)
 
 
 class NtfyRelayServiceTests(unittest.TestCase):

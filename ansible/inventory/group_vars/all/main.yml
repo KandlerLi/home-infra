@@ -187,14 +187,17 @@ monitoring_alertmanager_upstream: 192.168.101.10:9093
 shared_ingress_home_enabled: true
 shared_ingress_home_upstream: http://192.168.101.10:80
 
-# Network-wide DNS ad-blocking (ADR 0020). Confirmed live: blocky and
-# blocky-postgres answering real DNS queries and the blocking-status
-# API correctly. Needs blocky_postgres_password set via sops before a
-# site.yml run against this flag will pass its own validate checks.
-blocky_enabled: true
-# Same Grafana-in-k3s migration step as monitoring_prometheus_k3s_bind_address
-# above -- see its own comment.
-blocky_postgres_k3s_bind_address: 192.168.101.1
+# Network-wide DNS ad-blocking (ADR 0020) -- now fully k3s-native
+# (infra/k3s-apps, modules/blocky/), reached over k3s_ingress_forward's
+# own DNAT relay. blocky_enabled and blocky_postgres_k3s_bind_address
+# (this repo's own Docker deployment and its additive Grafana-reach
+# listener) are both gone -- the blocky role itself was deleted once
+# the cutover was confirmed live, matching shared_ingress's own
+# precedent. blocky_postgres_password (secrets.sops.yml) is still
+# real: infra/k3s-apps' own modules/blocky consumes it directly via
+# TF_VAR_blocky_postgres_password, independent of this repo's own
+# roles entirely.
+#
 # The actual cutover: confirmed independently first (2026-09-01) that
 # infra/k3s-apps' own modules/blocky is serving real production LAN
 # DNS traffic correctly (k3s_ingress_forward's own DNAT relay, a real

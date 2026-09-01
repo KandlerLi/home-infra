@@ -203,26 +203,28 @@ monitoring_alert_email: julian.kandler@outlook.com
 monitoring_alert_disk_full_percent: 85
 monitoring_alert_cert_expiry_days: 14
 
-# Cross-role references into the blocky role, the same default()-guarded
-# pattern home_agent already uses for nextcloud_tools -- lets this role
-# add Blocky's scrape job and Postgres datasource only when blocky is
-# actually enabled, without a hard dependency on it always being present.
-monitoring_blocky_enabled: "{{ blocky_enabled | default(false) }}"
-monitoring_blocky_http_port: "{{ blocky_http_port | default(4000) }}"
+# Blocky is fully k3s-native now (infra/k3s-apps, modules/blocky/) --
+# the home-infra blocky role these were originally a default()-guarded
+# cross-role reference into is gone entirely, deleted once the cutover
+# was confirmed live (2026-08-31/09-01). No role in this repo owns
+# Blocky's own existence any more, so monitoring_blocky_enabled is a
+# plain, unconditional true rather than a reference to a variable that
+# no longer has anywhere to come from. monitoring_blocky_postgres_port/
+# _database/_user/_password (a matching default()-guarded set) were
+# already dead before this cleanup -- Grafana's own blocky-postgresql
+# datasource is provisioned by infra/k3s-apps' own modules/grafana
+# (templates/datasources.yaml.tftpl) now, not by anything reading
+# these -- removed rather than carried forward unused.
+monitoring_blocky_enabled: true
+monitoring_blocky_http_port: 4000
 # A clean switch, not an addition -- same reasoning and shape as
 # monitoring_alertmanager_upstream above (a scrape target list doesn't
 # double-count the way alerting.alertmanagers would, but scraping both
 # the homeserver's own Blocky and infra/k3s-apps' own one at once would
 # still be actively misleading: two independent, identically-labeled
 # series for what's really one logical service). Stays pointed at the
-# homeserver's own Blocky (blocky_enabled's own Docker deployment)
-# until infra/k3s-apps' own modules/blocky is confirmed handling real
-# production DNS traffic, not just verified reachable internally --
-# switching this before that would make monitoring blind to the
-# instance actually serving the LAN.
+# homeserver's own address until infra/k3s-apps' own modules/blocky is
+# confirmed handling real production DNS traffic, not just verified
+# reachable internally -- switching this before that would make
+# monitoring blind to the instance actually serving the LAN.
 monitoring_blocky_upstream: "127.0.0.1:{{ monitoring_blocky_http_port }}"
-monitoring_blocky_postgres_port: "{{ blocky_postgres_port | default(5432) }}"
-monitoring_blocky_postgres_database: >-
-  {{ blocky_postgres_database | default('blocky_query_log') }}
-monitoring_blocky_postgres_user: "{{ blocky_postgres_user | default('blocky') }}"
-monitoring_blocky_postgres_password: "{{ blocky_postgres_password | default('') }}"

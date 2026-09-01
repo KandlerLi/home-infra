@@ -9,7 +9,6 @@
     - storage
     - nfs_server
     - docker
-    - blocky
     - deluge
     - nextcloud_aio
     - sankey_export
