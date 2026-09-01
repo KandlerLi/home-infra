@@ -84,13 +84,18 @@
     state: absent
     table: nat
     chain: PREROUTING
-    protocol: "{{ item.protocol | default('tcp') }}"
+    protocol: tcp
     destination_port: "{{ item.public_port }}"
     jump: DNAT
     to_destination: "{{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}"
+    # Matches this role's very first shape (commit 4accac7), from
+    # before per-rule protocol support added a "tcp"/"udp" prefix to
+    # this comment (commit 84662f5) -- iptables -C requires every
+    # specified field to match exactly, comment included, so this has
+    # to reproduce the original text verbatim, not the current
+    # template, to actually find and remove the live rule.
     comment: >-
-      k3s_ingress_forward: {{ item.protocol | default('tcp') }}
-      {{ item.public_port }} ->
+      k3s_ingress_forward: {{ item.public_port }} ->
       {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
   loop: "{{ k3s_ingress_forward_rules }}"
   loop_control:

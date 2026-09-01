@@ -75,6 +75,25 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         self.assertIn("jump: DNAT", reconcile_task)
         self.assertNotIn("in_interface", reconcile_task)
 
+        # iptables -C requires every specified field to match exactly,
+        # comment included -- this has to reproduce the role's very
+        # first comment shape (commit 4accac7) verbatim, not the
+        # current per-protocol template (commit 84662f5 prefixed it
+        # with "tcp"/"udp"), or the live rule is silently never found.
+        # Confirmed live (2026-09-01): the templated-comment version
+        # of this task reported "ok" against a real live rule it had
+        # actually failed to match at all.
+        self.assertIn(
+            "k3s_ingress_forward: {{ item.public_port }} ->",
+            reconcile_task,
+        )
+        # loop_control's own label is cosmetic only -- it's the
+        # module's own args (everything before the loop:) that has to
+        # stay free of item.protocol, since that's what iptables -C
+        # actually matches against.
+        module_args = reconcile_task.split("loop:", 1)[0]
+        self.assertNotIn("item.protocol", module_args)
+
     def test_dnat_rule_targets_prerouting_nat_table(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
