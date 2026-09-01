@@ -51,7 +51,7 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         accept_task = tasks.split(
-            "Allow forwarded ingress traffic to reach k3s's own Traefik", 1
+            "Allow forwarded ingress traffic to reach k3s", 1
         )[1]
         self.assertIn("action: insert", accept_task)
         self.assertIn("rule_num: 1", accept_task)
@@ -61,11 +61,19 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         dnat_task = tasks.split(
-            "Relay ingress traffic to k3s's own Traefik via DNAT", 1
+            "Relay ingress traffic to k3s via DNAT", 1
         )[1]
         self.assertIn("table: nat", dnat_task)
         self.assertIn("chain: PREROUTING", dnat_task)
         self.assertIn("jump: DNAT", dnat_task)
+
+    def test_rule_protocol_defaults_to_tcp_but_is_overridable(self) -> None:
+        # Every rule needed only tcp until DNS -- DNS needs both tcp and
+        # udp forwarded to the same port, so this has to be a real
+        # per-rule field, not a role-wide constant.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("item.protocol | default('tcp')", tasks)
 
     def test_enabled_flag_is_a_real_toggle_not_just_a_skip_guard(
         self,

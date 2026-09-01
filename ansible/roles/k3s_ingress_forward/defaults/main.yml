@@ -1,10 +1,12 @@
 # Opt-in, matching every other role's own convention -- forwards the
-# homeserver's own public-facing ports straight through to k3s's own
-# Traefik (infra/k3s-apps' own modules/ingress/), a plain L4 DNAT
-# relay so ACME's TLS-ALPN-01 challenge still reaches the real
-# cert-issuing Traefik instance directly, below the TLS layer. See
-# this role's own README for the full "why DNAT, not bridging the k3s
-# VM onto the LAN" reasoning.
+# homeserver's own public/LAN-facing ports straight through to a k3s
+# Service, a plain L4 DNAT relay. Originally built for k3s's own
+# Traefik (infra/k3s-apps' own modules/ingress/), so ACME's
+# TLS-ALPN-01 challenge could still reach the real cert-issuing
+# instance directly, below the TLS layer -- the same relay now also
+# carries LAN-facing DNS traffic to infra/k3s-apps' own modules/
+# blocky/. See this role's own README for the full "why DNAT, not
+# bridging the k3s VM onto the LAN" reasoning.
 k3s_ingress_forward_enabled: false
 
 # k3s-node-1's own static address (k3s_node's own k3s_node_vm_ip
@@ -17,12 +19,16 @@ k3s_ingress_forward_enabled: false
 k3s_ingress_forward_target_ip: 192.168.101.10
 
 # public_port: what the homeserver itself listens on (the FRITZ!Box's
-# own port-forward already targets the homeserver's LAN IP, so this
-# is also what a manual router forward should point at). target_port:
-# what k3s's own Traefik actually has bound inside the cluster.
-# Overridable at apply time (e.g. -e for a throwaway rehearsal port)
-# without touching this file -- see the role's own README for the
-# staging-ACME rehearsal's own rule shape.
+# own port-forward already targets the homeserver's LAN IP for
+# 80/443, so that's also what a manual router forward should point
+# at; 53 needs no router change at all -- LAN clients already point
+# at the homeserver's own LAN IP for DNS). target_port: what the k3s
+# Service actually has bound inside the cluster. protocol: tcp by
+# default (every rule here needed only tcp until DNS); DNS needs both
+# tcp and udp, so this is a real per-rule field, not a role-wide
+# constant. Overridable at apply time (e.g. -e for a throwaway
+# rehearsal port) without touching this file -- see the role's own
+# README for the staging-ACME rehearsal's own rule shape.
 k3s_ingress_forward_rules:
   - public_port: 80
     target_port: 80

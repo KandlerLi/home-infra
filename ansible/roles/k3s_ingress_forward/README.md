@@ -1,10 +1,12 @@
 # k3s_ingress_forward
 
 Opt-in (`k3s_ingress_forward_enabled`, default `false`) iptables DNAT
-relay on the homeserver, forwarding its own public-facing ports
-straight through to k3s's own Traefik (`infra/k3s-apps`' own
-`modules/ingress/` Deployment) at `192.168.101.10`, unmodified at the
-packet level. The one iptables/firewall role in this repo.
+relay on the homeserver, forwarding its own public/LAN-facing ports
+straight through to a k3s Service at `192.168.101.10`, unmodified at
+the packet level -- k3s's own Traefik (`infra/k3s-apps`' own
+`modules/ingress/`) originally, now also Blocky's own DNS Service
+(`infra/k3s-apps`' own `modules/blocky/`). The one iptables/firewall
+role in this repo.
 
 - **A relay, not a proxy.** The k3s VM's own network
   (`192.168.101.0/24`) is deliberately unreachable from the LAN --
@@ -43,6 +45,10 @@ packet level. The one iptables/firewall role in this repo.
   -- forwarding a throwaway external port straight to Traefik's real
   `websecure` entryPoint (443) internally, so Traefik's own config
   needs no separate test entryPoint of its own.
+- **Each rule has its own `protocol`**, defaulting to `tcp` (every
+  rule needed only tcp until DNS) -- DNS needs both `tcp` and `udp`
+  forwarded to the same port, so Blocky's own entry is two rules, not
+  one.
 - **Persisted via `iptables-persistent`** (`netfilter-persistent
   save`, only when a rule actually changed) so the relay survives a
   reboot -- debconf-preseeded to skip its install-time interactive

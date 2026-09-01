@@ -43,14 +43,14 @@
 # covered here deliberately -- libvirt's own LIBVIRT_FWO chain already
 # permits the NAT network's own subnet to send established/outbound
 # traffic freely, that being the entire point of a NAT-mode network.
-- name: Allow forwarded ingress traffic to reach k3s's own Traefik
+- name: Allow forwarded ingress traffic to reach k3s
   ansible.builtin.iptables:
     state: "{{ 'present' if k3s_ingress_forward_enabled else 'absent' }}"
     action: insert
     rule_num: 1
     chain: FORWARD
     destination: "{{ k3s_ingress_forward_target_ip }}"
-    protocol: tcp
+    protocol: "{{ item.protocol | default('tcp') }}"
     destination_port: "{{ item.target_port }}"
     ctstate:
       - NEW
@@ -58,28 +58,33 @@
       - RELATED
     jump: ACCEPT
     comment: >-
-      k3s_ingress_forward: allow ->
+      k3s_ingress_forward: allow {{ item.protocol | default('tcp') }} ->
       {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
   loop: "{{ k3s_ingress_forward_rules }}"
   loop_control:
-    label: "{{ item.public_port }} -> {{ item.target_port }}"
+    label: >-
+      {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} -> {{ item.target_port }}
   register: k3s_ingress_forward_accept_result
 
-- name: Relay ingress traffic to k3s's own Traefik via DNAT
+- name: Relay ingress traffic to k3s via DNAT
   ansible.builtin.iptables:
     state: "{{ 'present' if k3s_ingress_forward_enabled else 'absent' }}"
     table: nat
     chain: PREROUTING
-    protocol: tcp
+    protocol: "{{ item.protocol | default('tcp') }}"
     destination_port: "{{ item.public_port }}"
     jump: DNAT
     to_destination: "{{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}"
     comment: >-
-      k3s_ingress_forward: {{ item.public_port }} ->
+      k3s_ingress_forward: {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} ->
       {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
   loop: "{{ k3s_ingress_forward_rules }}"
   loop_control:
-    label: "{{ item.public_port }} -> {{ item.target_port }}"
+    label: >-
+      {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} -> {{ item.target_port }}
   register: k3s_ingress_forward_dnat_result
 
 - name: Persist iptables rules across reboots
