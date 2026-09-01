@@ -36,8 +36,9 @@ hardware/Docker daemon, or are LAN-facing, so moving them into the k3s
 VM would monitor the wrong thing entirely. `files/dashboards/*.json`
 stay here as the canonical source `infra/k3s-apps`' own `modules/
 grafana` vendors a synced copy from (same pattern as
-`nextcloud_tools_service.py`'s own role), even though nothing here
-installs them any more.
+`nextcloud_tools_service.py`, kept at the top-level `nextcloud_tools/`
+directory for the same reason), even though nothing here installs
+them any more.
 
 Three listeners exist purely so the k3s-native pieces can reach what
 stays on this host: `monitoring_prometheus_k3s_bind_address` and

@@ -86,11 +86,13 @@ only owns the host-level prerequisites those k3s Pods still depend on:
   (`files/agent/`) as the canonical copy a self-hosted CI workflow
   (`.github/workflows/build-home-agent.yml`) builds the k3s Pod's GHCR
   image from -- never built on the homeserver itself.
-- **`nextcloud_tools` role**: retired outright, not reshaped -- its
-  only consumer (home_agent's own Docker container) is gone. Its
-  Python service source (`files/nextcloud_tools_service.py`) stays on
-  as the canonical original `infra/k3s-apps` vendors its own Pod
-  sidecar's copy from; see that role's own README.
+- **`nextcloud_tools`**: the Ansible role was retired outright, not
+  reshaped -- its only consumer (home_agent's own Docker container) is
+  gone. Its Python service source (`nextcloud_tools_service.py`) stays
+  on as the canonical original `infra/k3s-apps` vendors its own Pod
+  sidecar's copy from; moved out of `ansible/roles/` to the top-level
+  `nextcloud_tools/` directory (2026-09-01) since nothing here is
+  Ansible content any more -- see that directory's own README.
 - **`open_webui` role** (always applied): a dedicated service account
   and `open_webui_data_dir` (`/var/lib/open-webui`), holding the real
   accounts and chat history the k3s Pod reads over a new NFS export

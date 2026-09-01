@@ -1,8 +1,10 @@
 ---
-# Shared by home_agent and nextcloud_tools: install a restricted Python
-# service, template and restart its systemd unit, and wait for its Unix
-# socket to appear. Included with `role_path`-relative paths so it works
-# from either role regardless of which role happens to be executing.
+# Used by home_agent (originally shared with nextcloud_tools too, but
+# that role stopped deploying anything at all once it moved to k3s --
+# see its own README): install a restricted Python service, template
+# and restart its systemd unit, and wait for its Unix socket to
+# appear. Included with `role_path`-relative paths so it still works
+# from whichever role includes it, even though only one does today.
 #
 # Required vars (set on the `include_tasks` task that includes this file):
 #   socket_service_name           human-readable name used in task labels

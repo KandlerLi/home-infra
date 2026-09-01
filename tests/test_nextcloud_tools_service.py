@@ -12,7 +12,7 @@ from _load_module import load_module_from_path
 
 nextcloud_tools = load_module_from_path(
     "nextcloud_tools_service",
-    "ansible/roles/nextcloud_tools/files/nextcloud_tools_service.py",
+    "nextcloud_tools/nextcloud_tools_service.py",
 )
 
 
