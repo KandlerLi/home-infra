@@ -128,10 +128,27 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn(
-            "state: \"{{ 'present' if k3s_ingress_forward_enabled "
+            "state: \"{{ 'present' if (k3s_ingress_forward_enabled | bool) "
             "else 'absent' }}\"",
             tasks,
         )
+
+    def test_enabled_flag_is_bool_filtered_everywhere_its_evaluated(
+        self,
+    ) -> None:
+        # -e k3s_ingress_forward_enabled=... always hands the role a
+        # string, never a real boolean. Ansible's own `when:` rejects a
+        # bare string result outright; a plain Jinja `if` doesn't --
+        # it just checks truthiness, so an unfiltered `if
+        # k3s_ingress_forward_enabled` would treat even the string
+        # "false" as enabled. Every place this variable gates
+        # present/absent state needs the same `| bool` filter, not
+        # just the one Ansible's own strict when: forced a fix for.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        occurrences = tasks.count("k3s_ingress_forward_enabled")
+        bool_filtered = tasks.count("k3s_ingress_forward_enabled | bool")
+        self.assertEqual(occurrences, bool_filtered)
 
     def test_iptables_persistent_prompts_are_preseeded(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")

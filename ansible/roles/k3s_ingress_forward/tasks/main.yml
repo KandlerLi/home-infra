@@ -45,7 +45,7 @@
 # traffic freely, that being the entire point of a NAT-mode network.
 - name: Allow forwarded ingress traffic to reach k3s
   ansible.builtin.iptables:
-    state: "{{ 'present' if k3s_ingress_forward_enabled else 'absent' }}"
+    state: "{{ 'present' if (k3s_ingress_forward_enabled | bool) else 'absent' }}"
     action: insert
     rule_num: 1
     chain: FORWARD
@@ -97,11 +97,11 @@
     label: >-
       {{ item.protocol | default('tcp') }}
       {{ item.public_port }} -> {{ item.target_port }}
-  when: k3s_ingress_forward_enabled
+  when: k3s_ingress_forward_enabled | bool
 
 - name: Relay ingress traffic to k3s via DNAT
   ansible.builtin.iptables:
-    state: "{{ 'present' if k3s_ingress_forward_enabled else 'absent' }}"
+    state: "{{ 'present' if (k3s_ingress_forward_enabled | bool) else 'absent' }}"
     table: nat
     chain: PREROUTING
     # Excludes the k3s VM's own outbound traffic from matching this
