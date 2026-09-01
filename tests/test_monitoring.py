@@ -335,6 +335,7 @@ class BlockyIntegrationTests(unittest.TestCase):
         overrides = {
             "monitoring_blocky_enabled": True,
             "monitoring_blocky_http_port": 4000,
+            "monitoring_blocky_upstream": "127.0.0.1:4000",
         }
         prometheus_on = yaml.safe_load(render("prometheus.yml.j2", **overrides))
 
@@ -345,6 +346,35 @@ class BlockyIntegrationTests(unittest.TestCase):
         )
         self.assertIn(
             "127.0.0.1:4000", blocky_job["static_configs"][0]["targets"]
+        )
+
+    def test_blocky_upstream_switches_cleanly_to_the_k3s_address(self) -> None:
+        # Same clean-switch reasoning as monitoring_alertmanager_upstream
+        # -- see monitoring_blocky_upstream's own comment in
+        # defaults/main.yml.
+        overrides = {
+            "monitoring_blocky_enabled": True,
+            "monitoring_blocky_http_port": 4000,
+            "monitoring_blocky_upstream": "192.168.101.10:4000",
+        }
+        rendered = yaml.safe_load(render("prometheus.yml.j2", **overrides))
+
+        blocky_job = next(
+            job
+            for job in rendered["scrape_configs"]
+            if job["job_name"] == "blocky"
+        )
+        self.assertEqual(
+            blocky_job["static_configs"][0]["targets"], ["192.168.101.10:4000"]
+        )
+
+    def test_blocky_upstream_is_a_closed_allowlist(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'monitoring_blocky_upstream == "127.0.0.1:" ~ monitoring_blocky_http_port\n'
+            '            or monitoring_blocky_upstream == "192.168.101.10:" ~ monitoring_blocky_http_port',
+            tasks,
         )
 
     def test_dashboards_are_valid_json_with_the_right_datasource_uids(self) -> None:

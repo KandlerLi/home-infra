@@ -42,15 +42,20 @@
           - >-
             monitoring_alertmanager_upstream == "127.0.0.1:9093"
             or monitoring_alertmanager_upstream == "192.168.101.10:9093"
+          # Same clean-switch reasoning as monitoring_alertmanager_upstream
+          # above -- see this variable's own comment in defaults/main.yml.
+          - >-
+            monitoring_blocky_upstream == "127.0.0.1:" ~ monitoring_blocky_http_port
+            or monitoring_blocky_upstream == "192.168.101.10:" ~ monitoring_blocky_http_port
         fail_msg: >-
           Configure monitoring_ntfy_topic and the SES SMTP credentials
           (from infra/ses-relay's outputs) through SOPS before the first
           deploy, keep monitoring_prometheus_k3s_bind_address and
           monitoring_ntfy_relay_k3s_bind_address empty or pinned to the
           k3s VM's isolated network address, and keep
-          monitoring_alertmanager_upstream pointed at either the
-          homeserver's own Alertmanager or infra/k3s-apps' one, never
-          both.
+          monitoring_alertmanager_upstream and monitoring_blocky_upstream
+          each pointed at either the homeserver's own instance or
+          infra/k3s-apps' one, never both.
       no_log: true
 
     # Account creation is safely looped -- ansible.builtin.user has no
