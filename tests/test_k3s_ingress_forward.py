@@ -187,6 +187,30 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         self.assertIn("k3s_ingress_forward_accept_result is changed", persist_task)
         self.assertIn("k3s_ingress_forward_dnat_result is changed", persist_task)
 
+    def test_reconcile_task_result_is_registered_and_gates_persisting(
+        self,
+    ) -> None:
+        # Confirmed live (2026-09-01): the reconciliation task removed
+        # a real live rule (changed: true) but, since its result
+        # wasn't registered/checked here, the persist step skipped --
+        # a reboot before the next apply would have restored the old,
+        # broken rule from iptables-persistent's own saved state.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        reconcile_task = tasks.split(
+            "Remove the pre-fix DNAT rule shape", 1
+        )[1].split("Relay ingress traffic to k3s via DNAT", 1)[0]
+        self.assertIn(
+            "register: k3s_ingress_forward_reconcile_result", reconcile_task
+        )
+
+        persist_task = tasks.split("Persist iptables rules across reboots", 1)[
+            1
+        ]
+        self.assertIn(
+            "k3s_ingress_forward_reconcile_result is changed", persist_task
+        )
+
     def test_runs_against_the_homeserver_not_inside_a_k3s_vm(self) -> None:
         playbook = (
             PROJECT_ROOT / "ansible/playbooks/k3s.yml"

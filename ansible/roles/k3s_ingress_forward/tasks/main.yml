@@ -103,6 +103,7 @@
       {{ item.protocol | default('tcp') }}
       {{ item.public_port }} -> {{ item.target_port }}
   when: k3s_ingress_forward_enabled | bool
+  register: k3s_ingress_forward_reconcile_result
 
 - name: Relay ingress traffic to k3s via DNAT
   ansible.builtin.iptables:
@@ -136,4 +137,5 @@
   changed_when: true
   when: >-
     k3s_ingress_forward_accept_result is changed
+    or k3s_ingress_forward_reconcile_result is changed
     or k3s_ingress_forward_dnat_result is changed
