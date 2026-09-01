@@ -20,6 +20,22 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
 
         self.assertIn("k3s_ingress_forward_enabled: false", defaults)
 
+    def test_live_inventory_persists_it_enabled(self) -> None:
+        # Confirmed live (2026-09-01): before this override existed,
+        # k3s_ingress_forward_enabled was only ever passed via -e at
+        # apply time -- since this role is a real toggle (state:
+        # present/absent off this flag directly, not a skip-guard), one
+        # ordinary ansible-playbook invocation that omitted that -e
+        # flag defaulted to false and actively tore out the live
+        # 80/443/53 DNAT rules, a real production outage for every
+        # public *.jkandler.de service. Guards against that specific
+        # regression recurring by omission.
+        group_vars = (
+            PROJECT_ROOT / "ansible/inventory/group_vars/all/main.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("k3s_ingress_forward_enabled: true", group_vars)
+
     def test_target_ip_is_pinned_and_validated(self) -> None:
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
             encoding="utf-8"

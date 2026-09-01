@@ -51,6 +51,20 @@ home_agent_tools_tcp_bind_address: 192.168.101.1
 # reshaped or deleted -- deferred to a real bake-in period, the same
 # "prove it, then remove the old thing" discipline every prior
 # migration here used.
+# A real, live production outage 2026-09-01 caused exactly this way:
+# k3s_ingress_forward_enabled was never persisted here, only ever
+# passed via -e k3s_ingress_forward_enabled=true at apply time. That
+# role is a real toggle, not a skip-guard (state: flips present/absent
+# off this flag directly) -- so the one ansible-playbook run that
+# omitted the -e flag didn't just skip re-creating the DNAT rules for
+# 80/443/53, it actively tore them out, taking every public
+# *.jkandler.de service down until caught and re-applied with the flag
+# restored. Persisted here now specifically so a normal apply can
+# never silently do that again -- every other role's own enabled flag
+# already works this way; this one was the one outlier, by omission,
+# not a deliberate choice.
+k3s_ingress_forward_enabled: true
+
 shared_ingress_enabled: false
 shared_ingress_start: true
 shared_ingress_apex_redirect_enabled: true

@@ -1,7 +1,9 @@
 # k3s_ingress_forward
 
-Opt-in (`k3s_ingress_forward_enabled`, default `false`) iptables DNAT
-relay on the homeserver, forwarding its own public/LAN-facing ports
+Opt-in (`k3s_ingress_forward_enabled`, default `false`, set `true` in
+`ansible/inventory/group_vars/all/main.yml` -- see that variable's own
+comment there for why it's persisted, not passed via `-e`) iptables
+DNAT relay on the homeserver, forwarding its own public/LAN-facing ports
 straight through to a k3s Service at `192.168.101.10`, unmodified at
 the packet level -- k3s's own Traefik (`infra/k3s-apps`' own
 `modules/ingress/`) originally, now also Blocky's own DNS Service
@@ -74,4 +76,12 @@ Service), so it lives in that role instead of here.
   `k3s_ingress_forward_enabled` directly, so disabling this role
   actually removes the rules again (the plan's own rollback step: flip
   this off, start `shared_ingress`'s container back up) rather than
-  merely skipping their creation on a fresh host.
+  merely skipping their creation on a fresh host. This cuts both ways,
+  confirmed the hard way (2026-09-01): before
+  `k3s_ingress_forward_enabled` was persisted in inventory, one
+  ordinary `ansible-playbook` invocation that forgot the `-e
+  k3s_ingress_forward_enabled=true` flag defaulted to `false` and
+  actively tore out the live 80/443/53 DNAT rules -- a real production
+  outage for every public `*.jkandler.de` service, not a no-op. A real
+  toggle needs its own real, persisted state; relying on a
+  manually-remembered `-e` flag every single apply was the actual bug.
