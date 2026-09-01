@@ -57,6 +57,24 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         self.assertIn("rule_num: 1", accept_task)
         self.assertIn("chain: FORWARD", accept_task)
 
+    def test_pre_fix_dnat_rule_shape_is_explicitly_reconciled(self) -> None:
+        # Ansible's iptables module matches rules by their exact
+        # parameter set -- simply re-applying the corrected rule would
+        # add it alongside the old, unrestricted one rather than
+        # replacing it, and since DNAT terminates further PREROUTING
+        # processing, the old rule (evaluated first) would keep
+        # winning. This task explicitly removes that old shape.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        reconcile_task = tasks.split(
+            "Remove the pre-fix DNAT rule shape", 1
+        )[1].split("Relay ingress traffic to k3s via DNAT", 1)[0]
+        self.assertIn("state: absent", reconcile_task)
+        self.assertIn("table: nat", reconcile_task)
+        self.assertIn("chain: PREROUTING", reconcile_task)
+        self.assertIn("jump: DNAT", reconcile_task)
+        self.assertNotIn("in_interface", reconcile_task)
+
     def test_dnat_rule_targets_prerouting_nat_table(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 

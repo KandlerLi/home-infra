@@ -67,6 +67,38 @@
       {{ item.public_port }} -> {{ item.target_port }}
   register: k3s_ingress_forward_accept_result
 
+# One-time reconciliation: every DNAT rule this role ever applied
+# before 2026-09-01 was created without an in_interface restriction,
+# so it also hairpinned the k3s VM's own outbound traffic back to
+# itself (see k3s_ingress_forward_target_bridge's own comment in
+# defaults/main.yml). Ansible's iptables module matches rules by
+# their exact parameter set, so simply re-applying the corrected rule
+# below would add it alongside the old one rather than replacing it --
+# and since DNAT terminates further PREROUTING processing, the old,
+# broken rule (evaluated first) would keep winning. This explicitly
+# removes that old rule shape; a no-op forever after the first apply
+# that includes it, safe to delete once every real host has picked up
+# this fix.
+- name: Remove the pre-fix DNAT rule shape (no interface restriction)
+  ansible.builtin.iptables:
+    state: absent
+    table: nat
+    chain: PREROUTING
+    protocol: "{{ item.protocol | default('tcp') }}"
+    destination_port: "{{ item.public_port }}"
+    jump: DNAT
+    to_destination: "{{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}"
+    comment: >-
+      k3s_ingress_forward: {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} ->
+      {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
+  loop: "{{ k3s_ingress_forward_rules }}"
+  loop_control:
+    label: >-
+      {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} -> {{ item.target_port }}
+  when: k3s_ingress_forward_enabled
+
 - name: Relay ingress traffic to k3s via DNAT
   ansible.builtin.iptables:
     state: "{{ 'present' if k3s_ingress_forward_enabled else 'absent' }}"
