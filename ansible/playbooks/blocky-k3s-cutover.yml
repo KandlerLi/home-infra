@@ -1,0 +1,93 @@
+---
+# One-time cutover playbook for blocky's own move to k3s (see
+# infra/k3s-apps' own modules/blocky/ and this repo's own
+# k3s_ingress_forward role, whose k3s_ingress_forward_rules default now
+# forwards real LAN DNS traffic to it). Stops blocky's own two
+# containers -- blocky and blocky-postgres -- never deletes them, so
+# this stays a fast, reviewed rollback path. Mirrors
+# shared-ingress-k3s-cutover.yml's own shape exactly, including its own
+# reasoning for managing the containers directly (docker_container:
+# state: stopped/started) rather than through the blocky role: that
+# role's own blocky_enabled flag is a skip-guard, not a real toggle
+# (its own docker_container task hardcodes state: started, wrapped in
+# a when: block that only skips future applies) -- it never stops an
+# already-running container, and this playbook is meant to survive the
+# role's own eventual deletion the same way shared_ingress's did.
+#
+# Cut over:
+#   ansible-playbook ansible/playbooks/blocky-k3s-cutover.yml \
+#     -e k3s_ingress_cutover_confirmation=CUTOVER_BLOCKY_TO_K3S \
+#     --ask-become-pass
+#
+# Roll back (starts the existing, already-configured containers back up
+# exactly as they were -- no image pull, no recreation):
+#   ansible-playbook ansible/playbooks/blocky-k3s-cutover.yml \
+#     -e k3s_ingress_cutover_confirmation=CUTOVER_BLOCKY_TO_K3S \
+#     -e blocky_k3s_cutover_action=rollback \
+#     --ask-become-pass
+#
+# Rollback also needs k3s_ingress_forward's own DNS rules pulled back
+# out of k3s_ingress_forward_rules (or k3s_ingress_forward_enabled
+# flipped off entirely) -- otherwise LAN clients would still be
+# DNAT'd to the k3s Blocky even with the homeserver's own copy started
+# back up, since the DNAT relay intercepts the traffic in PREROUTING
+# before it would ever reach a locally-listening container.
+
+- name: Cut blocky over to k3s, or roll back
+  hosts: home_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    blocky_k3s_cutover_action: cutover
+
+  pre_tasks:
+    - name: Require explicit cutover confirmation
+      ansible.builtin.assert:
+        that:
+          - >-
+            k3s_ingress_cutover_confirmation | default('')
+            == "CUTOVER_BLOCKY_TO_K3S"
+        fail_msg: >-
+          Pass -e k3s_ingress_cutover_confirmation=CUTOVER_BLOCKY_TO_K3S
+          only during a reviewed cutover or rollback.
+
+    - name: Validate cutover action
+      ansible.builtin.assert:
+        that:
+          - blocky_k3s_cutover_action in ["cutover", "rollback"]
+        fail_msg: >-
+          blocky_k3s_cutover_action must be "cutover" or "rollback".
+
+  tasks:
+    # Same container names the blocky role's own blocky_container_name/
+    # blocky_postgres_container_name defaults use -- literals here so
+    # this playbook keeps working unaffected by that role's own
+    # eventual deletion, matching shared-ingress-k3s-cutover.yml's own
+    # reasoning exactly. blocky stopped first, then blocky-postgres --
+    # reverse order on rollback, so Blocky's own query log target is
+    # never left running with nowhere to write during either
+    # transition.
+    - name: Stop blocky's own container
+      community.docker.docker_container:
+        name: blocky
+        state: stopped
+      when: blocky_k3s_cutover_action == "cutover"
+
+    - name: Stop blocky-postgres's own container
+      community.docker.docker_container:
+        name: blocky-postgres
+        state: stopped
+      when: blocky_k3s_cutover_action == "cutover"
+
+    - name: Start blocky-postgres's own container back up
+      community.docker.docker_container:
+        name: blocky-postgres
+        state: started
+      when: blocky_k3s_cutover_action == "rollback"
+
+    - name: Start blocky's own container back up
+      community.docker.docker_container:
+        name: blocky
+        state: started
+      when: blocky_k3s_cutover_action == "rollback"
