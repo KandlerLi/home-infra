@@ -456,22 +456,47 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("state: link", resolv_conf_task)
         self.assertIn("force: true", resolv_conf_task)
 
-    def test_systemd_resolved_restarts_only_when_its_config_changed(
+    def test_systemd_resolved_restart_checks_live_reality_not_just_this_runs_changes(
         self,
     ) -> None:
+        # Confirmed live (2026-09-01): a run whose copy/file tasks both
+        # reported ok (config already matched, from an earlier apply)
+        # still left the stub listening, because that earlier apply's
+        # own restart never actually happened either. Gating the
+        # restart purely on .changed from this run's own tasks would
+        # silently never self-heal a node stuck in that state -- a
+        # direct probe of whether the stub is still listening is
+        # required too.
         tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
             encoding="utf-8"
         )
 
+        probe_task = tasks.split(
+            "Check whether systemd-resolved's stub listener is still "
+            "active",
+            1,
+        )[1].split(
+            "Restart systemd-resolved when its config changed or its "
+            "stub listener is still active",
+            1,
+        )[0]
+        self.assertIn("host: 127.0.0.53", probe_task)
+        self.assertIn("port: 53", probe_task)
+        self.assertIn("register: k3s_node_resolved_stub_probe", probe_task)
+        self.assertIn("ignore_errors: true", probe_task)
+
         restart_task = tasks.split(
-            "Restart systemd-resolved when its stub listener config "
-            "changed",
+            "Restart systemd-resolved when its config changed or its "
+            "stub listener is still active",
             1,
         )[1]
         self.assertIn("name: systemd-resolved", restart_task)
         self.assertIn("state: restarted", restart_task)
         self.assertIn("k3s_node_resolved_stub_config.changed", restart_task)
         self.assertIn("k3s_node_resolv_conf_link.changed", restart_task)
+        self.assertIn(
+            "k3s_node_resolved_stub_probe is succeeded", restart_task
+        )
 
 
 if __name__ == "__main__":

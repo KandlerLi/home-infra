@@ -60,13 +60,30 @@
     force: true
   register: k3s_node_resolv_conf_link
 
-- name: Restart systemd-resolved when its stub listener config changed
+# Direct reality check, not just "did this run's own tasks report a
+# change" -- confirmed live (2026-09-01): a run whose copy/file tasks
+# both reported ok (config already matched, from an earlier apply)
+# still left the stub listening, because that earlier apply's own
+# restart never actually happened either. Only .changed-gating this
+# would silently never self-heal a node stuck in that state.
+- name: Check whether systemd-resolved's stub listener is still active
+  ansible.builtin.wait_for:
+    host: 127.0.0.53
+    port: 53
+    timeout: 2
+    state: started
+  register: k3s_node_resolved_stub_probe
+  ignore_errors: true
+  changed_when: false
+
+- name: Restart systemd-resolved when its config changed or its stub listener is still active
   ansible.builtin.systemd_service:
     name: systemd-resolved
     state: restarted
   when: >-
     k3s_node_resolved_stub_config.changed
     or k3s_node_resolv_conf_link.changed
+    or k3s_node_resolved_stub_probe is succeeded
 
 - name: Validate k3s agent join configuration
   ansible.builtin.assert:
