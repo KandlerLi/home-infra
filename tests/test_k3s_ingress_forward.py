@@ -133,6 +133,40 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         module_args = reconcile_task.split("loop:", 1)[0]
         self.assertNotIn("item.protocol", module_args)
 
+    def test_pre_fix_forward_accept_rule_shape_is_explicitly_reconciled(
+        self,
+    ) -> None:
+        # Same class of fix as the DNAT rule's own reconciliation above,
+        # for the FORWARD accept rule's own pre-fix shape (always tcp,
+        # no protocol in the comment) -- confirmed live (2026-09-01),
+        # inspecting the actual persisted /etc/iptables/rules.v4: this
+        # one was never cleaned up the way the DNAT rule's was, so
+        # duplicate FORWARD ACCEPT rules for 80/443 had been sitting
+        # there ever since (harmless -- both just ACCEPT the same
+        # traffic -- but exactly the config drift this repo tries not
+        # to accumulate).
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        reconcile_task = tasks.split(
+            "Remove the pre-fix FORWARD accept rule shape", 1
+        )[1].split("Relay ingress traffic to k3s via DNAT", 1)[0]
+        self.assertIn("state: absent", reconcile_task)
+        self.assertIn("chain: FORWARD", reconcile_task)
+        self.assertIn("protocol: tcp", reconcile_task)
+        self.assertIn("jump: ACCEPT", reconcile_task)
+
+        # Reproduces the role's very first comment shape (commit
+        # 4accac7) verbatim, not the current per-protocol template
+        # (commit 84662f5 prefixed it with "tcp"/"udp") -- same reason
+        # as the DNAT reconciliation's own comment.
+        self.assertIn(
+            "k3s_ingress_forward: allow ->\n"
+            "      {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}",
+            reconcile_task,
+        )
+        module_args = reconcile_task.split("loop:", 1)[0]
+        self.assertNotIn("item.protocol", module_args)
+
     def test_dnat_rule_targets_prerouting_nat_table(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
@@ -224,6 +258,9 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         ]
         self.assertIn("netfilter-persistent", persist_task)
         self.assertIn("k3s_ingress_forward_accept_result is changed", persist_task)
+        self.assertIn(
+            "k3s_ingress_forward_accept_reconcile_result is changed", persist_task
+        )
         self.assertIn("k3s_ingress_forward_dnat_result is changed", persist_task)
 
     def test_one_time_force_persist_catches_up_the_saved_state(self) -> None:

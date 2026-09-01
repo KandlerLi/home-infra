@@ -67,6 +67,38 @@
       {{ item.public_port }} -> {{ item.target_port }}
   register: k3s_ingress_forward_accept_result
 
+# One-time reconciliation, the same class of fix as the DNAT rule's
+# own reconciliation below: this rule's own comment format (and its
+# always-tcp protocol) predates per-rule protocol support (commit
+# 84662f5) -- confirmed live (2026-09-01), inspecting the actual
+# persisted /etc/iptables/rules.v4: the pre-fix shape was never
+# cleaned up here the way it was for the DNAT rule, so duplicate
+# FORWARD ACCEPT rules for 80/443 have been sitting there ever since
+# (harmless -- both just ACCEPT the same traffic -- but exactly the
+# kind of silent config drift this repo tries not to accumulate).
+- name: Remove the pre-fix FORWARD accept rule shape (always tcp, no protocol in comment)
+  ansible.builtin.iptables:
+    state: absent
+    chain: FORWARD
+    destination: "{{ k3s_ingress_forward_target_ip }}"
+    protocol: tcp
+    destination_port: "{{ item.target_port }}"
+    ctstate:
+      - NEW
+      - ESTABLISHED
+      - RELATED
+    jump: ACCEPT
+    comment: >-
+      k3s_ingress_forward: allow ->
+      {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
+  loop: "{{ k3s_ingress_forward_rules }}"
+  loop_control:
+    label: >-
+      {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} -> {{ item.target_port }}
+  when: k3s_ingress_forward_enabled | bool
+  register: k3s_ingress_forward_accept_reconcile_result
+
 # One-time reconciliation: every DNAT rule this role ever applied
 # before 2026-09-01 was created without an in_interface restriction,
 # so it also hairpinned the k3s VM's own outbound traffic back to
@@ -152,5 +184,6 @@
   changed_when: true
   when: >-
     k3s_ingress_forward_accept_result is changed
+    or k3s_ingress_forward_accept_reconcile_result is changed
     or k3s_ingress_forward_reconcile_result is changed
     or k3s_ingress_forward_dnat_result is changed
