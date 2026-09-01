@@ -2,16 +2,18 @@
 # One-time cutover playbook for shared_ingress's own move to k3s (see
 # infra/k3s-apps' own modules/ingress/ and this repo's own
 # k3s_ingress_forward role). Stops shared_ingress's own container --
-# never deletes it -- so this stays a fast, reviewed rollback for the
-# whole bake-in period, the same "prove it, then remove the old thing"
-# discipline every prior migration here used.
+# never deletes it -- so this stays a fast, reviewed rollback path.
+# The `shared_ingress` role itself (and the family of guarded
+# publish/rollback playbooks built around it) was deleted outright on
+# 2026-09-01 once the cutover was confirmed live -- this playbook
+# deliberately never invoked that role (see the literal container name
+# below), so it keeps working unaffected: the container's own config
+# lives in Docker's own state regardless of whether the Ansible source
+# that originally created it still exists in this repo.
 #
-# shared_ingress_enabled (the role's own opt-in flag) is a pure
-# skip-guard -- wraps the whole role in `when:`, so flipping it to
-# false and re-applying would only skip its tasks, never actively stop
-# an already-running container. This playbook is the actual stop/start
-# mechanism, matching shared-ingress-rollback.yml's own precedent
-# (docker_container: state: stopped) for the exact same reason.
+# Manages the container directly (docker_container: state:
+# stopped/started) rather than through any role, since there's no
+# `shared_ingress_enabled`-style flag left to flip and re-apply.
 #
 # Cut over:
 #   ansible-playbook ansible/playbooks/shared-ingress-k3s-cutover.yml \
@@ -54,12 +56,10 @@
           "rollback".
 
   tasks:
-    # Same container name as shared_ingress's own
-    # shared_ingress_container_name default -- a literal here, not a
-    # reference to that role default, matching
-    # shared-ingress-rollback.yml's own precedent: role defaults aren't
-    # loaded outside the role's own execution, and this playbook
-    # deliberately never invokes that role.
+    # Same container name the now-deleted shared_ingress role's own
+    # shared_ingress_container_name default used -- a literal here
+    # since that role (and its own defaults) no longer exist to
+    # reference at all.
     - name: Stop shared_ingress's own container
       community.docker.docker_container:
         name: shared-ingress

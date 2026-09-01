@@ -9,7 +9,6 @@ from jinja2 import Environment, FileSystemLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ROLE_ROOT = PROJECT_ROOT / "ansible/roles/monitoring"
-SHARED_INGRESS_ROOT = PROJECT_ROOT / "ansible/roles/shared_ingress"
 
 
 def render(name: str, **overrides: object) -> str:
@@ -23,18 +22,6 @@ def render(name: str, **overrides: object) -> str:
     # callers already pass real values for other required vars below.
     ctx = {**defaults, "monitoring_blocky_enabled": False, **overrides}
     return env.get_template(name).render(**ctx)
-
-
-def render_shared_ingress(**overrides: object) -> str:
-    env = Environment(
-        loader=FileSystemLoader(str(SHARED_INGRESS_ROOT / "templates"))
-    )
-    env.filters["bool"] = bool
-    defaults = yaml.safe_load(
-        (SHARED_INGRESS_ROOT / "defaults/main.yml").read_text()
-    )
-    ctx = {**defaults, **overrides}
-    return env.get_template("dynamic.yml.j2").render(**ctx)
 
 
 class MonitoringRoleTests(unittest.TestCase):
@@ -215,7 +202,8 @@ class MonitoringRoleTests(unittest.TestCase):
     def test_authenticated_targets_are_probed_with_the_401_tolerant_module(self) -> None:
         # torrent.jkandler.de and ai.jkandler.de sit behind Traefik Basic
         # Auth, and no plaintext credential for either is available to
-        # this role (only the bcrypt hash shared_ingress uses) -- probing
+        # this role (only the bcrypt hash the k3s-native ingress uses)
+        # -- probing
         # them with the plain http_2xx module would permanently alert,
         # since blackbox_exporter never sends the required Authorization
         # header and always gets 401. Confirmed live: both fired
@@ -327,18 +315,6 @@ class MonitoringRoleTests(unittest.TestCase):
                 for panel in data["panels"]:
                     for target in panel.get("targets", []):
                         self.assertEqual(target["datasource"]["uid"], "prometheus")
-
-    def test_role_is_registered_in_site_yml_after_shared_ingress(self) -> None:
-        # After shared_ingress specifically: by the time monitoring
-        # deploys, every service it probes/monitors should already exist.
-        site_yml = (PROJECT_ROOT / "ansible/playbooks/site.yml").read_text(
-            encoding="utf-8"
-        )
-
-        shared_ingress_index = site_yml.index("- shared_ingress")
-        monitoring_index = site_yml.index("- monitoring")
-        self.assertGreater(monitoring_index, shared_ingress_index)
-
 
 class BlockyIntegrationTests(unittest.TestCase):
     def test_scrape_job_only_appears_when_blocky_is_enabled(self) -> None:
@@ -548,103 +524,6 @@ class AlertmanagerK3sMigrationTests(unittest.TestCase):
         )[1].split("- name:", 1)[0]
         self.assertIn("monitoring_config_dir }}/alertmanager.yml", cleanup_task)
         self.assertIn("monitoring_data_dir }}/alertmanager", cleanup_task)
-
-
-class GrafanaIngressTests(unittest.TestCase):
-    def test_grafana_route_requires_its_own_basic_auth_and_resource_limits(
-        self,
-    ) -> None:
-        defaults = (SHARED_INGRESS_ROOT / "defaults/main.yml").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("shared_ingress_grafana_domain: grafana.jkandler.de", defaults)
-        self.assertIn("shared_ingress_grafana_upstream: http://127.0.0.1:3000", defaults)
-
-        dynamic = (SHARED_INGRESS_ROOT / "templates/dynamic.yml.j2").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("shared_ingress_grafana_domain", dynamic)
-        self.assertIn("/etc/traefik/users", dynamic)
-
-        # grafana-rate-limit/-request-limit/-security-headers are generated
-        # by a loop over shared_ingress_rate_limited_routes (shared with
-        # deluge/home), not literal source text -- render it to confirm
-        # they actually come out the other side for this route.
-        # The domain/upstream/rate values above already match this role's
-        # own defaults -- only the enabled flag needs overriding to render
-        # the route at all.
-        data = yaml.safe_load(
-            render_shared_ingress(shared_ingress_grafana_enabled=True)
-        )
-
-        self.assertIn("grafana-rate-limit", data["http"]["middlewares"])
-        self.assertIn("grafana-request-limit", data["http"]["middlewares"])
-        self.assertIn("grafana-security-headers", data["http"]["middlewares"])
-
-    def test_grafana_route_reuses_the_shared_auth_credential(self) -> None:
-        # Grafana deliberately shares one Basic Auth credential/usersFile
-        # with the agent and Deluge routes (fewer passwords to manage),
-        # rather than getting its own -- see shared_ingress_auth_username
-        # in defaults/main.yml for the accepted blast-radius tradeoff.
-        # Only the enabled flag needs overriding to render the route --
-        # everything else this template needs is already correct in
-        # shared_ingress's own defaults.
-        data = yaml.safe_load(
-            render_shared_ingress(shared_ingress_grafana_enabled=True)
-        )
-
-        grafana_chain_middlewares = data["http"]["middlewares"]["grafana-chain"][
-            "chain"
-        ]["middlewares"]
-        self.assertIn("shared-auth", grafana_chain_middlewares)
-
-    def test_grafana_route_renders_independently_of_other_feature_flags(
-        self,
-    ) -> None:
-        env = Environment(
-            loader=FileSystemLoader(str(SHARED_INGRESS_ROOT / "templates"))
-        )
-        env.filters["bool"] = bool
-        template = env.get_template("dynamic.yml.j2")
-
-        rendered = template.render(
-            shared_ingress_nextcloud_domain="nextcloud.jkandler.de",
-            shared_ingress_nextcloud_upstream="http://127.0.0.1:11000",
-            shared_ingress_agent_enabled=False,
-            shared_ingress_open_webui_enabled=False,
-            shared_ingress_deluge_enabled=False,
-            shared_ingress_grafana_enabled=True,
-            shared_ingress_grafana_domain="grafana.jkandler.de",
-            shared_ingress_grafana_upstream="http://127.0.0.1:3000",
-            shared_ingress_grafana_rate_average=120,
-            shared_ingress_grafana_rate_period="1m",
-            shared_ingress_grafana_rate_burst=240,
-            shared_ingress_grafana_max_request_body_bytes=1048576,
-        )
-        data = yaml.safe_load(rendered)
-
-        self.assertIn("grafana", data["http"]["routers"])
-        self.assertIn("grafana", data["http"]["services"])
-        self.assertIn("grafana-chain", data["http"]["middlewares"])
-        self.assertNotIn("home-agent", data["http"]["services"])
-        self.assertNotIn("deluge", data["http"]["services"])
-
-    def test_initial_grafana_publication_requires_confirmation(self) -> None:
-        tasks = (SHARED_INGRESS_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-        publish_playbook = (
-            PROJECT_ROOT / "ansible/playbooks/publish-grafana.yml"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn("PUBLISH_GRAFANA", tasks)
-        self.assertIn("grafana_publish_confirmation", publish_playbook)
-
-    def test_rollback_playbook_requires_confirmation(self) -> None:
-        rollback_playbook = (
-            PROJECT_ROOT / "ansible/playbooks/rollback-grafana.yml"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn("ROLL_BACK_GRAFANA", rollback_playbook)
-        self.assertIn("shared_ingress_grafana_enabled: false", rollback_playbook)
 
 
 class NtfyRelayServiceTests(unittest.TestCase):

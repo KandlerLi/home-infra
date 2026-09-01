@@ -99,41 +99,23 @@ only owns the host-level prerequisites those k3s Pods still depend on:
 
 `ai.jkandler.de` is split by path between the two (`home_agent`
 answers `/healthz` and `/v1/chat`, `open_webui` gets everything else)
--- see `shared_ingress` below, and `infra/k3s-apps`' own
-`ai_ingress.tf` for how that split is replicated on the cluster side.
+-- see `infra/k3s-apps`' own `ai_ingress.tf` for how that split is
+implemented.
 
 ## Shared HTTPS ingress
 
-The opt-in `shared_ingress` role prepares a pinned Traefik container using
-file-based routing. It receives no Docker socket and provides automatic TLS,
-Basic Auth, rate limiting, request-size limits, and security headers for
-`ai.jkandler.de`. Nextcloud remains unauthenticated by Traefik and is routed by
-its existing hostname, `nextcloud.jkandler.de`.
-
-Preparation does not start Traefik or change production ports:
-
-```bash
-.venv/bin/ansible-playbook \
-  ansible/playbooks/shared-ingress-prepare.yml \
-  --ask-become-pass
-```
-
-The cutover is intentionally guarded. It refuses to run while
-`nextcloud-aio-apache` is active and requires the exact extra-variable
-confirmation `MIGRATE_NEXTCLOUD_INGRESS`. Follow the dedicated documentation
-runbook before invoking `ansible/playbooks/shared-ingress.yml`; the migration
-moves Nextcloud Apache to `127.0.0.1:11000` and transfers public ports 80/443
-to Traefik.
-
-The main `site.yml` keeps `shared_ingress` disabled by default. Do not create
-the `ai.jkandler.de` DNS record or run the cutover until authentication,
-ACME email, backups, and rollback steps have been verified.
-
-After a successful Nextcloud cutover, persist the reverse-proxy and shared
-ingress enable flags in group variables before the next normal `site.yml` run.
-Use `shared-ingress-agent.yml` only after the agent DNS record resolves, and
-use the separately guarded `shared-ingress-rollback.yml` if Nextcloud
-validation fails.
+**Moved to k3s, 2026-09-01.** The `shared_ingress` role that used to run
+a pinned Traefik container directly on the homeserver (file-based
+routing, automatic TLS, Basic Auth, rate limiting, security headers for
+every public hostname) was deleted outright once its k3s-native
+replacement was confirmed live -- `infra/k3s-apps`' own
+`modules/ingress/`, reached from the internet through this repo's own
+`k3s_ingress_forward` role (opt-in iptables DNAT on the homeserver;
+`192.168.101.0/24` is otherwise unreachable from the LAN). ACME now
+uses DNS-01 against Route53 rather than the original role's own
+TLS-ALPN-01. See `home-infra-ai-context`'s `current-state.md`, "k3s
+learning cluster" section, for the full migration writeup and the real
+bugs found along the way.
 
 ## DNS ad-blocking
 

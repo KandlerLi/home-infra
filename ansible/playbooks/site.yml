@@ -15,5 +15,4 @@
     - sankey_export
     - home_agent
     - open_webui
-    - shared_ingress
     - monitoring
