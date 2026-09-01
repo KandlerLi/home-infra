@@ -1,0 +1,34 @@
+# Opt-in, matching every other role's own convention -- this service
+# answers real DNS queries from the LAN, so it must never start as a
+# side effect of a normal apply. See this role's own README for why it
+# exists at all (Blocky's own Pod only has an IPv4 address inside the
+# k3s VM's isolated network; plain DNAT can't bridge address families,
+# so this relay does it directly).
+blocky_ipv6_relay_enabled: false
+
+# Blocky's own fixed target inside k3s (infra/k3s-apps, modules/blocky/
+# own blocky-svc LoadBalancer address) -- a literal here rather than a
+# cross-role lookup, same reasoning k3s_ingress_forward_target_ip's own
+# comment already documents (role defaults aren't reliably exposed
+# across roles the way a real dependency would be).
+blocky_ipv6_relay_backend_host: 192.168.101.10
+blocky_ipv6_relay_backend_port: 53
+
+# The access boundary for this service -- restricts the ip6tables
+# INPUT rule below to exactly this source prefix, never left open to
+# ::/0. Empty by default (this role's own validation then refuses to
+# do anything at all if blocky_ipv6_relay_enabled is true), since there
+# is no safe default: it has to be the LAN's own real IPv6 prefix
+# (either the ISP-delegated GUA prefix, or a ULA range if the FRITZ!Box
+# has "also support unique local addresses" enabled -- ULA is the more
+# robust choice, since it never rotates the way an ISP-delegated prefix
+# can), which nothing in this repo can discover or safely guess at.
+# Determine it directly on the FRITZ!Box (Home Network -> Network ->
+# IPv6 settings) before ever setting this in inventory. An open DNS
+# relay reachable from the public internet is a real abuse vector (DNS
+# amplification), not just a privacy nicety -- see this role's own
+# README for the full reasoning.
+blocky_ipv6_relay_lan_prefix: ""
+
+blocky_ipv6_relay_service_user: blocky-ipv6-relay
+blocky_ipv6_relay_install_dir: /usr/local/lib/blocky-ipv6-relay

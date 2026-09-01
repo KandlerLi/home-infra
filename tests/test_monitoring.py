@@ -571,7 +571,9 @@ class BlockyK3sMigrationTests(unittest.TestCase):
         site = (PROJECT_ROOT / "ansible/playbooks/site.yml").read_text(
             encoding="utf-8"
         )
-        self.assertNotIn("- blocky", site)
+        # Exact line, not a substring check -- "- blocky_ipv6_relay" (a
+        # real, separate, still-existing role) also contains "- blocky".
+        self.assertNotIn("\n    - blocky\n", site)
 
     def test_blocky_enabled_is_unconditional_not_a_dead_cross_role_reference(
         self,

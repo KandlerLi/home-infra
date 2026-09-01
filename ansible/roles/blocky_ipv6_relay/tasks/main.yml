@@ -1,0 +1,138 @@
+---
+# Always runs, regardless of blocky_ipv6_relay_enabled -- matches
+# k3s_ingress_forward's own target_ip validation precedent (a silent
+# typo here should never lie dormant until the day someone flips
+# enabled=true without re-checking). The assertion itself absorbs the
+# enabled-conditionality, not a task-level when:.
+- name: Validate blocky_ipv6_relay configuration
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (blocky_ipv6_relay_enabled | bool)
+        or (
+          blocky_ipv6_relay_lan_prefix | trim | length > 0
+          and blocky_ipv6_relay_lan_prefix | trim != "::/0"
+        )
+    fail_msg: >-
+      blocky_ipv6_relay_lan_prefix must be set to the LAN's own real
+      IPv6 prefix (never ::/0) before blocky_ipv6_relay_enabled can be
+      true -- see this role's own README/defaults for where to find
+      it. An empty or wide-open value here would mean either nothing
+      is protecting this DNS relay, or it's protecting nothing.
+
+- name: Create blocky_ipv6_relay service account
+  ansible.builtin.user:
+    name: "{{ blocky_ipv6_relay_service_user }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create blocky_ipv6_relay install directory
+  ansible.builtin.file:
+    path: "{{ blocky_ipv6_relay_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install blocky_ipv6_relay script
+  ansible.builtin.copy:
+    src: blocky_ipv6_relay.py
+    dest: "{{ blocky_ipv6_relay_install_dir }}/blocky_ipv6_relay.py"
+    owner: root
+    group: root
+    mode: "0644"
+  register: blocky_ipv6_relay_script
+
+- name: Install blocky_ipv6_relay systemd unit
+  ansible.builtin.template:
+    src: blocky-ipv6-relay.service.j2
+    dest: /etc/systemd/system/blocky-ipv6-relay.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: blocky_ipv6_relay_unit
+
+- name: Reload systemd for the blocky_ipv6_relay unit
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: blocky_ipv6_relay_unit.changed
+
+# A real toggle, not just a skip-guard: enabled/state both flip off
+# disabling this, actually stopping an already-running relay rather
+# than merely skipping its creation on a host that never had it. The
+# unit file above is always installed regardless of enabled, so this
+# task always has a real unit to act on even the first time this role
+# ever runs with blocky_ipv6_relay_enabled still false.
+- name: Ensure blocky_ipv6_relay is in its desired running state
+  ansible.builtin.systemd_service:
+    name: blocky-ipv6-relay.service
+    enabled: "{{ blocky_ipv6_relay_enabled | bool }}"
+    state: >-
+      {{
+        (
+          'restarted'
+          if (blocky_ipv6_relay_script.changed or blocky_ipv6_relay_unit.changed)
+          else 'started'
+        )
+        if (blocky_ipv6_relay_enabled | bool)
+        else 'stopped'
+      }}
+
+# Gated on the prefix being set, not on enabled directly -- covers
+# disabling this role while leaving blocky_ipv6_relay_lan_prefix in
+# place (a real, live rule needs removing then), not just the case
+# where both happen together. iptables-persistent itself isn't
+# guaranteed to already be installed here: unlike k3s_ingress_forward
+# (this repo's other iptables/firewall role), this role runs from
+# site.yml, which has no dependency on k3s_ingress_forward's own
+# separately-invoked k3s.yml playbook ever having run first.
+- name: Preseed iptables-persistent to skip its install-time prompts
+  ansible.builtin.debconf:
+    name: iptables-persistent
+    question: "iptables-persistent/autosave_{{ item }}"
+    value: "false"
+    vtype: boolean
+  loop:
+    - v4
+    - v6
+  when: blocky_ipv6_relay_lan_prefix | length > 0
+
+- name: Install iptables-persistent
+  ansible.builtin.apt:
+    name: iptables-persistent
+    state: present
+    update_cache: true
+  when: blocky_ipv6_relay_lan_prefix | length > 0
+
+# Confirmed via ansible.builtin.iptables' own docs: ip_version: ipv6
+# targets ip6tables directly, not iptables -- this rule never touches
+# IPv4 traffic at all, matching blocky_ipv6_relay.py's own
+# IPV6_V6ONLY socket option (this is the actual access boundary for
+# that service, not a systemd-level address allowlist -- see the
+# .service.j2 template's own comment).
+- name: Allow blocky_ipv6_relay's own DNS port through ip6tables
+  ansible.builtin.iptables:
+    state: "{{ 'present' if (blocky_ipv6_relay_enabled | bool) else 'absent' }}"
+    ip_version: ipv6
+    chain: INPUT
+    protocol: "{{ item }}"
+    destination_port: 53
+    source: "{{ blocky_ipv6_relay_lan_prefix }}"
+    jump: ACCEPT
+    comment: "blocky_ipv6_relay: allow {{ item }} 53 from {{ blocky_ipv6_relay_lan_prefix }}"
+  loop:
+    - tcp
+    - udp
+  loop_control:
+    label: "{{ item }} 53 from {{ blocky_ipv6_relay_lan_prefix }}"
+  when: blocky_ipv6_relay_lan_prefix | length > 0
+  register: blocky_ipv6_relay_firewall_result
+
+- name: Persist blocky_ipv6_relay's own ip6tables rule across reboots
+  ansible.builtin.command:
+    argv:
+      - netfilter-persistent
+      - save
+  changed_when: true
+  when: blocky_ipv6_relay_firewall_result is changed

@@ -5,8 +5,11 @@ relay on the homeserver, forwarding its own public/LAN-facing ports
 straight through to a k3s Service at `192.168.101.10`, unmodified at
 the packet level -- k3s's own Traefik (`infra/k3s-apps`' own
 `modules/ingress/`) originally, now also Blocky's own DNS Service
-(`infra/k3s-apps`' own `modules/blocky/`). The one iptables/firewall
-role in this repo.
+(`infra/k3s-apps`' own `modules/blocky/`). The `iptables` (IPv4) role
+in this repo -- `blocky_ipv6_relay`'s own `ip6tables` INPUT rule is a
+materially different concern (protecting a locally-listening process
+from the LAN, not DNAT-relaying real inbound traffic through to a k3s
+Service), so it lives in that role instead of here.
 
 - **A relay, not a proxy.** The k3s VM's own network
   (`192.168.101.0/24`) is deliberately unreachable from the LAN --
