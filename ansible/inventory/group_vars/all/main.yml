@@ -195,3 +195,14 @@ blocky_enabled: true
 # Same Grafana-in-k3s migration step as monitoring_prometheus_k3s_bind_address
 # above -- see its own comment.
 blocky_postgres_k3s_bind_address: 192.168.101.1
+# The actual cutover: confirmed independently first (2026-09-01) that
+# infra/k3s-apps' own modules/blocky is serving real production LAN
+# DNS traffic correctly (k3s_ingress_forward's own DNAT relay, a real
+# dig against the homeserver's own LAN IP resolving correctly, and
+# Blocky's own query log showing the real requesting client's address
+# after blocky-svc's externalTrafficPolicy fix) -- the same bar
+# monitoring_alertmanager_upstream's own cutover was held to. A clean
+# switch, not an addition -- see this variable's own comment in
+# ansible/roles/monitoring/defaults/main.yml for why scraping both at
+# once would be actively misleading.
+monitoring_blocky_upstream: 192.168.101.10:4000
