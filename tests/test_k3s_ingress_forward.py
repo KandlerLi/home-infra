@@ -67,6 +67,32 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         self.assertIn("chain: PREROUTING", dnat_task)
         self.assertIn("jump: DNAT", dnat_task)
 
+    def test_dnat_rule_excludes_traffic_from_the_k3s_bridge_itself(
+        self,
+    ) -> None:
+        # Without this exclusion, the k3s VM's own outbound traffic on
+        # source port 80/443 (any HTTPS image pull) matches the DNAT
+        # rule's own destination_port just as well as real inbound
+        # traffic does, and gets hairpinned straight back to the VM's
+        # own address instead of ever leaving -- confirmed live
+        # (2026-09-01), surfaced as ImagePullBackOff with no other
+        # visible cause.
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
+            encoding="utf-8"
+        )
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "k3s_ingress_forward_target_bridge: virbr11", defaults
+        )
+        dnat_task = tasks.split(
+            "Relay ingress traffic to k3s via DNAT", 1
+        )[1]
+        self.assertIn(
+            'in_interface: "!{{ k3s_ingress_forward_target_bridge }}"',
+            dnat_task,
+        )
+
     def test_rule_protocol_defaults_to_tcp_but_is_overridable(self) -> None:
         # Every rule needed only tcp until DNS -- DNS needs both tcp and
         # udp forwarded to the same port, so this has to be a real

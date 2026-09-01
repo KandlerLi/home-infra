@@ -49,6 +49,19 @@ role in this repo.
   rule needed only tcp until DNS) -- DNS needs both `tcp` and `udp`
   forwarded to the same port, so Blocky's own entry is two rules, not
   one.
+- **The DNAT rule excludes traffic arriving via the k3s VM's own
+  bridge** (`in_interface: "!virbr11"`). `PREROUTING`/`nat` sees every
+  packet entering any interface, including the VM's own outbound
+  connections as they transit that bridge on their way out to the
+  internet -- without this exclusion, an outbound packet using source
+  port 80/443 (any HTTPS image pull, for instance) matches the DNAT
+  rule's own `destination_port` just as well as real inbound traffic
+  does, and gets hairpinned straight back to the VM's own address
+  instead of ever leaving. Confirmed live (2026-09-01): this exact bug
+  silently broke every outbound HTTPS/HTTP connection from
+  `k3s-node-1`, surfacing as `ImagePullBackOff` with no other visible
+  cause -- DNS and other ports were unaffected since they never
+  matched the rule's own `destination_port` in the first place.
 - **Persisted via `iptables-persistent`** (`netfilter-persistent
   save`, only when a rule actually changed) so the relay survives a
   reboot -- debconf-preseeded to skip its install-time interactive

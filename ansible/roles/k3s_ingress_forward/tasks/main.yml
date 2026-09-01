@@ -72,6 +72,10 @@
     state: "{{ 'present' if k3s_ingress_forward_enabled else 'absent' }}"
     table: nat
     chain: PREROUTING
+    # Excludes the k3s VM's own outbound traffic from matching this
+    # rule -- see k3s_ingress_forward_target_bridge's own comment in
+    # defaults/main.yml for why this is required, not optional.
+    in_interface: "!{{ k3s_ingress_forward_target_bridge }}"
     protocol: "{{ item.protocol | default('tcp') }}"
     destination_port: "{{ item.public_port }}"
     jump: DNAT
