@@ -15,6 +15,59 @@
       - --wait
   changed_when: false
 
+# Debian's default systemd-resolved setup points /etc/resolv.conf at
+# its own loopback stub (127.0.0.53). glibc's NSS resolver (what
+# ordinary shell tools -- dig, getent, an HTTP client -- go through)
+# talks to systemd-resolved's smarter D-Bus/Varlink interface
+# regardless, so it never sees a problem -- but Go binaries
+# (containerd included) use Go's own pure-Go resolver, which fires a
+# raw UDP query straight at whatever's in /etc/resolv.conf, bypassing
+# that smarter path entirely. Confirmed live (2026-09-01): with a
+# real, working network underneath (verified via a full TLS handshake
+# reaching ghcr.io/registry-1.docker.io directly), containerd's own
+# image pulls still failed over and over with "lookup ghcr.io: Try
+# again" -- stub-listener flakiness that a full k3s/containerd restart
+# didn't clear, because the stub itself was the problem, not any
+# cached process state. Disabling the stub listener and pointing
+# /etc/resolv.conf at systemd-resolved's own always-maintained
+# real-nameserver file instead (the standard, documented fix for this
+# exact class of bug) fixes it for every resolver on the node, not
+# just containerd's.
+- name: Create systemd-resolved drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Disable systemd-resolved's stub listener
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/disable-stub-listener.conf
+    content: |
+      [Resolve]
+      DNSStubListener=no
+    owner: root
+    group: root
+    mode: "0644"
+  register: k3s_node_resolved_stub_config
+
+- name: Point /etc/resolv.conf at systemd-resolved's real-nameserver file
+  ansible.builtin.file:
+    path: /etc/resolv.conf
+    src: /run/systemd/resolve/resolv.conf
+    state: link
+    force: true
+  register: k3s_node_resolv_conf_link
+
+- name: Restart systemd-resolved when its stub listener config changed
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
+    state: restarted
+  when: >-
+    k3s_node_resolved_stub_config.changed
+    or k3s_node_resolv_conf_link.changed
+
 - name: Validate k3s agent join configuration
   ansible.builtin.assert:
     that:

@@ -413,6 +413,66 @@ class K3sNodeTests(unittest.TestCase):
 
         self.assertIn("nfs-common", tasks)
 
+    def test_systemd_resolved_stub_listener_is_disabled(self) -> None:
+        # glibc's NSS resolver (curl, dig, getent) talks to
+        # systemd-resolved's smarter D-Bus/Varlink interface regardless
+        # of the stub listener -- but Go binaries (containerd included)
+        # use Go's own pure-Go resolver, which fires a raw UDP query
+        # straight at whatever's in /etc/resolv.conf, bypassing that
+        # smarter path. Confirmed live (2026-09-01): with a real,
+        # working network underneath, containerd's own image pulls
+        # still failed repeatedly with "lookup ghcr.io: Try again" --
+        # stub-listener flakiness a full k3s/containerd restart didn't
+        # clear, since the stub itself was the problem.
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("DNSStubListener=no", tasks)
+        self.assertIn(
+            "/etc/systemd/resolved.conf.d/disable-stub-listener.conf",
+            tasks,
+        )
+
+    def test_resolv_conf_points_at_the_real_nameserver_file_not_the_stub(
+        self,
+    ) -> None:
+        # /run/systemd/resolve/resolv.conf always holds the real
+        # upstream nameservers, maintained by systemd-resolved
+        # regardless of the stub listener setting -- unlike
+        # stub-resolv.conf (127.0.0.53), Go's raw-UDP resolver talks to
+        # it directly without hitting the stub's own flakiness.
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        resolv_conf_task = tasks.split(
+            "Point /etc/resolv.conf at systemd-resolved's real-nameserver "
+            "file",
+            1,
+        )[1]
+        self.assertIn("path: /etc/resolv.conf", resolv_conf_task)
+        self.assertIn("src: /run/systemd/resolve/resolv.conf", resolv_conf_task)
+        self.assertIn("state: link", resolv_conf_task)
+        self.assertIn("force: true", resolv_conf_task)
+
+    def test_systemd_resolved_restarts_only_when_its_config_changed(
+        self,
+    ) -> None:
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        restart_task = tasks.split(
+            "Restart systemd-resolved when its stub listener config "
+            "changed",
+            1,
+        )[1]
+        self.assertIn("name: systemd-resolved", restart_task)
+        self.assertIn("state: restarted", restart_task)
+        self.assertIn("k3s_node_resolved_stub_config.changed", restart_task)
+        self.assertIn("k3s_node_resolv_conf_link.changed", restart_task)
+
 
 if __name__ == "__main__":
     unittest.main()
