@@ -209,3 +209,20 @@ shared_ingress_home_upstream: http://192.168.101.10:80
 # ansible/roles/monitoring/defaults/main.yml for why scraping both at
 # once would be actively misleading.
 monitoring_blocky_upstream: 192.168.101.10:4000
+
+# blocky_ipv6_relay: bridges IPv6-transport DNS queries from the LAN
+# to Blocky's own IPv4-only address in k3s (see that role's own README
+# for why a relay, not a DNAT extension). fd71:c3c8:f74d::/64 is this
+# LAN's own real ULA prefix (FRITZ!Box Heimnetz-Eigenschaften, checked
+# 2026-09-01) -- ULA specifically, not the ISP-delegated GUA prefix
+# also shown there, since ULA never rotates the way a delegated prefix
+# can. This is the access boundary for the relay (see
+# blocky_ipv6_relay_lan_prefix's own comment in defaults/main.yml),
+# not optional hardening. FRITZ!Box's own "Andere DNSv6-Server"
+# setting is NOT pointed at the homeserver yet -- that's a separate,
+# still-pending step (needs the homeserver's own IPv6 interface ID
+# confirmed stable first; its addresses were still showing
+# "Temporary" as of this same check) -- so nothing about real LAN
+# traffic changes yet just from this being enabled.
+blocky_ipv6_relay_enabled: true
+blocky_ipv6_relay_lan_prefix: fd71:c3c8:f74d::/64
