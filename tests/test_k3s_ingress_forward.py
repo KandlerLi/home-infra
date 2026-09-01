@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+import yaml
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ROLE_ROOT = PROJECT_ROOT / "ansible/roles/k3s_ingress_forward"
 
@@ -38,6 +40,27 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
 
         self.assertIn("public_port: 80", defaults)
         self.assertIn("public_port: 443", defaults)
+
+    def test_default_rules_forward_dns_over_both_tcp_and_udp(self) -> None:
+        # The real cutover: infra/k3s-apps' own modules/blocky verified
+        # healthy internally first (a real in-cluster nslookup
+        # resolving correctly via both the Service name and this exact
+        # 192.168.101.10 target) before ever forwarding real LAN DNS
+        # traffic to it. Both protocols needed -- DNS falls back to tcp
+        # for responses too large for a single udp datagram.
+        defaults = yaml.safe_load(
+            (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        )
+
+        dns_rules = [
+            rule
+            for rule in defaults["k3s_ingress_forward_rules"]
+            if rule["public_port"] == 53
+        ]
+        protocols = {rule["protocol"] for rule in dns_rules}
+        self.assertEqual(protocols, {"tcp", "udp"})
+        for rule in dns_rules:
+            self.assertEqual(rule["target_port"], 53)
 
     def test_forward_accept_rule_is_inserted_ahead_of_docker_and_libvirt(
         self,

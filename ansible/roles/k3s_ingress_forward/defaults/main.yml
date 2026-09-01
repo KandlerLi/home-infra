@@ -50,3 +50,16 @@ k3s_ingress_forward_rules:
     target_port: 80
   - public_port: 443
     target_port: 443
+  # The real cutover: infra/k3s-apps' own modules/blocky verified
+  # healthy internally first (2026-09-01) -- both containers running,
+  # a real in-cluster nslookup resolving correctly via both the
+  # Service name and this exact 192.168.101.10 target -- before ever
+  # forwarding real LAN DNS traffic to it. tcp+udp both needed (DNS
+  # falls back to tcp for responses too large for a single udp
+  # datagram); everything else in this list only ever needed tcp.
+  - public_port: 53
+    target_port: 53
+    protocol: tcp
+  - public_port: 53
+    target_port: 53
+    protocol: udp
