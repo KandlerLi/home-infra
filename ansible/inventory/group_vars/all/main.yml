@@ -35,7 +35,23 @@ shared_ingress_nextcloud_upstream: http://192.168.101.1:11000
 # home_agent's own README/role comments for the full reasoning.
 home_agent_tools_tcp_bind_address: 192.168.101.1
 
-shared_ingress_enabled: true
+# false as of 2026-09-01: shared_ingress itself moved to k3s
+# (infra/k3s-apps' own modules/ingress/), reached via the new
+# k3s_ingress_forward DNAT relay instead of this role's own container.
+# shared_ingress_enabled gates the whole role behind a `when:` -- a
+# pure skip-guard, not a real toggle -- so this is the only thing
+# standing between the next routine site.yml apply (for any unrelated
+# change) and silently resurrecting the container that was
+# deliberately stopped for the cutover, exactly the near-miss already
+# documented for open_webui's own reshape. The container itself was
+# stopped via ansible/playbooks/shared-ingress-k3s-cutover.yml, not by
+# this flag -- flipping it back to true alone would NOT restart
+# anything by itself, only re-arm the role's own tasks for the next
+# apply. The role/container/host prerequisites stay as-is, not yet
+# reshaped or deleted -- deferred to a real bake-in period, the same
+# "prove it, then remove the old thing" discipline every prior
+# migration here used.
+shared_ingress_enabled: false
 shared_ingress_start: true
 shared_ingress_apex_redirect_enabled: true
 shared_ingress_agent_enabled: true
