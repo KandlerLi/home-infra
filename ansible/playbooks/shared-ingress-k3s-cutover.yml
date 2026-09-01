@@ -1,0 +1,73 @@
+---
+# One-time cutover playbook for shared_ingress's own move to k3s (see
+# infra/k3s-apps' own modules/ingress/ and this repo's own
+# k3s_ingress_forward role). Stops shared_ingress's own container --
+# never deletes it -- so this stays a fast, reviewed rollback for the
+# whole bake-in period, the same "prove it, then remove the old thing"
+# discipline every prior migration here used.
+#
+# shared_ingress_enabled (the role's own opt-in flag) is a pure
+# skip-guard -- wraps the whole role in `when:`, so flipping it to
+# false and re-applying would only skip its tasks, never actively stop
+# an already-running container. This playbook is the actual stop/start
+# mechanism, matching shared-ingress-rollback.yml's own precedent
+# (docker_container: state: stopped) for the exact same reason.
+#
+# Cut over:
+#   ansible-playbook ansible/playbooks/shared-ingress-k3s-cutover.yml \
+#     -e k3s_ingress_cutover_confirmation=CUTOVER_SHARED_INGRESS_TO_K3S \
+#     --ask-become-pass
+#
+# Roll back (starts the existing, already-configured container back up
+# exactly as it was -- no image pull, no recreation):
+#   ansible-playbook ansible/playbooks/shared-ingress-k3s-cutover.yml \
+#     -e k3s_ingress_cutover_confirmation=CUTOVER_SHARED_INGRESS_TO_K3S \
+#     -e shared_ingress_k3s_cutover_action=rollback \
+#     --ask-become-pass
+
+- name: Cut shared_ingress over to k3s, or roll back
+  hosts: home_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    shared_ingress_k3s_cutover_action: cutover
+
+  pre_tasks:
+    - name: Require explicit cutover confirmation
+      ansible.builtin.assert:
+        that:
+          - >-
+            k3s_ingress_cutover_confirmation | default('')
+            == "CUTOVER_SHARED_INGRESS_TO_K3S"
+        fail_msg: >-
+          Pass -e
+          k3s_ingress_cutover_confirmation=CUTOVER_SHARED_INGRESS_TO_K3S
+          only during a reviewed cutover or rollback.
+
+    - name: Validate cutover action
+      ansible.builtin.assert:
+        that:
+          - shared_ingress_k3s_cutover_action in ["cutover", "rollback"]
+        fail_msg: >-
+          shared_ingress_k3s_cutover_action must be "cutover" or
+          "rollback".
+
+  tasks:
+    # Same container name as shared_ingress's own
+    # shared_ingress_container_name default -- a literal here, not a
+    # reference to that role default, matching
+    # shared-ingress-rollback.yml's own precedent: role defaults aren't
+    # loaded outside the role's own execution, and this playbook
+    # deliberately never invokes that role.
+    - name: Stop shared_ingress's own container
+      community.docker.docker_container:
+        name: shared-ingress
+        state: stopped
+      when: shared_ingress_k3s_cutover_action == "cutover"
+
+    - name: Start shared_ingress's own container back up
+      community.docker.docker_container:
+        name: shared-ingress
+        state: started
+      when: shared_ingress_k3s_cutover_action == "rollback"
