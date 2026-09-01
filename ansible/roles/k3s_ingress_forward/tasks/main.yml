@@ -129,6 +129,21 @@
       {{ item.public_port }} -> {{ item.target_port }}
   register: k3s_ingress_forward_dnat_result
 
+# One-time catch-up for the same 2026-09-01 bug: the reconciliation
+# task's own result went unregistered for one real apply (fixed
+# above), so a run that genuinely removed the old rule live still
+# skipped persisting -- the saved iptables-persistent state on disk
+# is stale relative to the live table until this runs once. Safe to
+# delete once every real host has picked up this fix (matches the
+# reconciliation task's own note on its own eventual removal).
+- name: Force-persist once to catch the saved state up to 2026-09-01's live fix
+  ansible.builtin.command:
+    argv:
+      - netfilter-persistent
+      - save
+  changed_when: true
+  when: k3s_ingress_forward_enabled | bool
+
 - name: Persist iptables rules across reboots
   ansible.builtin.command:
     argv:

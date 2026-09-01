@@ -187,6 +187,22 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         self.assertIn("k3s_ingress_forward_accept_result is changed", persist_task)
         self.assertIn("k3s_ingress_forward_dnat_result is changed", persist_task)
 
+    def test_one_time_force_persist_catches_up_the_saved_state(self) -> None:
+        # A real, one-time consequence of the reconcile-result
+        # registration bug above: a run that removed the old rule live
+        # (before that bug was fixed) still skipped persisting, so the
+        # saved iptables-persistent state on disk is stale relative to
+        # the live table until this runs once, unconditionally, for
+        # every host that already picked up the live fix through that
+        # window.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        force_persist_task = tasks.split(
+            "Force-persist once to catch the saved state up", 1
+        )[1].split("Persist iptables rules across reboots", 1)[0]
+        self.assertIn("netfilter-persistent", force_persist_task)
+        self.assertIn("when: k3s_ingress_forward_enabled | bool", force_persist_task)
+
     def test_reconcile_task_result_is_registered_and_gates_persisting(
         self,
     ) -> None:
