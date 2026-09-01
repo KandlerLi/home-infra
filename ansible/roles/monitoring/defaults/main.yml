@@ -68,14 +68,23 @@ monitoring_blackbox_exporter_cpu_limit: 0.25
 monitoring_blackbox_exporter_pids_limit: 32
 
 # Every URL blackbox_exporter probes with its HTTPS/HTTP module for both
-# reachability and (for the https:// ones) certificate expiry. Traefik's
-# own loopback ping endpoint is included so a Traefik outage shows up the
-# same way any other service outage would.
+# reachability and (for the https:// ones) certificate expiry.
+#
+# http://127.0.0.1:8082/ping (shared_ingress's own Traefik loopback
+# ping endpoint) used to be included here too, so a Traefik outage
+# showed up the same way any other service outage would -- removed
+# 2026-09-01, confirmed live as a real, actively-firing false alarm:
+# shared_ingress was deleted that same day (Traefik moved to k3s,
+# infra/k3s-apps' own modules/ingress/), so nothing has listened on
+# this host's own loopback:8082 since, and this target had been
+# silently alerting on a service that was never coming back the whole
+# time. The public probes below already cover Traefik's own health
+# indirectly (they all route through it), so no direct replacement
+# was added.
 monitoring_probe_targets:
   - https://nextcloud.jkandler.de/
   - https://www.jkandler.de/
   - http://jkandler.de/
-  - http://127.0.0.1:8082/ping
 
 # ai.jkandler.de and torrent.jkandler.de sit behind Traefik Basic Auth
 # (shared_ingress_auth_password_hash, shared across every gated route),

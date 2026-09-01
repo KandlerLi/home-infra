@@ -168,7 +168,7 @@ class MonitoringRoleTests(unittest.TestCase):
 
         self.assertIn('Environment="LISTEN_HOST_K3S=192.168.101.1"', rendered)
 
-    def test_blackbox_probes_every_public_service_and_traefiks_own_ping(self) -> None:
+    def test_blackbox_probes_every_public_service(self) -> None:
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 
         for target in [
@@ -177,10 +177,24 @@ class MonitoringRoleTests(unittest.TestCase):
             "https://torrent.jkandler.de/",
             "https://www.jkandler.de/",
             "http://jkandler.de/",
-            "http://127.0.0.1:8082/ping",
         ]:
             with self.subTest(target=target):
                 self.assertIn(target, defaults)
+
+    def test_stale_shared_ingress_ping_probe_is_gone(self) -> None:
+        # Confirmed live (2026-09-01) as a real, actively-firing false
+        # alarm: shared_ingress (and its own loopback :8082 ping
+        # endpoint) was deleted the same day Traefik moved fully into
+        # k3s, but this probe target was never removed, so it kept
+        # alerting on a service that was never coming back. The role's
+        # own comment explaining the removal still names the old port
+        # for documentation, so check the actual target list, not the
+        # whole file's text.
+        defaults = yaml.safe_load(
+            (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        )
+
+        self.assertNotIn("http://127.0.0.1:8082/ping", defaults["monitoring_probe_targets"])
 
     def test_prometheus_config_wires_blackbox_multi_target_probing(self) -> None:
         rendered = render("prometheus.yml.j2")
