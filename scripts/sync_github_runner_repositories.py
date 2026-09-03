@@ -4,8 +4,8 @@
 Source of truth is repo-infra's config.yml: any repository entry with a
 truthy `runner` key gets a self-hosted GitHub Actions runner. This script
 reads that file and writes a generated, do-not-hand-edit Terraform
-auto.tfvars.json file infra/k3s-apps' own modules/github_runner/ reads
-(Terraform auto-loads any *.auto.tfvars.json file in the root module
+auto.tfvars.json file infra/k3s-apps' own bootstrap/modules/github_runner/
+reads (Terraform auto-loads any *.auto.tfvars.json file in the root module
 directory, so nothing there needs to reference it explicitly).
 
 Used to also generate an Ansible variable file too, back when
@@ -24,9 +24,13 @@ from pathlib import Path
 import yaml
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[3] / "bootstrap" / "repo-infra" / "config.yml"
-# A sibling repo, not a subdirectory of this one.
+# A sibling repo, not a subdirectory of this one. Under k3s-apps' own
+# bootstrap/ root (2026-09-03, moved there along with modules/github_runner
+# itself -- see that migration's own plan) since this file feeds a
+# variable modules/github_runner/variables.tf declares, and that module
+# now lives in bootstrap/, not k3s-apps' repo root.
 DEFAULT_K3S_APPS_OUTPUT = (
-    Path(__file__).resolve().parents[2] / "k3s-apps" / "repositories.auto.tfvars.json"
+    Path(__file__).resolve().parents[2] / "k3s-apps" / "bootstrap" / "repositories.auto.tfvars.json"
 )
 
 
