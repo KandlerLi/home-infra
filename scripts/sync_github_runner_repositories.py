@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generate infra/k3s-apps' own github_runner_repositories Terraform variable.
+"""Generate the k3s-bootstrap repo's own github_runner_repositories Terraform variable.
 
 Source of truth is repo-infra's config.yml: any repository entry with a
 truthy `runner` key gets a self-hosted GitHub Actions runner. This script
 reads that file and writes a generated, do-not-hand-edit Terraform
-auto.tfvars.json file infra/k3s-apps' own bootstrap/modules/github_runner/
+auto.tfvars.json file the k3s-bootstrap repo's own modules/github_runner/
 reads (Terraform auto-loads any *.auto.tfvars.json file in the root module
 directory, so nothing there needs to reference it explicitly).
 
@@ -24,13 +24,15 @@ from pathlib import Path
 import yaml
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[3] / "bootstrap" / "repo-infra" / "config.yml"
-# A sibling repo, not a subdirectory of this one. Under k3s-apps' own
-# bootstrap/ root (2026-09-03, moved there along with modules/github_runner
-# itself -- see that migration's own plan) since this file feeds a
-# variable modules/github_runner/variables.tf declares, and that module
-# now lives in bootstrap/, not k3s-apps' repo root.
-DEFAULT_K3S_APPS_OUTPUT = (
-    Path(__file__).resolve().parents[2] / "k3s-apps" / "bootstrap" / "repositories.auto.tfvars.json"
+# A sibling repo, not a subdirectory of this one. In the standalone
+# k3s-bootstrap repo (extracted 2026-09-03 from what was originally a
+# bootstrap/ subdirectory inside infra/k3s-apps itself -- see that
+# migration's own plan) since this file feeds a variable
+# modules/github_runner/variables.tf declares, and that module now
+# lives there, alongside repo-infra/terraform-state, not inside
+# k3s-apps' own repo at all.
+DEFAULT_K3S_BOOTSTRAP_OUTPUT = (
+    Path(__file__).resolve().parents[3] / "bootstrap" / "k3s-bootstrap" / "repositories.auto.tfvars.json"
 )
 
 
@@ -52,9 +54,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="Path to repo-infra's config.yml")
     parser.add_argument(
-        "--k3s-apps-output",
+        "--k3s-bootstrap-output",
         type=Path,
-        default=DEFAULT_K3S_APPS_OUTPUT,
+        default=DEFAULT_K3S_BOOTSTRAP_OUTPUT,
         help="Path to the generated Terraform auto.tfvars.json file",
     )
     args = parser.parse_args(argv)
@@ -63,18 +65,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: config file not found: {args.config}", file=sys.stderr)
         return 1
 
-    if not args.k3s_apps_output.parent.is_dir():
+    if not args.k3s_bootstrap_output.parent.is_dir():
         print(
-            f"error: k3s-apps output directory not found: {args.k3s_apps_output.parent} "
-            "(check out infra/k3s-apps as a sibling directory, or pass --k3s-apps-output)",
+            f"error: k3s-bootstrap output directory not found: {args.k3s_bootstrap_output.parent} "
+            "(check out bootstrap/k3s-bootstrap as a sibling of bootstrap/repo-infra, "
+            "or pass --k3s-bootstrap-output)",
             file=sys.stderr,
         )
         return 1
 
     config = yaml.safe_load(args.config.read_text()) or {}
     repositories = runner_repositories(config)
-    args.k3s_apps_output.write_text(render_tfvars(repositories))
-    print(f"wrote {len(repositories)} runner repositories to {args.k3s_apps_output}")
+    args.k3s_bootstrap_output.write_text(render_tfvars(repositories))
+    print(f"wrote {len(repositories)} runner repositories to {args.k3s_bootstrap_output}")
 
     return 0
 
