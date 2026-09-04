@@ -175,6 +175,35 @@
     state: active
     autostart: true
 
+- name: Read k3s libvirt network autostart state
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - net-info
+      - "{{ k3s_node_network_name }}"
+  register: k3s_node_network_info
+  changed_when: false
+
+# The autostart: true above is a known, long-standing upstream bug in
+# community.libvirt.virt_net -- confirmed live 2026-09-04: Autostart
+# still showed "no" (sudo virsh net-list --all) immediately after this
+# exact task ran successfully, which is what left both k3s VMs shut
+# off after a real host reboot despite this task supposedly already
+# fixing that on 2026-09-01. Matches two documented upstream issues:
+# ansible-collections/community.libvirt#107 (changes to an
+# already-active network only ever affect the live state, not the
+# persistent config, depending on internal libvirt update flags) and
+# ansible/ansible#27064 (autostart can be silently ignored depending
+# on the code path taken). Falling back to plain virsh directly, which
+# isn't affected by either.
+- name: Work around community.libvirt.virt_net's autostart bug
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - net-autostart
+      - "{{ k3s_node_network_name }}"
+  when: k3s_node_network_info.stdout is search('Autostart:\s+no')
+
 - name: Check whether this node's DHCP reservation already exists
   ansible.builtin.set_fact:
     k3s_node_reservation_present: >-
