@@ -122,6 +122,32 @@ class ApacheNetworkReconnectTests(unittest.TestCase):
             unit,
         )
 
+    def test_install_directory_is_created_before_the_script_is_copied(
+        self,
+    ) -> None:
+        # Confirmed live 2026-09-04: ansible.builtin.copy does not create
+        # missing intermediate directories on its own -- the very first
+        # real apply of this role failed with "Destination directory
+        # /usr/local/lib/nextcloud-aio does not exist" until this task
+        # was added, same pattern monitoring's own "Create ntfy relay
+        # install directory" task already established.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertLess(
+            tasks.index("Create Nextcloud AIO Apache network-reconnect install directory"),
+            tasks.index("Install Nextcloud AIO Apache network-reconnect script"),
+        )
+
+        create_dir_task = tasks.split(
+            "Create Nextcloud AIO Apache network-reconnect install directory",
+            1,
+        )[1].split("- name:", 1)[0]
+        self.assertIn("state: directory", create_dir_task)
+        self.assertIn(
+            "path: \"{{ nextcloud_aio_apache_network_fix_install_dir }}\"",
+            create_dir_task,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
