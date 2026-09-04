@@ -35,6 +35,43 @@
     update_cache: true
     cache_valid_time: 86400
 
+# The homeserver's onboard NIC (Intel 82579LM, driver e1000e) hit a
+# well-documented PCIe ASPM (Active State Power Management) bug that
+# causes it to periodically hang and reset -- "NETDEV WATCHDOG ...
+# transmit queue timed out" in a loop, network fully dead during each
+# cycle -- root-caused after a real ~14min production outage on
+# 2026-09-01 (see PARKED.md's own writeup for the full kernel log).
+# Disabling ASPM globally via this kernel boot parameter is the
+# standard, most broadly effective fix for this exact chipset/bug
+# combination. Only `base` (applied to the `home_servers` group, i.e.
+# only the physical homeserver, never the k3s VMs) needs this -- no
+# other host in this repo has this NIC.
+#
+# Takes effect only after a reboot -- this task and the `update-grub`
+# regeneration below just get the new parameter written and staged;
+# rebooting to actually load it is a separate, deliberate step.
+- name: Disable PCIe ASPM in the kernel command line (e1000e watchdog-hang fix)
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    backrefs: true
+    regexp: '^(GRUB_CMDLINE_LINUX=")((?:(?!pcie_aspm=off).)*)"$'
+    line: '\1\2 pcie_aspm=off"'
+  register: grub_cmdline
+
+- name: Regenerate the GRUB configuration
+  ansible.builtin.command:
+    cmd: update-grub
+  when: grub_cmdline.changed
+
+- name: Flag that a reboot is required to load the new kernel parameter
+  ansible.builtin.debug:
+    msg: >-
+      pcie_aspm=off was just added to /etc/default/grub and
+      /boot/grub/grub.cfg has been regenerated, but this is not loaded
+      until the next reboot. Not rebooting automatically -- schedule
+      that separately.
+  when: grub_cmdline.changed
+
 - name: Ensure www-data group exists
   ansible.builtin.group:
     name: www-data
