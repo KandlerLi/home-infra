@@ -1,0 +1,21 @@
+[Unit]
+Description=Reconnect nextcloud-aio-apache to the nextcloud-aio Docker network if it dropped off
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+# The script's own wait loop can block up to 600s for Apache to appear
+# (AIO's mastercontainer starts its children on its own schedule, no
+# systemd-visible readiness signal) -- give it real headroom over
+# systemd's own default 90s start timeout, or it gets killed mid-wait.
+TimeoutStartSec=650
+# Needs real access to /var/run/docker.sock to inspect and reconnect
+# containers -- that's root-equivalent regardless of the nominal user,
+# so this runs as root directly rather than a dedicated service account
+# that would buy no real isolation.
+User=root
+ExecStart={{ nextcloud_aio_apache_network_fix_install_path }}
+
+[Install]
+WantedBy=multi-user.target

@@ -23,3 +23,14 @@ repo builds around.
 
 `nextcloud_tools` and `sankey_export` both depend on a dedicated Nextcloud
 account bootstrapped against this instance; see their own READMEs.
+
+- A systemd oneshot (`nextcloud-aio-apache-network-fix.service`, runs at
+  boot and on every apply) automatically reconnects
+  `nextcloud-aio-apache` to the `nextcloud-aio` Docker network if it's
+  missing -- confirmed live on two independent reboots (2026-09-01,
+  2026-09-04) that Apache silently drops off that network, deadlocking
+  with `nextcloud-aio-nextcloud`. See
+  `files/reconnect_apache_network.sh`'s own header comment and
+  `PARKED.md`'s "Homeserver: make a reboot a complete non-event" -- this
+  automates the known recovery, it doesn't fix the still-unknown root
+  cause (owned by AIO's own mastercontainer, not this repo).
