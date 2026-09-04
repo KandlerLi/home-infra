@@ -322,6 +322,7 @@ class MonitoringRoleTests(unittest.TestCase):
             "host-health.json",
             "container-health.json",
             "service-reachability.json",
+            "service-status.json",
         }
 
         for name in expected:
