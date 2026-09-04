@@ -1,0 +1,77 @@
+{
+  "title": "Service Status",
+  "uid": "monitoring-service-status",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "30s",
+  "time": { "from": "now-5m", "to": "now" },
+  "tags": ["monitoring"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Core infrastructure",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "orientation": "horizontal",
+        "textMode": "name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "NO DATA",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } } }
+          ]
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "up{job=\"prometheus\"}", "legendFormat": "Prometheus", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "up{job=\"node_exporter\"}", "legendFormat": "Host (node_exporter)", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "up{job=\"cadvisor\"}", "legendFormat": "Containers (cAdvisor)", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "up{job=\"blocky\"}", "legendFormat": "Blocky (DNS)", "refId": "D" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Public-facing services",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "orientation": "horizontal",
+        "textMode": "name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "NO DATA",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } } }
+          ]
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{instance=\"https://nextcloud.jkandler.de/\"}", "legendFormat": "Nextcloud", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{instance=\"https://www.jkandler.de/\"}", "legendFormat": "Website (www)", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{instance=\"http://jkandler.de/\"}", "legendFormat": "Website (root)", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{instance=\"https://ai.jkandler.de/healthz\"}", "legendFormat": "AI Agent", "refId": "D" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{instance=\"https://torrent.jkandler.de/\"}", "legendFormat": "Torrent (Deluge)", "refId": "E" }
+      ]
+    }
+  ]
+}
