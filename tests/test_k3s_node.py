@@ -100,6 +100,31 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("virbr11", defaults)
         self.assertIn('52:54:00:00:00:20', defaults)
 
+    def test_network_autostart_bug_has_a_plain_virsh_workaround(self) -> None:
+        # community.libvirt.virt_net's own autostart: true parameter
+        # (the "Activate and enable k3s libvirt network" task, just
+        # above this one) is a known, long-standing upstream bug --
+        # confirmed live 2026-09-04: Autostart still showed "no"
+        # immediately after that exact task ran successfully, which is
+        # what left both k3s VMs shut off after a real host reboot
+        # despite this supposedly already being fixed on 2026-09-01.
+        # Matches ansible-collections/community.libvirt#107 and
+        # ansible/ansible#27064.
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(
+            encoding="utf-8"
+        )
+
+        workaround_task = tasks.split(
+            "Work around community.libvirt.virt_net's autostart bug", 1
+        )[1]
+        self.assertIn("virsh", workaround_task)
+        self.assertIn("net-autostart", workaround_task)
+        self.assertNotIn("community.libvirt.virt_net", workaround_task)
+        self.assertIn(
+            r"k3s_node_network_info.stdout is search('Autostart:\s+no')",
+            workaround_task,
+        )
+
     def test_debian_image_is_cached_locally(self) -> None:
         # Used to be shared with the old VM-based github_runner role's
         # own identical cache path (both roles pointed at the same

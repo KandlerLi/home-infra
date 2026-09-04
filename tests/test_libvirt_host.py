@@ -105,5 +105,48 @@ class LibvirtHostRoleTests(unittest.TestCase):
         self.assertIn("libvirt_host", k3s_playbook)
 
 
+class DefaultNetworkAutostartTests(unittest.TestCase):
+    # Confirmed live 2026-09-04 (sudo virsh net-list --all, right after
+    # a real host reboot): libvirt's own "default" NAT network -- never
+    # created or otherwise managed by this repo -- had Autostart still
+    # "no". See k3s_node's own provision_vm.yml for the matching
+    # community.libvirt.virt_net bug this doesn't rely on.
+    def test_checks_existence_before_acting(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        autostart_task = tasks.split(
+            "Ensure the default libvirt network autostarts", 1
+        )[1]
+        self.assertIn(
+            "'default' in libvirt_host_defined_networks.stdout_lines",
+            autostart_task,
+        )
+
+    def test_only_acts_when_autostart_is_currently_off(self) -> None:
+        # Idempotent -- virsh net-autostart is safe to run unconditionally
+        # too, but this keeps Ansible's own change-reporting accurate
+        # rather than always claiming "changed".
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        autostart_task = tasks.split(
+            "Ensure the default libvirt network autostarts", 1
+        )[1]
+        self.assertIn(
+            r"libvirt_host_default_network_info.stdout is search"
+            r"('Autostart:\s+no')",
+            autostart_task,
+        )
+
+    def test_uses_plain_virsh_not_the_buggy_module(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        autostart_task = tasks.split(
+            "Ensure the default libvirt network autostarts", 1
+        )[1]
+        self.assertIn("virsh", autostart_task)
+        self.assertIn("net-autostart", autostart_task)
+        self.assertNotIn("community.libvirt.virt_net", autostart_task)
+
+
 if __name__ == "__main__":
     unittest.main()
