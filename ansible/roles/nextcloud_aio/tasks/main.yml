@@ -267,6 +267,14 @@
 # non-event" for the full story. Doesn't fix the underlying startup
 # race (still unknown, owned by AIO's own mastercontainer), just stops
 # it from needing a human every time it happens.
+- name: Create Nextcloud AIO Apache network-reconnect install directory
+  ansible.builtin.file:
+    path: "{{ nextcloud_aio_apache_network_fix_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Install Nextcloud AIO Apache network-reconnect script
   ansible.builtin.copy:
     src: reconnect_apache_network.sh
