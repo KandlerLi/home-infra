@@ -44,3 +44,10 @@ nextcloud_aio_apache_port: 11000
 nextcloud_aio_apache_ip_binding: 127.0.0.1
 nextcloud_aio_skip_domain_validation: false
 nextcloud_aio_ingress_cutover_confirmation: ""
+
+# See files/reconnect_apache_network.sh's own header comment and
+# PARKED.md's "Homeserver: make a reboot a complete non-event" for why
+# this exists -- automates a manual recovery step confirmed necessary
+# on two independent reboots (2026-09-01, 2026-09-04).
+nextcloud_aio_apache_network_fix_install_path: >-
+  /usr/local/lib/nextcloud-aio/reconnect_apache_network.sh

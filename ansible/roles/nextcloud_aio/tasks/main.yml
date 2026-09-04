@@ -259,3 +259,47 @@
           - --path=/{{ nextcloud_aio_mount_applicable_user }}/files/{{ nextcloud_aio_mount_point_name }}
       when: nextcloud_aio_mount_applicable_user | length > 0
       changed_when: false
+
+# Automates the manual `docker network connect nextcloud-aio
+# nextcloud-aio-apache` recovery step confirmed necessary on two
+# independent reboots (2026-09-01, 2026-09-04) -- see the script's own
+# header comment and PARKED.md's "Homeserver: make a reboot a complete
+# non-event" for the full story. Doesn't fix the underlying startup
+# race (still unknown, owned by AIO's own mastercontainer), just stops
+# it from needing a human every time it happens.
+- name: Install Nextcloud AIO Apache network-reconnect script
+  ansible.builtin.copy:
+    src: reconnect_apache_network.sh
+    dest: "{{ nextcloud_aio_apache_network_fix_install_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Nextcloud AIO Apache network-reconnect systemd unit
+  ansible.builtin.template:
+    src: nextcloud-aio-apache-network-fix.service.j2
+    dest: /etc/systemd/system/nextcloud-aio-apache-network-fix.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: nextcloud_aio_apache_network_fix_unit
+
+- name: Reload systemd for the Apache network-reconnect unit
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: nextcloud_aio_apache_network_fix_unit.changed
+
+# Enabled so it runs on every future boot; state: restarted (not
+# started) so it also actually re-executes on every apply, not just
+# the first one -- a plain "started" is a no-op against a oneshot
+# systemd already considers "active (exited)" from a prior run, which
+# would silently stop this from ever self-healing again after its
+# first success. The script itself is cheap and idempotent (exits
+# immediately if Apache's already connected), so re-running it on
+# every apply costs nothing and self-heals a currently-dropped Apache
+# the same way a boot would, without waiting for the next reboot.
+- name: Run the Apache network-reconnect check
+  ansible.builtin.systemd_service:
+    name: nextcloud-aio-apache-network-fix.service
+    enabled: true
+    state: restarted
