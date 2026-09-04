@@ -13,6 +13,28 @@ class BaseRoleTests(unittest.TestCase):
 
         self.assertIn('effective_user.stdout == "root"', tasks)
 
+    def test_disables_pcie_aspm_for_the_e1000e_watchdog_hang_bug(self) -> None:
+        # Fixes a real production outage (2026-09-01) caused by a
+        # well-documented Intel e1000e/82579LM PCIe ASPM bug -- see
+        # PARKED.md for the full writeup. Only takes effect after a
+        # reboot, which this role deliberately does not trigger itself.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        grub_task = tasks.split("Disable PCIe ASPM", 1)[1].split(
+            "- name:", 1
+        )[0]
+        self.assertIn("path: /etc/default/grub", grub_task)
+        self.assertIn("pcie_aspm=off", grub_task)
+        self.assertIn("register: grub_cmdline", grub_task)
+
+        regen_task = tasks.split("Regenerate the GRUB configuration", 1)[
+            1
+        ].split("- name:", 1)[0]
+        self.assertIn("update-grub", regen_task)
+        self.assertIn("when: grub_cmdline.changed", regen_task)
+
+        self.assertNotIn("ansible.builtin.reboot", tasks)
+
     def test_interactive_shell_packages_come_from_apt_not_homebrew(
         self,
     ) -> None:
