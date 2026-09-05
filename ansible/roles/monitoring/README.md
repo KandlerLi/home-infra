@@ -16,7 +16,7 @@ see ADR 0017). Loopback-only, not published through `shared_ingress`.
   into **Alertmanager** (now a k3s-native copy, see below), which
   notifies both ntfy (via a small local relay service, since
   Alertmanager can't template ntfy's payload shape) and email (via AWS
-  SES SMTP credentials from `infra/ses-relay`) -- one channel being
+  SES SMTP credentials from `aws/ses-relay`) -- one channel being
   misconfigured shouldn't mean silence.
 
 **Grafana and Alertmanager no longer run here.** Both are k3s-native
