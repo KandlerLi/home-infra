@@ -67,6 +67,24 @@ Service), so it lives in that role instead of here.
   `k3s-node-1`, surfacing as `ImagePullBackOff` with no other visible
   cause -- DNS and other ports were unaffected since they never
   matched the rule's own `destination_port` in the first place.
+- **The DNAT rule is also restricted to this host's own address**
+  (`destination: "{{ ansible_host }}"`). Same class of bug as the
+  `in_interface` exclusion above, just a different source of traffic:
+  without this, the rule matched *any* packet with a matching
+  `destination_port` regardless of where it was actually addressed --
+  including this host's own locally-originated outbound traffic (any
+  Docker container, or a process on the host itself) making a real
+  connection to the real internet on port 80/443/53. Confirmed live
+  (2026-09-05): Nextcloud AIO's own mastercontainer, trying to reach
+  the real `ghcr.io` on port 443 to validate connectivity as part of
+  its own startup, got silently hairpinned into this cluster's own
+  Traefik instead -- a real TLS handshake completed, with a real but
+  wrong certificate, surfacing as `SSL: no alternative certificate
+  subject name matches target hostname 'ghcr.io'` and an indefinite
+  crash-restart loop, for hours, surviving even a full host reboot
+  since nothing about the DNAT rule itself changed. `ansible_host` is
+  the same address inventory already uses to reach this host, not a
+  separate literal that could drift out of sync with it.
 - **Persisted via `iptables-persistent`** (`netfilter-persistent
   save`, only when a rule actually changed) so the relay survives a
   reboot -- debconf-preseeded to skip its install-time interactive
