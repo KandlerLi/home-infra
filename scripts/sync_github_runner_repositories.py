@@ -23,14 +23,16 @@ from pathlib import Path
 
 import yaml
 
-DEFAULT_CONFIG = Path(__file__).resolve().parents[3] / "bootstrap" / "repo-infra" / "config.yml"
+DEFAULT_CONFIG = Path(__file__).resolve().parents[3] / "github" / "repo-infra" / "config.yml"
 # A sibling repo, not a subdirectory of this one. In the standalone
 # k3s-bootstrap repo (extracted 2026-09-03 from what was originally a
 # bootstrap/ subdirectory inside infra/k3s-apps itself -- see that
 # migration's own plan) since this file feeds a variable
 # modules/github_runner/variables.tf declares, and that module now
-# lives there, alongside repo-infra/terraform-state, not inside
-# k3s-apps' own repo at all.
+# lives there, in bootstrap/ alongside terraform-state -- repo-infra
+# itself moved out to its own github/ directory (2026-09-05), grouping
+# it with gha-common instead, since both are GitHub-specific rather
+# than AWS- or k3s-specific.
 DEFAULT_K3S_BOOTSTRAP_OUTPUT = (
     Path(__file__).resolve().parents[3] / "bootstrap" / "k3s-bootstrap" / "repositories.auto.tfvars.json"
 )
@@ -68,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.k3s_bootstrap_output.parent.is_dir():
         print(
             f"error: k3s-bootstrap output directory not found: {args.k3s_bootstrap_output.parent} "
-            "(check out bootstrap/k3s-bootstrap as a sibling of bootstrap/repo-infra, "
+            "(check out bootstrap/k3s-bootstrap as a sibling of bootstrap/terraform-state, "
             "or pass --k3s-bootstrap-output)",
             file=sys.stderr,
         )
