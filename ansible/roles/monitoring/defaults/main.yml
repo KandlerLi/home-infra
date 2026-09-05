@@ -197,7 +197,7 @@ monitoring_ntfy_relay_install_dir: /usr/local/lib/monitoring/ntfy-relay
 # validation allows.
 monitoring_ntfy_relay_k3s_bind_address: ""
 
-# SES SMTP credentials come from infra/ses-relay's Terraform outputs, not
+# SES SMTP credentials come from aws/ses-relay's Terraform outputs, not
 # generated here -- see that repo's README for the exact values to copy
 # into SOPS. eu-central-1 matches this workspace's other AWS roots'
 # default region.
