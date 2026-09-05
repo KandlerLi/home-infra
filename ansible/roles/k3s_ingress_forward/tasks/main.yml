@@ -137,6 +137,46 @@
   when: k3s_ingress_forward_enabled | bool
   register: k3s_ingress_forward_reconcile_result
 
+# One-time reconciliation, same class of bug as the interface-
+# restriction fix above: every DNAT rule this role ever applied before
+# 2026-09-05 had
+# no destination filter at all, matching *any* packet with a matching
+# destination_port regardless of where it was actually addressed --
+# including this host's own locally-originated outbound traffic (any
+# Docker container, or a process on the host itself) making a real
+# connection to the real internet on port 80/443/53. That traffic
+# enters PREROUTING too, just like real inbound traffic does, and
+# nothing here distinguished the two. Confirmed live (2026-09-05):
+# Nextcloud AIO's own mastercontainer, trying to reach the real
+# ghcr.io on port 443 to validate connectivity, got silently
+# hairpinned into this cluster's own Traefik instead -- a real TLS
+# handshake completed, with a real but wrong certificate, surfacing as
+# "SSL: no alternative certificate subject name matches target
+# hostname 'ghcr.io'" and an indefinite crash-restart loop, for hours.
+# Removes that old, destination-unrestricted rule shape; a no-op
+# forever after the first apply that includes it.
+- name: Remove the destination-unrestricted DNAT rule shape (2026-09-05 fix)
+  ansible.builtin.iptables:
+    state: absent
+    table: nat
+    chain: PREROUTING
+    in_interface: "!{{ k3s_ingress_forward_target_bridge }}"
+    protocol: "{{ item.protocol | default('tcp') }}"
+    destination_port: "{{ item.public_port }}"
+    jump: DNAT
+    to_destination: "{{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}"
+    comment: >-
+      k3s_ingress_forward: {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} ->
+      {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
+  loop: "{{ k3s_ingress_forward_rules }}"
+  loop_control:
+    label: >-
+      {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} -> {{ item.target_port }}
+  when: k3s_ingress_forward_enabled | bool
+  register: k3s_ingress_forward_dnat_reconcile_result
+
 - name: Relay ingress traffic to k3s via DNAT
   ansible.builtin.iptables:
     state: "{{ 'present' if (k3s_ingress_forward_enabled | bool) else 'absent' }}"
@@ -146,6 +186,12 @@
     # rule -- see k3s_ingress_forward_target_bridge's own comment in
     # defaults/main.yml for why this is required, not optional.
     in_interface: "!{{ k3s_ingress_forward_target_bridge }}"
+    # Restricts this rule to packets actually addressed to this host --
+    # ansible_host is the same address inventory already uses to reach
+    # this box, so there's no separate literal to drift out of sync.
+    # See the reconciliation task above for why this wasn't here
+    # before, and what it broke.
+    destination: "{{ ansible_host }}"
     protocol: "{{ item.protocol | default('tcp') }}"
     destination_port: "{{ item.public_port }}"
     jump: DNAT
@@ -186,4 +232,5 @@
     k3s_ingress_forward_accept_result is changed
     or k3s_ingress_forward_accept_reconcile_result is changed
     or k3s_ingress_forward_reconcile_result is changed
+    or k3s_ingress_forward_dnat_reconcile_result is changed
     or k3s_ingress_forward_dnat_result is changed

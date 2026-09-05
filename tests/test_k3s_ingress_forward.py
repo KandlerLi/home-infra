@@ -106,8 +106,10 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         reconcile_task = tasks.split(
-            "Remove the pre-fix DNAT rule shape", 1
-        )[1].split("Relay ingress traffic to k3s via DNAT", 1)[0]
+            "Remove the pre-fix DNAT rule shape (no interface restriction)", 1
+        )[1].split(
+            "Remove the destination-unrestricted DNAT rule shape", 1
+        )[0]
         self.assertIn("state: absent", reconcile_task)
         self.assertIn("table: nat", reconcile_task)
         self.assertIn("chain: PREROUTING", reconcile_task)
@@ -203,6 +205,68 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
             dnat_task,
         )
 
+    def test_dnat_rule_is_restricted_to_this_hosts_own_address(self) -> None:
+        # Confirmed live (2026-09-05): without a destination filter,
+        # this rule matched *any* packet with a matching
+        # destination_port regardless of where it was actually
+        # addressed -- including locally-originated outbound traffic
+        # from this same host (any Docker container, or a host
+        # process) making a real connection to the real internet on
+        # port 80/443/53. Nextcloud AIO's own mastercontainer, trying
+        # to reach the real ghcr.io on port 443, got silently
+        # hairpinned into this cluster's own Traefik instead -- a real
+        # TLS handshake completed, with a real but wrong certificate,
+        # surfacing as an indefinite crash-restart loop. ansible_host
+        # is the same address inventory already uses to reach this
+        # host, not a separate literal that could drift out of sync.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        dnat_task = tasks.split(
+            "Relay ingress traffic to k3s via DNAT", 1
+        )[1]
+        self.assertIn('destination: "{{ ansible_host }}"', dnat_task)
+
+    def test_destination_unrestricted_dnat_rule_shape_is_explicitly_reconciled(
+        self,
+    ) -> None:
+        # Same class of fix, and same reasoning, as the in_interface
+        # reconciliation above: simply re-applying the corrected rule
+        # would add it alongside the old, destination-unrestricted one
+        # rather than replacing it, and since DNAT terminates further
+        # PREROUTING processing, the old rule (evaluated first) would
+        # keep winning.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        reconcile_task = tasks.split(
+            "Remove the destination-unrestricted DNAT rule shape", 1
+        )[1].split("Relay ingress traffic to k3s via DNAT", 1)[0]
+        self.assertIn("state: absent", reconcile_task)
+        self.assertIn("table: nat", reconcile_task)
+        self.assertIn("chain: PREROUTING", reconcile_task)
+        self.assertIn("jump: DNAT", reconcile_task)
+        # Matches the shape live between the 2026-09-01 interface fix
+        # and this one: in_interface present, destination absent.
+        self.assertIn(
+            'in_interface: "!{{ k3s_ingress_forward_target_bridge }}"',
+            reconcile_task,
+        )
+        # Not "destination:" generically -- to_destination: (the DNAT
+        # target, present in every version of this rule) contains that
+        # substring too. This checks specifically for the new filter.
+        self.assertNotIn('destination: "{{ ansible_host }}"', reconcile_task)
+        self.assertIn(
+            "register: k3s_ingress_forward_dnat_reconcile_result",
+            reconcile_task,
+        )
+
+        persist_task = tasks.split("Persist iptables rules across reboots", 1)[
+            1
+        ]
+        self.assertIn(
+            "k3s_ingress_forward_dnat_reconcile_result is changed",
+            persist_task,
+        )
+
     def test_rule_protocol_defaults_to_tcp_but_is_overridable(self) -> None:
         # Every rule needed only tcp until DNS -- DNS needs both tcp and
         # udp forwarded to the same port, so this has to be a real
@@ -290,8 +354,10 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         reconcile_task = tasks.split(
-            "Remove the pre-fix DNAT rule shape", 1
-        )[1].split("Relay ingress traffic to k3s via DNAT", 1)[0]
+            "Remove the pre-fix DNAT rule shape (no interface restriction)", 1
+        )[1].split(
+            "Remove the destination-unrestricted DNAT rule shape", 1
+        )[0]
         self.assertIn(
             "register: k3s_ingress_forward_reconcile_result", reconcile_task
         )
