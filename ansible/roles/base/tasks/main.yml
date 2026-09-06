@@ -138,6 +138,14 @@
 # driver's own internal reset to actually recover -- 2026-09-06 showed
 # live that it can get stuck failing that reset for hours. See the
 # script's own comment for the full reasoning.
+- name: Create e1000e watchdog recovery install directory
+  ansible.builtin.file:
+    path: "{{ base_e1000e_watchdog_recovery_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Install the e1000e watchdog recovery script
   ansible.builtin.template:
     src: e1000e-watchdog-recovery.sh.j2

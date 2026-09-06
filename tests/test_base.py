@@ -98,6 +98,19 @@ class BaseRoleTests(unittest.TestCase):
         # rather than actually clearing a hang on its own.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
+        # Confirmed live: ansible.builtin.template does not create
+        # missing parent directories on its own -- the very first real
+        # apply failed outright ("Destination directory ... does not
+        # exist") without this.
+        mkdir_task = tasks.split(
+            "Create e1000e watchdog recovery install directory", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn(
+            "path: \"{{ base_e1000e_watchdog_recovery_install_dir }}\"",
+            mkdir_task,
+        )
+        self.assertIn("state: directory", mkdir_task)
+
         script_task = tasks.split(
             "Install the e1000e watchdog recovery script", 1
         )[1].split("- name:", 1)[0]
