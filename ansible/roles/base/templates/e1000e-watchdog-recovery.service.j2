@@ -1,0 +1,19 @@
+[Unit]
+Description=Recover the e1000e NIC after a watchdog-detected hardware hang
+After=network.target
+
+[Service]
+Type=simple
+# No sandboxing directives here, deliberately -- unlike every other
+# unit this repo installs (see e.g. monitoring's own
+# ntfy-relay.service.j2): this service's entire job needs real access
+# to /sys/bus/pci/drivers/e1000e/{unbind,bind} (blocked by
+# PrivateDevices/ProtectKernelModules) and to the kernel's own journal
+# (blocked by ProtectKernelLogs). Sandboxing it the way every other
+# service here is sandboxed would break the one thing it exists to do.
+ExecStart={{ base_e1000e_watchdog_recovery_install_dir }}/e1000e-watchdog-recovery.sh
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

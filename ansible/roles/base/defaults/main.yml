@@ -1,2 +1,12 @@
 ---
 admin_user: julian
+
+# The onboard NIC's own interface name and PCI address -- see the
+# pcie_aspm=off task's own comment below for the 2026-09-01 e1000e
+# watchdog-hang bug this exists for, and PARKED.md for 2026-09-06's
+# recurrence despite that fix. Literals, not discovered dynamically:
+# this role only ever targets this one known physical host's one known
+# NIC.
+base_e1000e_interface: enp0s25
+base_e1000e_pci_address: "0000:00:19.0"
+base_e1000e_watchdog_recovery_install_dir: /usr/local/lib/e1000e-watchdog-recovery
