@@ -23,6 +23,16 @@ Environment="SANKEY_EXPORT_STATE_FILE={{ sankey_export_state_dir }}/last-etag"
 # apt-installed system binary instead of letting it search for one or
 # try to download its own -- see tasks/main.yml's own comment.
 Environment="BROWSER_PATH=/usr/bin/chromium"
+# Confirmed live 2026-09-06: BROWSER_PATH alone wasn't enough --
+# choreographer/platformdirs still separately wants a real $HOME for
+# its own cache dir (via platformdirs' user_data_dir(), which falls
+# back to "$HOME/.local/share" whenever XDG_DATA_HOME isn't set) and
+# for Path.home()-based tempfiles, neither of which this account has
+# (create_home: false) or could use anyway under ProtectHome=true
+# below -- "PermissionError: .../.local/share/choreographer/deps/
+# chrome-linux64/chrome". Pointed at the one directory this unit's own
+# ReadWritePaths already grants write access to.
+Environment="HOME={{ sankey_export_state_dir }}"
 
 ExecStart={{ sankey_export_install_dir }}/.venv/bin/python {{ sankey_export_install_dir }}/finanzfluss_export.py
 
