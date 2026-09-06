@@ -83,6 +83,13 @@
 # alongside ASPM for this exact 82579LM/e1000e watchdog-hang bug --
 # takes effect immediately on the live interface, no reboot needed,
 # unlike the kernel parameter above.
+- name: Install ethtool
+  ansible.builtin.apt:
+    name: ethtool
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
 - name: Disable TSO/GSO/GRO offloading on the onboard NIC (e1000e watchdog-hang fix)
   ansible.builtin.command:
     cmd: >-

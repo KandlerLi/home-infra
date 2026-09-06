@@ -45,6 +45,16 @@ class BaseRoleTests(unittest.TestCase):
         # exact chipset's watchdog-hang bug.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
+        # Confirmed live: this host had no ethtool installed at all --
+        # a bare `ethtool -K ...` command task failed outright
+        # ("[Errno 2] No such file or directory: b'ethtool'") the first
+        # time this role was applied.
+        install_task = tasks.split("Install ethtool", 1)[1].split(
+            "- name:", 1
+        )[0]
+        self.assertIn("name: ethtool", install_task)
+        self.assertIn("state: present", install_task)
+
         offload_task = tasks.split(
             "Disable TSO/GSO/GRO offloading", 1
         )[1].split("- name:", 1)[0]
