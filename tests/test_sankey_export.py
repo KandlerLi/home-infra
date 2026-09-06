@@ -20,13 +20,26 @@ sankey = load_module_from_path(
 
 
 class SankeyExportRoleTests(unittest.TestCase):
-    def test_defaults_are_disabled_and_loopback_only(self) -> None:
+    def test_defaults_are_disabled_and_track_the_live_aio_endpoint(self) -> None:
+        # Confirmed live 2026-09-06: a hardcoded "127.0.0.1" literal here
+        # silently went stale for weeks once nextcloud_aio_apache_ip_binding
+        # itself moved off loopback during the k3s ingress migration --
+        # tracking that variable directly instead of copying its value
+        # means this can't drift out of sync the same way again.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn("sankey_export_enabled: false", defaults)
-        self.assertIn("sankey_export_endpoint_host: 127.0.0.1", defaults)
+        self.assertIn(
+            "sankey_export_endpoint_host: \"{{ nextcloud_aio_apache_ip_binding }}\"",
+            defaults,
+        )
+        self.assertNotIn('sankey_export_endpoint_host: 127.0.0.1', defaults)
         self.assertIn("sankey_export_endpoint_port: 11000", defaults)
         self.assertIn("sankey_export_http_host: nextcloud.jkandler.de", defaults)
+        self.assertIn(
+            "sankey_export_endpoint_host == nextcloud_aio_apache_ip_binding", tasks
+        )
 
     def test_service_runs_as_a_dedicated_unprivileged_account_not_julian(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")

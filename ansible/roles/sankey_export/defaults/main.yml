@@ -9,7 +9,18 @@ sankey_export_app_password_path: /etc/sankey-export/app-password
 sankey_export_state_dir: /var/lib/sankey-export
 sankey_export_output_dir: /var/lib/sankey-export/out
 
-sankey_export_endpoint_host: 127.0.0.1
+# Tracks nextcloud_aio_apache_ip_binding directly rather than a literal
+# copy of its current value -- that variable's own comment explains why
+# Nextcloud AIO Apache moved off loopback entirely during the k3s
+# ingress migration. Confirmed live 2026-09-06: this used to be a plain
+# "127.0.0.1" literal, never updated when that migration happened, so
+# this had been failing on every single tick since ("Connection
+# refused" on 127.0.0.1:11000, silently, since even the cheap ETag
+# check needs this same connection) -- caught only because the
+# local-rendering change surfaced it. A literal copy would only fix
+# today's value; referencing the real variable means this can't drift
+# out of sync again the same way if it ever moves a second time.
+sankey_export_endpoint_host: "{{ nextcloud_aio_apache_ip_binding }}"
 sankey_export_endpoint_port: 11000
 sankey_export_http_host: nextcloud.jkandler.de
 sankey_export_nextcloud_container: nextcloud-aio-nextcloud
