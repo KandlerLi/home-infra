@@ -153,26 +153,6 @@ class SankeyExportRoleTests(unittest.TestCase):
             'Environment="HOME={{ sankey_export_state_dir }}"', unit
         )
 
-    def test_cleans_up_stale_playwright_era_artifacts(self) -> None:
-        # 2026-09-06: #12 dropped Playwright from requirements.txt, but
-        # neither `pip install -r` nor removing an apt task ever
-        # uninstalls what's no longer listed -- confirmed live, the venv
-        # still had playwright/greenlet/pyee installed days after #12
-        # applied. These tasks make the role itself responsible for
-        # cleaning up what it no longer needs, rather than relying on a
-        # one-off manual pass.
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        self.assertIn("Remove stale Playwright-era Python packages", tasks)
-        self.assertIn("state: absent", tasks)
-        self.assertIn("- playwright", tasks)
-        self.assertIn("- greenlet", tasks)
-        self.assertIn("- pyee", tasks)
-        self.assertIn("Remove stale Playwright-era browser download", tasks)
-        self.assertIn(
-            'path: "{{ sankey_export_state_dir }}/playwright"', tasks
-        )
-
     def test_site_yml_wires_the_role_in(self) -> None:
         site = (PROJECT_ROOT / "ansible/playbooks/site.yml").read_text(
             encoding="utf-8"

@@ -124,30 +124,6 @@
         virtualenv: "{{ sankey_export_install_dir }}/.venv"
       register: sankey_export_pip
 
-    # 2026-09-06: home-infra#12 dropped Playwright from requirements.txt,
-    # but `pip install -r` only ever installs what's listed -- it never
-    # uninstalls a package that fell out of the file. Removing these
-    # explicitly keeps the venv's actual contents matching what the role
-    # declares, instead of relying on whoever last rebuilt this host by
-    # hand to have cleaned up after themselves.
-    - name: Remove stale Playwright-era Python packages
-      ansible.builtin.pip:
-        name:
-          - playwright
-          - greenlet
-          - pyee
-        state: absent
-        virtualenv: "{{ sankey_export_install_dir }}/.venv"
-
-    # Playwright downloaded its own Chromium build here (see this file's
-    # git history for the old PLAYWRIGHT_BROWSERS_PATH task); Kaleido
-    # drives the apt-installed /usr/bin/chromium instead now, so nothing
-    # ever reads this directory again.
-    - name: Remove stale Playwright-era browser download
-      ansible.builtin.file:
-        path: "{{ sankey_export_state_dir }}/playwright"
-        state: absent
-
     # 2026-09-06: replaces the old Playwright-driven scrape of
     # finanzfluss.de's own chart export -- Kaleido renders the Sankey
     # diagram locally now, no third-party site involved at all. Kaleido
