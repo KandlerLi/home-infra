@@ -21,8 +21,8 @@ sankey_export_app_password: ""
 sankey_export_remote_dir: Documents/Finanzen
 sankey_export_workbook_name: Finanzfluss_Nextcloud.xlsx
 
-# A cheap PROPFIND-only check runs this often; the expensive Playwright
-# export only runs on the (rare) tick where the workbook's ETag actually
+# A cheap PROPFIND-only check runs this often; the expensive Sankey
+# render only runs on the (rare) tick where the workbook's ETag actually
 # changed. See ansible/roles/sankey_export/files/finanzfluss_export.py.
 sankey_export_poll_interval: 1min
 

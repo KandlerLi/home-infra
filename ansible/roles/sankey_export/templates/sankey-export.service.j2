@@ -19,9 +19,10 @@ Environment="SANKEY_EXPORT_REMOTE_DIR={{ sankey_export_remote_dir }}"
 Environment="SANKEY_EXPORT_WORKBOOK_NAME={{ sankey_export_workbook_name }}"
 Environment="SANKEY_EXPORT_OUTPUT_DIR={{ sankey_export_output_dir }}"
 Environment="SANKEY_EXPORT_STATE_FILE={{ sankey_export_state_dir }}/last-etag"
-# Playwright downloads its own Chromium under this venv; keep its cache
-# inside the state dir so it survives across runs instead of re-downloading.
-Environment="PLAYWRIGHT_BROWSERS_PATH={{ sankey_export_state_dir }}/playwright"
+# Points Kaleido's own Chromium driver (choreographer) at the
+# apt-installed system binary instead of letting it search for one or
+# try to download its own -- see tasks/main.yml's own comment.
+Environment="BROWSER_PATH=/usr/bin/chromium"
 
 ExecStart={{ sankey_export_install_dir }}/.venv/bin/python {{ sankey_export_install_dir }}/finanzfluss_export.py
 

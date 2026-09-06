@@ -5,8 +5,12 @@ ansible==14.3.0
 httpx2==2.12.0
 # Only needed to run tests/test_sankey_export.py, which imports
 # ansible/roles/sankey_export/files/finanzfluss_export.py directly. Must
-# match that role's own requirements.txt pins. playwright itself isn't
-# needed here: the script only imports it lazily, inside the one function
-# that actually launches a browser, which the tests never call.
+# match that role's own requirements.txt pins. plotly builds the Sankey
+# Figure object the tests inspect directly, so it's needed here --
+# kaleido (the piece that actually drives a real Chromium to write the
+# PNG) is not: the script only imports it lazily, inside the one
+# function that actually renders, which the tests never call. Same
+# reasoning that kept playwright out of this file before it.
 openpyxl==3.1.5
+plotly==7.0.0
 requests==2.34.2
