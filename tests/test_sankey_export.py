@@ -143,6 +143,16 @@ class SankeyExportRoleTests(unittest.TestCase):
         self.assertIn('Environment="BROWSER_PATH=/usr/bin/chromium"', unit)
         self.assertNotIn("PLAYWRIGHT_BROWSERS_PATH", unit)
 
+        # Confirmed live 2026-09-06: BROWSER_PATH alone wasn't enough --
+        # choreographer/platformdirs still wants a real, writable $HOME
+        # for its own cache dir and tempfiles, which this account has
+        # neither (create_home: false) nor could use under ProtectHome
+        # below anyway ("PermissionError: .../.local/share/
+        # choreographer/deps/chrome-linux64/chrome").
+        self.assertIn(
+            'Environment="HOME={{ sankey_export_state_dir }}"', unit
+        )
+
     def test_site_yml_wires_the_role_in(self) -> None:
         site = (PROJECT_ROOT / "ansible/playbooks/site.yml").read_text(
             encoding="utf-8"
