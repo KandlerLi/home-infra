@@ -118,28 +118,23 @@
         virtualenv: "{{ sankey_export_install_dir }}/.venv"
       register: sankey_export_pip
 
-    - name: Install system dependencies for headless Chromium
-      ansible.builtin.command:
-        argv:
-          - "{{ sankey_export_install_dir }}/.venv/bin/python"
-          - -m
-          - playwright
-          - install-deps
-          - chromium
-      changed_when: false
-
-    - name: Install Chromium for Playwright
-      ansible.builtin.command:
-        argv:
-          - "{{ sankey_export_install_dir }}/.venv/bin/python"
-          - -m
-          - playwright
-          - install
-          - chromium
-      become_user: "{{ sankey_export_service_user }}"
-      environment:
-        PLAYWRIGHT_BROWSERS_PATH: "{{ sankey_export_state_dir }}/playwright"
-      changed_when: false
+    # 2026-09-06: replaces the old Playwright-driven scrape of
+    # finanzfluss.de's own chart export -- Kaleido renders the Sankey
+    # diagram locally now, no third-party site involved at all. Kaleido
+    # still needs *some* real Chromium-family browser to drive via CDP
+    # (it doesn't draw the chart itself either), but a plain `apt install`
+    # -- pulling in every runtime library dependency through the normal
+    # package manager, the same way any other apt package would -- is
+    # simpler than Playwright's own separate `install-deps`/`install`
+    # download flow, and BROWSER_PATH in the service unit points
+    # Kaleido at this exact binary instead of letting it try to manage
+    # its own private copy.
+    - name: Install Chromium for Kaleido's local Sankey rendering
+      ansible.builtin.apt:
+        name: chromium
+        state: present
+        update_cache: true
+        cache_valid_time: 86400
 
     - name: Install Sankey export systemd service unit
       ansible.builtin.template:

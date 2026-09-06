@@ -78,23 +78,57 @@ class SankeyExportRoleTests(unittest.TestCase):
     def test_service_unit_grants_write_access_only_to_the_state_dir(self) -> None:
         defaults = yaml.safe_load((ROLE_ROOT / "defaults/main.yml").read_text())
         env = Environment(loader=FileSystemLoader(str(ROLE_ROOT / "templates")))
-        rendered = env.get_template("sankey-export.service.j2").render(**defaults)
+        rendered = env.get_template("sankey-export.timer.j2").render(**defaults)
 
-        self.assertIn("ProtectSystem=strict", rendered)
+        rendered_service = env.get_template("sankey-export.service.j2").render(**defaults)
+        self.assertIn("ProtectSystem=strict", rendered_service)
         self.assertIn(
-            f"ReadWritePaths={defaults['sankey_export_state_dir']}", rendered
+            f"ReadWritePaths={defaults['sankey_export_state_dir']}", rendered_service
         )
 
-    def test_playwright_launches_without_a_kernel_sandbox(self) -> None:
-        # This browser only ever visits one fixed, self-generated
-        # finanzfluss.de URL, so --no-sandbox is used unconditionally
-        # rather than only as a root fallback -- see the comment in the
-        # script for why (avoids fighting the unit's own hardening).
-        script = (
-            ROLE_ROOT / "files/finanzfluss_export.py"
-        ).read_text(encoding="utf-8")
+    def test_renders_locally_no_third_party_scraping(self) -> None:
+        # 2026-09-06: replaced the old Playwright-driven scrape of
+        # finanzfluss.de's own chart export -- see PARKED.md's own
+        # "sankey_export: move away from Finanzfluss" writeup for why
+        # that was fragile (broke the moment their site changed
+        # anything, with zero warning). Kaleido still needs a real
+        # Chromium-family browser to drive via CDP, so this checks the
+        # replacement's own shape (apt-installed, explicitly pinned via
+        # BROWSER_PATH) rather than asserting "no browser at all".
+        script = (ROLE_ROOT / "files/finanzfluss_export.py").read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        unit = (ROLE_ROOT / "templates/sankey-export.service.j2").read_text(
+            encoding="utf-8"
+        )
+        requirements = (ROLE_ROOT / "files/requirements.txt").read_text(
+            encoding="utf-8"
+        )
 
-        self.assertIn('args=["--no-sandbox"]', script)
+        self.assertNotIn("playwright", script.lower())
+        # Checking for the actual URL-building/browser-driving constructs,
+        # not a bare mention of the domain -- the module docstring
+        # legitimately explains *why* it no longer scrapes finanzfluss.de,
+        # which would false-fail a bare substring check.
+        self.assertNotIn("www.finanzfluss.de", script)
+        self.assertNotIn("sync_playwright", script)
+        self.assertNotIn(".goto(", script)
+        self.assertNotIn("playwright", requirements.lower())
+        self.assertIn("kaleido", requirements.lower())
+        self.assertIn("plotly", requirements.lower())
+
+        self.assertIn("name: chromium", tasks)
+        # Checking for the two old tasks' own exact former names, not a
+        # bare substring -- the replacement task's own comment
+        # legitimately explains what it replaced (mentioning Playwright
+        # and install-deps by name), which would false-fail a blanket
+        # check on either word.
+        self.assertNotIn(
+            "name: Install system dependencies for headless Chromium", tasks
+        )
+        self.assertNotIn("name: Install Chromium for Playwright", tasks)
+
+        self.assertIn('Environment="BROWSER_PATH=/usr/bin/chromium"', unit)
+        self.assertNotIn("PLAYWRIGHT_BROWSERS_PATH", unit)
 
     def test_site_yml_wires_the_role_in(self) -> None:
         site = (PROJECT_ROOT / "ansible/playbooks/site.yml").read_text(
@@ -118,7 +152,11 @@ class FinanzflussExportScriptTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             sankey.clean_amount(-5, row_description="x")
 
-    def test_build_payload_renames_colliding_blank_subcategories(self) -> None:
+    def test_format_euro_uses_german_thousands_and_decimal_separators(self) -> None:
+        self.assertEqual(sankey.format_euro(1234.5), "1.234,50 €")
+        self.assertEqual(sankey.format_euro(42), "42,00 €")
+
+    def test_summarize_budget_renames_colliding_blank_subcategories(self) -> None:
         # Blank-subcategory renaming only kicks in once the category has at
         # least one *named* subcategory (has_named_subcategory) -- an
         # all-blank category is left with no subcategory breakdown at all,
@@ -130,18 +168,16 @@ class FinanzflussExportScriptTests(unittest.TestCase):
         ]
         incomes = [sankey.IncomeRow(name="Gehalt", amount=200.0)]
 
-        _, cost_payload, income_total, expense_total, budget, warnings = (
-            sankey.build_payload(incomes, costs)
-        )
+        summary = sankey.summarize_budget(incomes, costs)
 
-        names = {position["n"] for position in cost_payload[0]["po"]}
+        names = {sub.name for sub in summary.categories[0].subcategories}
         self.assertEqual(names, {"Miete", "Sonstiges", "Sonstiges 2"})
-        self.assertEqual(income_total, 200.0)
-        self.assertEqual(expense_total, 180.0)
-        self.assertEqual(budget, 20.0)
-        self.assertTrue(any("Sonstiges" in warning for warning in warnings))
+        self.assertEqual(summary.income_total, 200.0)
+        self.assertEqual(summary.expense_total, 180.0)
+        self.assertEqual(summary.budget, 20.0)
+        self.assertTrue(any("Sonstiges" in warning for warning in summary.warnings))
 
-    def test_build_payload_leaves_an_all_blank_category_without_a_breakdown(
+    def test_summarize_budget_leaves_an_all_blank_category_without_a_breakdown(
         self,
     ) -> None:
         costs = [
@@ -149,22 +185,47 @@ class FinanzflussExportScriptTests(unittest.TestCase):
         ]
         incomes = [sankey.IncomeRow(name="Gehalt", amount=200.0)]
 
-        _, cost_payload, *_ = sankey.build_payload(incomes, costs)
+        summary = sankey.summarize_budget(incomes, costs)
 
-        self.assertEqual(cost_payload[0]["po"], [])
-        self.assertEqual(cost_payload[0]["ro"], 0)
+        self.assertEqual(summary.categories[0].subcategories, [])
 
-    def test_build_payload_flags_expenses_exceeding_income(self) -> None:
+    def test_summarize_budget_flags_expenses_exceeding_income(self) -> None:
         incomes = [sankey.IncomeRow(name="Gehalt", amount=100.0)]
         costs = [sankey.CostRow(category="Miete", subcategory="", amount=150.0)]
 
-        _, cost_payload, _, _, budget, warnings = sankey.build_payload(incomes, costs)
+        summary = sankey.summarize_budget(incomes, costs)
 
-        self.assertLess(budget, 0)
-        self.assertFalse(any(entry["n"] == "Budget" for entry in cost_payload))
-        self.assertTrue(any("exceed" in warning for warning in warnings))
+        self.assertLess(summary.budget, 0)
+        self.assertTrue(any("exceed" in warning for warning in summary.warnings))
 
-    def test_etag_skip_avoids_touching_playwright(self) -> None:
+    def test_build_sankey_figure_links_income_through_hub_to_categories(self) -> None:
+        # Pure/no-I/O -- doesn't call Kaleido's own write_image, so this
+        # runs without a browser. The actual PNG write (render_sankey_png)
+        # is smoke-tested manually, not here -- same split this repo's
+        # own Terraform/Ansible convention uses (compute vs. apply).
+        incomes = [sankey.IncomeRow(name="Gehalt", amount=1000.0)]
+        costs = [
+            sankey.CostRow(category="Auto", subcategory="Sprit", amount=100.0),
+            sankey.CostRow(category="Auto", subcategory="Versicherung", amount=50.0),
+            sankey.CostRow(category="Miete", subcategory="", amount=500.0),
+        ]
+        summary = sankey.summarize_budget(incomes, costs)
+
+        figure = sankey.build_sankey_figure(summary)
+        sankey_trace = figure.data[0]
+
+        labels = list(sankey_trace.node.label)
+        self.assertTrue(any(label.startswith("Einkommen") for label in labels))
+        self.assertTrue(any(label.startswith("Gehalt") for label in labels))
+        self.assertTrue(any(label.startswith("Auto") for label in labels))
+        self.assertTrue(any(label.startswith("Sprit") for label in labels))
+        self.assertTrue(any(label.startswith("Budget") for label in labels))
+
+        # 1 income->hub, 2 hub->category (Auto, Miete), 2 category->
+        # subcategory (Sprit, Versicherung), 1 hub->Budget = 6 links.
+        self.assertEqual(len(sankey_trace.link.value), 6)
+
+    def test_etag_skip_avoids_touching_the_renderer(self) -> None:
         # load_cached_etag/save_cached_etag are the whole mechanism that
         # keeps the 1-minute timer cheap -- a change check that doesn't
         # correctly round-trip would make every tick expensive again.
