@@ -185,7 +185,7 @@ managed by this repo's own (now-deleted) `github_runner` role. As of
 (`infra/k3s-apps`' own `modules/github_runner/`), confirmed live across
 every repository with a real successful `Checks` run, `home-infra`
 itself included, before the old VM was deregistered and torn down.
-`bootstrap/repo-infra/config.yml`'s `runner: true` flag on a repository
+`github/repo-infra/config.yml`'s `runner: true` flag on a repository
 entry is still the source of truth for which repositories get one; only
 where that list now gets synced to changed (see
 `scripts/sync_github_runner_repositories.py`, which now emits only
