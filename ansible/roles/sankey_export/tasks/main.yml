@@ -10,7 +10,12 @@
     - name: Validate Sankey export configuration
       ansible.builtin.assert:
         that:
-          - sankey_export_endpoint_host == "127.0.0.1"
+          # Not a literal -- this must always be wherever Nextcloud AIO
+          # Apache actually is, not wherever it used to be. Confirmed
+          # live 2026-09-06: a hardcoded "127.0.0.1" here silently
+          # tracked stale for weeks after nextcloud_aio_apache_ip_binding
+          # itself moved off loopback.
+          - sankey_export_endpoint_host == nextcloud_aio_apache_ip_binding
           - sankey_export_endpoint_port | int == 11000
           - sankey_export_http_host == "nextcloud.jkandler.de"
           - sankey_export_username is match('^[A-Za-z0-9_.@-]{1,64}$')
@@ -26,8 +31,9 @@
           - sankey_export_workbook_name | length >= 1
         fail_msg: >-
           Bootstrap the dedicated Nextcloud account and app password (via
-          sankey-export.yml), keep the WebDAV upstream on the fixed
-          loopback AIO endpoint, and select one relative remote folder.
+          sankey-export.yml), keep the WebDAV upstream tracking
+          nextcloud_aio_apache_ip_binding (never an independent literal),
+          and select one relative remote folder.
       no_log: true
 
     - name: Create Sankey export client group
