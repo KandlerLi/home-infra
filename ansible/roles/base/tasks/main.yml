@@ -72,6 +72,96 @@
       that separately.
   when: grub_cmdline.changed
 
+# 2026-09-06: pcie_aspm=off alone was not enough -- the exact same
+# NETDEV WATCHDOG/"Detected Hardware Unit Hang" bug recurred with
+# pcie_aspm=off confirmed active in /proc/cmdline the whole time, this
+# time with the driver's own internal reset stuck retrying and failing
+# continuously for almost 8 hours before a manual reboot, rather than
+# self-recovering within minutes the way the first incident did (see
+# PARKED.md for the full writeup). TSO/GSO/GRO offloading and Energy
+# Efficient Ethernet are the other two contributors most commonly cited
+# alongside ASPM for this exact 82579LM/e1000e watchdog-hang bug --
+# takes effect immediately on the live interface, no reboot needed,
+# unlike the kernel parameter above.
+- name: Disable TSO/GSO/GRO offloading on the onboard NIC (e1000e watchdog-hang fix)
+  ansible.builtin.command:
+    cmd: >-
+      ethtool -K {{ base_e1000e_interface }}
+      tso off gso off gro off
+  # Always reported changed -- ethtool has no way to ask "would this
+  # change anything", and re-running an already-off setting is a
+  # harmless no-op. Same accepted tradeoff as k3s_ingress_forward's own
+  # "Force-persist once" task.
+  changed_when: true
+
+# Not every e1000e/kernel combination supports EEE at all -- tolerate
+# "Operation not supported" specifically rather than failing the whole
+# play, but still fail loudly on anything else (a typo'd interface
+# name, for instance).
+- name: Disable Energy Efficient Ethernet on the onboard NIC (e1000e watchdog-hang fix)
+  ansible.builtin.command:
+    cmd: "ethtool --set-eee {{ base_e1000e_interface }} eee off"
+  register: base_eee_result
+  changed_when: base_eee_result.rc == 0
+  failed_when: >-
+    base_eee_result.rc != 0
+    and 'Operation not supported' not in base_eee_result.stderr
+
+# Persists the two settings above across reboots and any hotplug
+# re-up of this interface -- ethtool itself only ever changes the
+# live, in-kernel state, never anything on disk. ifupdown (this host
+# uses /etc/network/interfaces, not systemd-networkd) runs post-up
+# hooks every time it brings an interface up, which covers both boot
+# and a real cable reconnect the same way.
+- name: Persist the NIC offload/EEE settings via an ifupdown post-up hook
+  ansible.builtin.blockinfile:
+    path: /etc/network/interfaces
+    insertafter: '^iface {{ base_e1000e_interface }} inet dhcp$'
+    marker: "# {mark} ANSIBLE MANAGED BLOCK -- e1000e watchdog-hang fix"
+    # Flush-left, not tab-indented -- ifupdown parses each stanza
+    # continuation line on its own merits regardless of indentation;
+    # only YAML's own block-scalar indentation rules matter here.
+    content: |
+      post-up /sbin/ethtool -K {{ base_e1000e_interface }} tso off gso off gro off
+      post-up /sbin/ethtool --set-eee {{ base_e1000e_interface }} eee off || true
+
+# A safety net on top of the two fixes above, not a replacement for
+# them: forces a full PCI-level unbind/rebind of the NIC the moment the
+# kernel logs a NETDEV WATCHDOG event, rather than trusting the
+# driver's own internal reset to actually recover -- 2026-09-06 showed
+# live that it can get stuck failing that reset for hours. See the
+# script's own comment for the full reasoning.
+- name: Install the e1000e watchdog recovery script
+  ansible.builtin.template:
+    src: e1000e-watchdog-recovery.sh.j2
+    dest: "{{ base_e1000e_watchdog_recovery_install_dir }}/e1000e-watchdog-recovery.sh"
+    owner: root
+    group: root
+    mode: "0755"
+  register: base_e1000e_watchdog_recovery_script
+
+- name: Install the e1000e watchdog recovery systemd unit
+  ansible.builtin.template:
+    src: e1000e-watchdog-recovery.service.j2
+    dest: /etc/systemd/system/e1000e-watchdog-recovery.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: base_e1000e_watchdog_recovery_unit
+
+- name: Reload systemd for the e1000e watchdog recovery unit
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: base_e1000e_watchdog_recovery_unit.changed
+
+- name: Ensure the e1000e watchdog recovery service is enabled and running
+  ansible.builtin.systemd_service:
+    name: e1000e-watchdog-recovery.service
+    enabled: true
+    state: >-
+      {{ 'restarted' if (base_e1000e_watchdog_recovery_script.changed
+         or base_e1000e_watchdog_recovery_unit.changed) else 'started' }}
+
 - name: Ensure www-data group exists
   ansible.builtin.group:
     name: www-data
