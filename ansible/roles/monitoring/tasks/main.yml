@@ -259,18 +259,41 @@
         mode: "0644"
       register: monitoring_blackbox_config
 
+    # Confirmed live 2026-09-07: this reported "changed" on every single
+    # apply, never settling, even though nothing was actually being
+    # re-downloaded. Root cause is a real Docker behavior, not an
+    # Ansible module limitation -- pulling a combined name:tag@digest
+    # reference (what monitoring_*_image below is, and what the
+    # docker_container tasks further down correctly use) leaves the
+    # local image stored with an untagged (<none>) tag (confirmed via
+    # `docker images -a` on the homeserver: "prom/prometheus  <none>"
+    # despite the running container using that exact image). This
+    # standalone docker_image task's own idempotency check looks for a
+    # local image matching the full pull string, never finds one (since
+    # Docker never actually applied the tag), and pulls "again" every
+    # time. Pulling by digest alone sidesteps it: Docker doesn't try to
+    # apply a tag it wasn't given, so the module's own before/after
+    # comparison matches correctly on repeat runs. Left the shared
+    # monitoring_*_image var (tag@digest) alone for the docker_container
+    # tasks below -- their own image comparison already works correctly
+    # today (they report "ok", not "changed", in the exact same runs
+    # this task doesn't), so there's nothing to fix there.
     - name: Pull pinned monitoring images
       community.docker.docker_image:
-        name: "{{ item }}"
+        name: "{{ item.name }}@{{ item.digest }}"
         source: pull
         state: present
       loop:
-        - "{{ monitoring_node_exporter_image }}"
-        - "{{ monitoring_cadvisor_image }}"
-        - "{{ monitoring_blackbox_exporter_image }}"
-        - "{{ monitoring_prometheus_image }}"
+        - name: "{{ monitoring_node_exporter_image_name }}"
+          digest: "{{ monitoring_node_exporter_image_digest }}"
+        - name: "{{ monitoring_cadvisor_image_name }}"
+          digest: "{{ monitoring_cadvisor_image_digest }}"
+        - name: "{{ monitoring_blackbox_exporter_image_name }}"
+          digest: "{{ monitoring_blackbox_exporter_image_digest }}"
+        - name: "{{ monitoring_prometheus_image_name }}"
+          digest: "{{ monitoring_prometheus_image_digest }}"
       loop_control:
-        label: "{{ item }}"
+        label: "{{ item.name }}@{{ item.digest }}"
 
     # network_mode: host, the same precedent shared_ingress already
     # established -- accurate host filesystem/network stats need it, and

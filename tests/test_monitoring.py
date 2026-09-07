@@ -33,6 +33,28 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn("monitoring_enabled: false", defaults)
         self.assertIn("monitoring_bind_address: 127.0.0.1", defaults)
 
+    def test_image_pull_task_uses_digest_only_not_tag_and_digest(self) -> None:
+        # Confirmed live 2026-09-07: pulling a combined name:tag@digest
+        # reference (what the docker_container tasks below correctly
+        # use) left the local image stored with an untagged (<none>)
+        # tag -- Docker's own behavior, not an Ansible module bug --
+        # so this task's idempotency check never found a match and
+        # reported "changed" on every single apply. Digest alone (no
+        # tag) sidesteps it: Docker doesn't try to apply a tag it
+        # wasn't given, so the before/after comparison matches on
+        # repeat runs.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'name: "{{ item.name }}@{{ item.digest }}"', tasks
+        )
+        # The old shape pulled the loop var directly (the full
+        # tag@digest string) -- checking for that exact task body, not
+        # a bare substring, since monitoring_prometheus_image (tag@
+        # digest) legitimately still appears elsewhere for the
+        # docker_container tasks, which are correct as-is.
+        self.assertNotIn('name: "{{ item }}"\n        source: pull', tasks)
+
     def test_secrets_are_required_not_left_default(self) -> None:
         # The ntfy topic and the SES SMTP credentials all have
         # empty-string defaults and must be set through SOPS before the

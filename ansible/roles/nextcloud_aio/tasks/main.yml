@@ -223,6 +223,12 @@
           }}
       when: nextcloud_aio_mount_applicable_user | length > 0
 
+    # Always reported changed -- docker_container_exec has no
+    # idempotency check at all (it's a raw command-exec wrapper), and
+    # occ files_external:applicable --add-user gives no idempotent way
+    # to ask "is this user already applicable" short of parsing its own
+    # human-readable output. Same accepted tradeoff as the e1000e
+    # ethtool tasks in the base role.
     - name: Make the downloads mount visible to the configured account
       community.docker.docker_container_exec:
         container: "{{ nextcloud_aio_nextcloud_container }}"

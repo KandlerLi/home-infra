@@ -115,6 +115,11 @@
     default: true
     state: present
 
+# Always reported changed -- ansible.posix.acl with recursive: true
+# re-applies via setfacl -R every run rather than diffing existing
+# entries first, a known module limitation (unlike the non-recursive
+# task above, which correctly no-ops once the ACL's already set). Same
+# accepted tradeoff as the e1000e ethtool tasks in the base role.
 - name: Grant Nextcloud's process write access to existing downloads
   ansible.posix.acl:
     path: "{{ deluge_downloads_dir }}"
