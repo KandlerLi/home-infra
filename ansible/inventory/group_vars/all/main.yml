@@ -138,7 +138,12 @@ nfs_server_exports:
 # wiring this up.
 nextcloud_aio_mount_dir: /mnt/black-hdd/downloads
 nextcloud_aio_mount_applicable_user: admin
-sankey_export_enabled: true
+# 2026-09-07: moved to a k3s CronJob (infra/k3s-apps' modules/sankey_export),
+# confirmed live end-to-end. Disabled here (not deleted yet) so applying
+# this actually stops the still-running systemd timer via the role's own
+# new teardown block -- the whole role is deleted in a follow-up commit
+# once that's confirmed.
+sankey_export_enabled: false
 # Nextcloud shares don't preserve the sharer's own path for the recipient
 # -- confirmed live via `occ share:list --recipient=sankey-export`, which
 # shows source-path "/admin/files/Documents/Finanzen" but target-path
