@@ -58,6 +58,11 @@ Apply all infrastructure:
 .venv/bin/ansible-playbook ansible/playbooks/site.yml --ask-become-pass
 ```
 
+Or `scripts/roll-out.sh dry-run`/`apply`, which runs the test suite and
+`--syntax-check` first, then the same command above (`dry-run` adds
+`--check --diff`). `--ask-become-pass` still prompts interactively either
+way -- sudo password entry stays a manual step on purpose.
+
 Edit the encrypted secret with the existing GPG key:
 
 ```bash
