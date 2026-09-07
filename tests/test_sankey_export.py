@@ -153,6 +153,32 @@ class SankeyExportRoleTests(unittest.TestCase):
             'Environment="HOME={{ sankey_export_state_dir }}"', unit
         )
 
+    def test_disabled_in_inventory_and_torn_down_when_disabled(self) -> None:
+        # 2026-09-07: superseded by infra/k3s-apps' own k3s CronJob,
+        # confirmed live end-to-end. Flipping the inventory override to
+        # false alone wouldn't stop the still-running systemd timer --
+        # the role's tasks are all gated behind sankey_export_enabled,
+        # so Ansible would just stop *managing* an already-running unit,
+        # not actually stop it, and there'd be no future run left to
+        # fix that once this whole role is deleted in a follow-up. The
+        # explicit teardown block is what makes applying this for real
+        # stop the timer.
+        inventory = (
+            PROJECT_ROOT / "ansible/inventory/group_vars/all/main.yml"
+        ).read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("sankey_export_enabled: false", inventory)
+        self.assertIn(
+            "Tear down the Finanzfluss Sankey exporter", tasks
+        )
+        self.assertIn("when: not (sankey_export_enabled | bool)", tasks)
+        self.assertIn("Stop and disable the Sankey export timer", tasks)
+        self.assertIn(
+            "Stop the Sankey export service, in case a run was mid-flight",
+            tasks,
+        )
+
     def test_site_yml_wires_the_role_in(self) -> None:
         site = (PROJECT_ROOT / "ansible/playbooks/site.yml").read_text(
             encoding="utf-8"

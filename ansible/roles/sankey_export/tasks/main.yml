@@ -172,3 +172,30 @@
         name: sankey-export.timer
         enabled: true
         state: started
+
+# 2026-09-07: sankey_export moved to a k3s CronJob
+# (infra/k3s-apps' modules/sankey_export), confirmed live end-to-end
+# (the rendered PNG's own Nextcloud getlastmodified timestamp matched
+# the k3s deployment window, not just a green apply). This whole role
+# is being deleted in a follow-up commit once this teardown itself is
+# confirmed applied -- see PARKED.md/decisions.md for the full cutover
+# writeup. Split out as its own top-level block (not folded into the
+# block above's own `when`) specifically so applying this stops the
+# still-running timer for real, rather than just having Ansible stop
+# managing an already-running unit -- flipping sankey_export_enabled to
+# false with no explicit stop task here would leave the timer firing
+# forever, orphaned from any future Ansible run once the role above is
+# gone.
+- name: Tear down the Finanzfluss Sankey exporter (superseded by the k3s CronJob)
+  when: not (sankey_export_enabled | bool)
+  block:
+    - name: Stop and disable the Sankey export timer
+      ansible.builtin.systemd_service:
+        name: sankey-export.timer
+        state: stopped
+        enabled: false
+
+    - name: Stop the Sankey export service, in case a run was mid-flight
+      ansible.builtin.systemd_service:
+        name: sankey-export.service
+        state: stopped
