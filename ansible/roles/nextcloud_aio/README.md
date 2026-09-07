@@ -21,8 +21,10 @@ repo builds around.
   the cutover to `shared_ingress` fronting it instead of talking to AIO's
   own built-in proxy directly.
 
-`nextcloud_tools` and `sankey_export` both depend on a dedicated Nextcloud
-account bootstrapped against this instance; see their own READMEs.
+Two clients depend on a dedicated Nextcloud account bootstrapped against
+this instance, both now running as k3s workloads rather than home-infra
+roles: `home_agent`'s own `nextcloud_tools` sidecar and the `sankey_export`
+CronJob -- see `infra/k3s-apps`' `modules/home_agent/`/`modules/sankey_export/`.
 
 - A systemd oneshot (`nextcloud-aio-apache-network-fix.service`, runs at
   boot and on every apply) automatically reconnects
