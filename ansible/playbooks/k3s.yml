@@ -12,6 +12,16 @@
   roles:
     - role: libvirt_host
     - role: k3s_node
+      # Bumped from the role default (2) 2026-09-08: node-1 was
+      # requesting 94% of its 2-vCPU budget (kubectl describe node)
+      # while the physical host itself sat at ~23% CPU / had ~5.3GB
+      # RAM genuinely available (node_memory_MemAvailable_bytes, not
+      # the raw "free" column) -- real headroom to grow into, not
+      # already spoken for. Deliberately not touching k3s-node-2's own
+      # allocation (still the role default of 2) -- this is scoped to
+      # node-1 specifically, where everything except the CI runner
+      # Pods actually runs.
+      k3s_node_vm_vcpus: 3
 
 # Second node: dedicated to infra/k3s-apps' own modules/github_runner/
 # workload, tainted so nothing else in the cluster schedules there.

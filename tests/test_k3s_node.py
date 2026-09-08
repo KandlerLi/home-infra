@@ -78,6 +78,63 @@ class K3sNodeTests(unittest.TestCase):
         )
         self.assertIn("Validate existing k3s network definition", tasks)
 
+    def test_vcpu_resize_shuts_down_redefines_and_restarts_an_existing_vm(
+        self,
+    ) -> None:
+        # 2026-09-08: the "Define" task below only ever fires for a
+        # brand-new VM (when: ... not in list_vms) -- vcpu
+        # placement="static" has no live hotplug path, so without this
+        # block, bumping k3s_node_vm_vcpus for an already-running node
+        # would silently do nothing at all on re-apply.
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "Extract the current vCPU count from the existing domain definition",
+            tasks,
+        )
+        self.assertIn(
+            "Gracefully shut down the k3s node VM to apply a changed vCPU allocation",
+            tasks,
+        )
+        self.assertIn(
+            "Redefine the k3s node VM with its updated vCPU allocation", tasks
+        )
+        self.assertIn(
+            "k3s_node_existing_vm_vcpus | int != k3s_node_vm_vcpus | int", tasks
+        )
+
+    def test_vcpu_resize_wait_is_skipped_under_check_mode(self) -> None:
+        # A simulated shutdown under --check never actually stops the
+        # domain, so polling for real would burn the full retries/delay
+        # budget (5min) on every syntax-check/dry-run while a resize is
+        # pending -- confirmed this is guarded, not just assumed safe
+        # because the module itself supports check_mode.
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "Wait for the k3s node VM to actually stop", tasks
+        )
+        self.assertIn(
+            "not ansible_check_mode\n    and k3s_node_vm_name in "
+            "k3s_node_defined_vms.list_vms\n    and k3s_node_existing_vm_vcpus",
+            tasks,
+        )
+
+    def test_node1_vcpus_bumped_node2_untouched(self) -> None:
+        # 2026-09-08: node-1 was requesting 94% of its 2-vCPU budget
+        # while the physical host itself had real headroom (~23% CPU,
+        # ~5.3GB RAM available) -- scoped to node-1 specifically via
+        # the play's own override, not the role default, so node-2
+        # (the CI runner node) stays untouched.
+        k3s_playbook = (
+            PROJECT_ROOT / "ansible/playbooks/k3s.yml"
+        ).read_text(encoding="utf-8")
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("k3s_node_vm_vcpus: 3", k3s_playbook)
+        self.assertIn("k3s_node_vm_vcpus: 2", defaults)
+        self.assertNotIn("k3s_node_vm_vcpus", k3s_playbook.split("Second node:")[1])
+
     def test_disk_creation_never_overwrites_an_existing_disk(self) -> None:
         tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
 
