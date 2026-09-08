@@ -63,6 +63,13 @@ Or `scripts/roll-out.sh dry-run`/`apply`, which runs the test suite and
 `--check --diff`). `--ask-become-pass` still prompts interactively either
 way -- sudo password entry stays a manual step on purpose.
 
+`ansible/playbooks/k3s.yml` (the k3s learning cluster's own VM
+provisioning/resizing -- deliberately not part of `site.yml`, see that
+playbook's own header comment) has its own equivalent,
+`scripts/roll-out-k3s.sh dry-run`/`apply`, kept as a separate script on
+purpose rather than a mode on `roll-out.sh` -- so a routine
+`roll-out.sh` run can never accidentally reach a k3s VM.
+
 Edit the encrypted secret with the existing GPG key:
 
 ```bash
