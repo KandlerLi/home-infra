@@ -121,15 +121,24 @@
 
 # Only polled outside check mode -- under --check the shutdown above is
 # simulated, not real, so the domain never actually reaches "shutdown"
-# and this would otherwise burn its full retries/delay budget (5min)
-# on every syntax-check/dry-run while a resize is pending.
+# and this would otherwise burn its full retries/delay budget on every
+# syntax-check/dry-run while a resize is pending.
+#
+# Confirmed live 2026-09-08 (the first real vCPU resize against
+# k3s-node-1): a 5-minute budget (30 x 10s) wasn't enough -- this task
+# exhausted all 30 retries with the domain still reporting "running",
+# failing the whole play before Redefine/Start ever ran (a real,
+# several-minute outage on everything node-1 hosts, only recovered by
+# rerunning the play a second time, by which point the VM had finished
+# shutting down on its own). Widened to a 15-minute budget so a single
+# run covers a real graceful ACPI shutdown under normal load.
 - name: Wait for the k3s node VM to actually stop
   community.libvirt.virt:
     command: status
     name: "{{ k3s_node_vm_name }}"
   register: k3s_node_vm_shutdown_status
   until: k3s_node_vm_shutdown_status.status == "shutdown"
-  retries: 30
+  retries: 90
   delay: 10
   when: >-
     not ansible_check_mode
