@@ -89,6 +89,61 @@
       automatically.
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
+# vcpu placement="static" (below) has no live hotplug path -- changing
+# it needs the domain actually stopped, redefined, and started again,
+# which the "Define" task below deliberately never does for a VM that
+# already exists (it only ever defines a brand-new one). Without this
+# block, bumping k3s_node_vm_vcpus for an already-running node would
+# silently do nothing at all on re-apply.
+- name: Extract the current vCPU count from the existing domain definition
+  # Confirmed live (locally, against the real filter): regex_search's
+  # backreference argument ('\1') gets mangled by Jinja's own
+  # string-literal parsing before it ever reaches the filter --
+  # AnsibleFilterError: Unknown argument, every time, regardless of
+  # backslash-escaping attempts. Sidesteps it entirely: match the whole
+  # <vcpu ...>N</vcpu> element first (no group reference needed), then
+  # strip the surrounding tags with two plain regex_replace calls.
+  ansible.builtin.set_fact:
+    k3s_node_existing_vm_vcpus: >-
+      {{ (k3s_node_existing_vm_xml.get_xml
+      | regex_search('<vcpu[^>]*>[0-9]+</vcpu>'))
+      | regex_replace('^<vcpu[^>]*>', '')
+      | regex_replace('</vcpu>$', '') }}
+  when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
+- name: Gracefully shut down the k3s node VM to apply a changed vCPU allocation
+  community.libvirt.virt:
+    name: "{{ k3s_node_vm_name }}"
+    state: shutdown
+  when: >-
+    k3s_node_vm_name in k3s_node_defined_vms.list_vms
+    and k3s_node_existing_vm_vcpus | int != k3s_node_vm_vcpus | int
+
+# Only polled outside check mode -- under --check the shutdown above is
+# simulated, not real, so the domain never actually reaches "shutdown"
+# and this would otherwise burn its full retries/delay budget (5min)
+# on every syntax-check/dry-run while a resize is pending.
+- name: Wait for the k3s node VM to actually stop
+  community.libvirt.virt:
+    command: status
+    name: "{{ k3s_node_vm_name }}"
+  register: k3s_node_vm_shutdown_status
+  until: k3s_node_vm_shutdown_status.status == "shutdown"
+  retries: 30
+  delay: 10
+  when: >-
+    not ansible_check_mode
+    and k3s_node_vm_name in k3s_node_defined_vms.list_vms
+    and k3s_node_existing_vm_vcpus | int != k3s_node_vm_vcpus | int
+
+- name: Redefine the k3s node VM with its updated vCPU allocation
+  community.libvirt.virt:
+    command: define
+    xml: "{{ lookup('template', 'k3s-node-domain.xml.j2') }}"
+  when: >-
+    k3s_node_vm_name in k3s_node_defined_vms.list_vms
+    and k3s_node_existing_vm_vcpus | int != k3s_node_vm_vcpus | int
+
 - name: Allow libvirt to traverse the HDD mount
   ansible.posix.acl:
     path: "{{ k3s_node_storage_mount }}"
