@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Sync human-facing login credentials from sops into pass.
+"""Sync human-facing login credentials from AWS Secrets Manager into pass.
 
-Source of truth is always secrets.sops.yml and the Ansible vars that
-back it (what's actually applied to the homeserver) -- this is one-way,
-sops/vars -> pass, never the other direction. pass is a personal
-convenience copy for grabbing a credential outside a terminal (e.g. to
-log into a web UI, or paste into an iOS Shortcut), not something Ansible
-reads.
+Source of truth is AWS Secrets Manager (this workspace's own move off
+SOPS, PARKED.md's own writeup) -- this is one-way, Secrets Manager ->
+pass, never the other direction. pass is a personal convenience copy
+for grabbing a credential outside a terminal (e.g. to log into a web
+UI, or paste into an iOS Shortcut), not something Ansible reads.
 
 Scope is deliberately narrow: only credentials a human actually types
 into a login prompt or browser. Service-to-service secrets a container
@@ -18,14 +17,16 @@ leak from with no real convenience benefit.
 
     .venv/bin/python scripts/sync_secrets_to_pass.py [--check]
 
-Requires `sops` and `pass` on PATH, and the same GPG key
-(6D8B16CB662983A54B4AF1466F0B5C2AB1509600) usable by both -- confirmed
-true for this workspace's pass store.
+Requires `aws` and `pass` on PATH, and AWS credentials with
+secretsmanager:GetSecretValue on the two secrets below (julian's own
+operator policy, bootstrap/terraform-state/operator.tf, already grants
+this).
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -33,36 +34,76 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SECRETS_FILE = REPO_ROOT / "ansible" / "inventory" / "group_vars" / "all" / "secrets.sops.yml"
-INVENTORY_VARS_FILE = REPO_ROOT / "ansible" / "inventory" / "group_vars" / "all" / "main.yml"
-SHARED_INGRESS_DEFAULTS_FILE = REPO_ROOT / "ansible" / "roles" / "shared_ingress" / "defaults" / "main.yml"
 MONITORING_DEFAULTS_FILE = REPO_ROOT / "ansible" / "roles" / "monitoring" / "defaults" / "main.yml"
+INVENTORY_VARS_FILE = REPO_ROOT / "ansible" / "inventory" / "group_vars" / "all" / "main.yml"
 
-# Each entry is (sops key in secrets.sops.yml, pass path).
+SECRETS_MANAGER_REGION = "eu-central-1"
+
+# Each entry is (Secrets Manager secret id, key within that secret's
+# JSON value, pass path). deluge_web_password/deluge/password is
+# deliberately gone -- Deluge's k3s copy hardcodes a blank password now
+# that Authelia gates torrent.jkandler.de, so this pass entry has had no
+# real consumer since (PARKED.md's own writeup on this cutover).
 SECRET_MAPPINGS = [
-    ("shared_ingress_auth_password", "ingress/password"),
-    ("deluge_web_password", "deluge/password"),
-    ("monitoring_grafana_admin_password", "grafana/password"),
+    ("home-infra/ingress", "shared_ingress_auth_password", "ingress/password"),
+    ("home-infra/grafana", "monitoring_grafana_admin_password", "grafana/password"),
 ]
 
-# Each entry is (Ansible var name, pass path, role defaults.yml fallback).
-# Not secrets themselves (usernames), but worth having alongside the
-# password they pair with in pass.
+# Each entry is (Ansible var name, pass path, role defaults.yml
+# fallback). Not secrets themselves (usernames), but worth having
+# alongside the password they pair with in pass.
 VAR_MAPPINGS = [
-    ("shared_ingress_auth_username", "ingress/user", SHARED_INGRESS_DEFAULTS_FILE),
     ("monitoring_grafana_admin_user", "grafana/user", MONITORING_DEFAULTS_FILE),
 ]
 
+# ingress/user has no Ansible variable behind it any more --
+# shared_ingress_auth_username's own role (ansible/roles/shared_ingress)
+# was deleted once shared_ingress's own move to k3s completed, and
+# infra/k3s-apps' own modules/ingress/secret.tf never read a username
+# variable at all -- it hardcodes "julian" directly in its Basic Auth
+# users string. A literal here, matching that hardcode, is more honest
+# than resolving a variable that no longer exists anywhere (found live
+# 2026-09-09: the old resolve_var() path for this one crashed outright,
+# FileNotFoundError against the already-deleted role's defaults file).
+STATIC_MAPPINGS = [
+    ("ingress/user", "julian"),
+]
 
-def decrypt_secrets(secrets_file: Path) -> dict[str, object]:
-    """Return every key in secrets.sops.yml, decrypted."""
-    result = subprocess.run(
-        ["sops", "-d", str(secrets_file)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return yaml.safe_load(result.stdout) or {}
+
+def fetch_secret(secret_id: str, *, retries: int = 2) -> dict[str, object]:
+    """Return the decoded JSON value of one AWS Secrets Manager secret.
+
+    Retries once on failure -- found live 2026-09-09, repeatedly, across
+    three different tools (this script, a raw `aws` CLI call, and an
+    Ansible lookup) hitting this exact workspace's own `aws login`
+    credential flow: a `CreateOAuth2Token`/"authorization grant is
+    invalid" error that a bare retry a moment later reliably clears, not
+    a real, persistent auth failure. Only the final attempt's error
+    propagates.
+    """
+    command = [
+        "aws",
+        "secretsmanager",
+        "get-secret-value",
+        "--region",
+        SECRETS_MANAGER_REGION,
+        "--secret-id",
+        secret_id,
+        "--query",
+        "SecretString",
+        "--output",
+        "text",
+    ]
+    last_error: subprocess.CalledProcessError | None = None
+    for attempt in range(retries):
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+        last_error = subprocess.CalledProcessError(
+            result.returncode, command, output=result.stdout, stderr=result.stderr
+        )
+    assert last_error is not None
+    raise RuntimeError(f"aws secretsmanager get-secret-value for {secret_id} failed: {last_error.stderr.strip()}") from last_error
 
 
 def resolve_var(var_name: str, inventory_vars_file: Path, role_defaults_file: Path) -> str:
@@ -134,16 +175,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        secrets = decrypt_secrets(SECRETS_FILE)
         desired_values: list[tuple[str, str]] = []
-        for key, entry in SECRET_MAPPINGS:
-            value = secrets.get(key)
+        secret_groups: dict[str, dict[str, object]] = {}
+        for secret_id, key, entry in SECRET_MAPPINGS:
+            if secret_id not in secret_groups:
+                secret_groups[secret_id] = fetch_secret(secret_id)
+            value = secret_groups[secret_id].get(key)
             if not isinstance(value, str) or not value:
-                raise ValueError(f"{key} missing or empty in secrets.sops.yml")
+                raise ValueError(f"{key} missing or empty in Secrets Manager secret {secret_id}")
             desired_values.append((entry, value))
         for var_name, entry, role_defaults_file in VAR_MAPPINGS:
             desired_values.append((entry, resolve_var(var_name, INVENTORY_VARS_FILE, role_defaults_file)))
-    except (subprocess.CalledProcessError, ValueError) as error:
+        desired_values.extend(STATIC_MAPPINGS)
+    except (RuntimeError, ValueError, json.JSONDecodeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
