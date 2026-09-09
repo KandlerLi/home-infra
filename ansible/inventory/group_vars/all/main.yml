@@ -139,6 +139,14 @@ nfs_server_exports:
 nextcloud_aio_mount_dir: /mnt/black-hdd/downloads
 nextcloud_aio_mount_applicable_user: admin
 
+# "Sign in with Authelia" on Nextcloud's own login page (infra/k3s-apps'
+# modules/authelia registers the matching "nextcloud" OIDC client) --
+# see nextcloud_aio's own README for the full reasoning. Needs
+# authelia_oidc_nextcloud_client_secret set via sops
+# ansible/inventory/group_vars/all/secrets.sops.yml before a site.yml
+# run against this flag will pass tasks/oidc.yml's own assert.
+nextcloud_aio_oidc_enabled: true
+
 # Prometheus/Grafana/Alertmanager monitoring stack (ADR 0019). Needs
 # monitoring_grafana_admin_password, monitoring_ntfy_topic,
 # monitoring_ses_smtp_username, and monitoring_ses_smtp_password set via

@@ -317,3 +317,7 @@
     name: nextcloud-aio-apache-network-fix.service
     enabled: true
     state: restarted
+
+- name: Register Authelia as an OIDC login option
+  ansible.builtin.include_tasks: oidc.yml
+  when: nextcloud_aio_oidc_enabled | bool

@@ -20,6 +20,18 @@ repo builds around.
 - `nextcloud_aio_reverse_proxy_enabled` switches its published ports for
   the cutover to `shared_ingress` fronting it instead of talking to AIO's
   own built-in proxy directly.
+- `nextcloud_aio_oidc_enabled` (off by default, same "opt-in" shape as
+  `nextcloud_aio_mount_dir` above) registers Authelia as a "Sign in
+  with Authelia" option on Nextcloud's own login page, via the
+  official `user_oidc` app -- see `tasks/oidc.yml`. Needs
+  `authelia_oidc_nextcloud_client_secret` filled in via `sops
+  ansible/inventory/group_vars/all/secrets.sops.yml` first (matching
+  the client secret `infra/k3s-apps`' own `modules/authelia` hashes
+  for its `nextcloud` client). Deliberately additive, not a
+  replacement -- native login stays enabled, unlike Grafana/Open
+  WebUI's own Authelia integration (`infra/k3s-apps#30`), since
+  Nextcloud may have other real accounts not necessarily tied to this
+  same Authelia identity.
 
 Two clients depend on a dedicated Nextcloud account bootstrapped against
 this instance, both now running as k3s workloads rather than home-infra

@@ -55,3 +55,14 @@ nextcloud_aio_ingress_cutover_confirmation: ""
 nextcloud_aio_apache_network_fix_install_dir: /usr/local/lib/nextcloud-aio
 nextcloud_aio_apache_network_fix_install_path: >-
   {{ nextcloud_aio_apache_network_fix_install_dir }}/reconnect_apache_network.sh
+
+# Off by default, matching this role's own nextcloud_aio_mount_dir
+# convention for opt-in sub-features -- see tasks/oidc.yml. Client
+# secret comes from the authelia_oidc_nextcloud_client_secret SOPS
+# secret directly (the community.sops.sops vars plugin injects it,
+# see ansible.cfg), not a variable here -- matching every other real
+# credential in this repo, never given a default.
+nextcloud_aio_oidc_enabled: false
+nextcloud_aio_oidc_provider_name: Authelia
+nextcloud_aio_oidc_client_id: nextcloud
+nextcloud_aio_oidc_discovery_uri: https://auth.jkandler.de/.well-known/openid-configuration
