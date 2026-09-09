@@ -64,3 +64,28 @@
       - "--discoveryuri={{ nextcloud_aio_oidc_discovery_uri }}"
   no_log: true
   changed_when: true
+
+# The real, documented force-SSO mechanism user_oidc itself provides
+# (https://github.com/nextcloud/user_oidc): with exactly one provider
+# configured (true here) and this disabled, the login page immediately
+# redirects to that provider instead of showing Nextcloud's own
+# username/password form. This is a browser /login redirect only -- it
+# does not touch Basic Auth/app-password API or WebDAV access (those
+# hit the API/DAV endpoints directly, never the /login page), so
+# home_agent's own nextcloud_tools sidecar and the sankey_export
+# CronJob are unaffected. Nextcloud's own admin escape hatch stays
+# available if ever needed: appending ?direct=1 to the login URL shows
+# the real form again (see that repo's own README for why this is a
+# deliberate, documented admin bypass, not a bug).
+- name: Force SSO -- redirect Nextcloud's own login form to Authelia
+  community.docker.docker_container_exec:
+    container: "{{ nextcloud_aio_nextcloud_container }}"
+    user: www-data
+    argv:
+      - php
+      - occ
+      - config:app:set
+      - --value=0
+      - user_oidc
+      - allow_multiple_user_backends
+  changed_when: true

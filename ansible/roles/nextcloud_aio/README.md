@@ -27,11 +27,19 @@ repo builds around.
   `authelia_oidc_nextcloud_client_secret` filled in via `sops
   ansible/inventory/group_vars/all/secrets.sops.yml` first (matching
   the client secret `infra/k3s-apps`' own `modules/authelia` hashes
-  for its `nextcloud` client). Deliberately additive, not a
-  replacement -- native login stays enabled, unlike Grafana/Open
-  WebUI's own Authelia integration (`infra/k3s-apps#30`), since
-  Nextcloud may have other real accounts not necessarily tied to this
-  same Authelia identity.
+  for its `nextcloud` client). Also sets user_oidc's own
+  `allow_multiple_user_backends` app config to force SSO: Nextcloud's
+  login page redirects straight to Authelia instead of showing its own
+  username/password form (2026-09-09, once the personal account's own
+  real data was fully migrated onto the OIDC-provisioned account --
+  see that commit's own message for the account-merge story). This is
+  a browser `/login` redirect only, not a protocol-level block -- it
+  doesn't touch Basic Auth/app-password API or WebDAV access, so
+  `home_agent`'s own `nextcloud_tools` sidecar and the `sankey_export`
+  CronJob (both authenticate directly against the API, never through
+  this page) are unaffected. Nextcloud's own documented admin escape
+  hatch still works if ever needed: appending `?direct=1` to the login
+  URL shows the real form again.
 
 Two clients depend on a dedicated Nextcloud account bootstrapped against
 this instance, both now running as k3s workloads rather than home-infra
