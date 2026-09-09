@@ -137,7 +137,16 @@ nfs_server_exports:
 # privately (torrent + default-password bug both verified fixed) before
 # wiring this up.
 nextcloud_aio_mount_dir: /mnt/black-hdd/downloads
-nextcloud_aio_mount_applicable_user: admin
+# c3d555d14a9e6f55acce409da0bf8fa03e31deff7b9d20c951aecfcf15832cd1 is the
+# user_oidc-provisioned account for the same person (Authelia login,
+# 2026-09-09) -- the native "admin" account's real data (134GB, verified
+# byte-for-byte via occ files:transfer-ownership) was migrated onto it
+# and "admin" itself retired, once Nextcloud SSO was added
+# (nextcloud_aio_oidc_enabled). files_external:applicable's own
+# --add-user is additive-only, so admin's now-dead grant on this mount
+# doesn't need an explicit --remove-user -- it stops mattering the
+# moment that account is deleted.
+nextcloud_aio_mount_applicable_user: c3d555d14a9e6f55acce409da0bf8fa03e31deff7b9d20c951aecfcf15832cd1
 
 # "Sign in with Authelia" on Nextcloud's own login page (infra/k3s-apps'
 # modules/authelia registers the matching "nextcloud" OIDC client) --
