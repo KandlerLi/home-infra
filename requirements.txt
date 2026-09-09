@@ -1,4 +1,15 @@
 ansible==14.3.0
+# Required by amazon.aws.secretsmanager_secret (requirements.yml), used
+# by site.yml's own pre_tasks -- part of the SOPS-to-Secrets-Manager
+# cutover (PARKED.md). Minimums per that lookup's own documented
+# requirements. botocore's [crt] extra specifically: found live --
+# without it, the lookup fails with "Couldn't connect to AWS: Missing
+# Dependency" the moment credentials come from `aws login`'s own SSO
+# flow (this workspace's own standing credential convention, see
+# bootstrap/terraform-state's README) rather than static access keys,
+# since that provider needs CRT signing support.
+boto3>=1.35.0
+botocore[crt]>=1.35.0
 # Only needed to run tests/test_tool_clients.py, which imports
 # ansible/roles/home_agent/files/agent/home_agent/{home_tools,nextcloud_tools}.py
 # directly. Must match agent/requirements.txt's pin.

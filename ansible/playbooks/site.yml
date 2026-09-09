@@ -4,6 +4,62 @@
   become: true
   gather_facts: true
 
+  pre_tasks:
+    # Replaces the 4 secrets community.sops.sops's own vars plugin used
+    # to expose directly to Ansible (ansible.cfg's vars_plugins_enabled
+    # still lists it too, for now -- both mechanisms coexist until the
+    # rest of the SOPS-to-Secrets-Manager cutover, PARKED.md's own item,
+    # is done and proven; a later set_fact here simply shadows the
+    # vars-plugin-provided value of the same name, so removing the
+    # plugin later is a clean no-op for these 4 names specifically).
+    # Explicit per-key facts, not a generic "spread every key" trick --
+    # confirmed live there's no documented set_fact mechanism for
+    # unpacking a whole dict into separate facts (a single fact holding
+    # the dict is all "set_fact: {{ dict }}" actually does), and only 4
+    # keys are genuinely consumed by Ansible directly (everything else
+    # flows through infra/k3s-apps' own Terraform instead -- see
+    # PARKED.md's own secrets inventory). One lookup per Secrets
+    # Manager group, not per key, to avoid redundant API calls for the
+    # 3 keys that share "home-infra/monitoring".
+    #
+    # Gated the same way each value's own downstream role already gates
+    # its use (monitoring_enabled / nextcloud_aio_oidc_enabled) -- a
+    # real, new tradeoff worth being explicit about: unlike SOPS's
+    # local, offline GPG decrypt, this needs live AWS reachability and
+    # credentials at apply time. Gating means a playbook run doesn't
+    # gain that dependency when the features consuming these are
+    # disabled.
+    #
+    # region is explicit, not left to AWS_DEFAULT_REGION/~/.aws/config --
+    # found live 2026-09-09 that the operator's own local AWS CLI config
+    # defaults to a different region (eu-west-1) than where these
+    # secrets actually live (eu-central-1, bootstrap/terraform-state's
+    # own var.aws_region), which 404s instead of erroring clearly.
+    - name: Load Ansible-consumed secrets from AWS Secrets Manager
+      when: monitoring_enabled | bool or nextcloud_aio_oidc_enabled | bool
+      block:
+        - name: Fetch the home-infra/monitoring secret group
+          ansible.builtin.set_fact:
+            _aws_secrets_monitoring: "{{ lookup('amazon.aws.secretsmanager_secret', 'home-infra/monitoring', region='eu-central-1') | from_json }}"
+          when: monitoring_enabled | bool
+
+        - name: Fetch the home-infra/nextcloud secret group
+          ansible.builtin.set_fact:
+            _aws_secrets_nextcloud: "{{ lookup('amazon.aws.secretsmanager_secret', 'home-infra/nextcloud', region='eu-central-1') | from_json }}"
+          when: nextcloud_aio_oidc_enabled | bool
+
+        - name: Expose the individual secret values under their existing variable names
+          ansible.builtin.set_fact:
+            monitoring_ntfy_topic: "{{ _aws_secrets_monitoring.monitoring_ntfy_topic }}"
+            monitoring_ses_smtp_username: "{{ _aws_secrets_monitoring.monitoring_ses_smtp_username }}"
+            monitoring_ses_smtp_password: "{{ _aws_secrets_monitoring.monitoring_ses_smtp_password }}"
+          when: monitoring_enabled | bool
+
+        - name: Expose Nextcloud's own Authelia OIDC client secret under its existing variable name
+          ansible.builtin.set_fact:
+            authelia_oidc_nextcloud_client_secret: "{{ _aws_secrets_nextcloud.authelia_oidc_nextcloud_client_secret }}"
+          when: nextcloud_aio_oidc_enabled | bool
+
   roles:
     - base
     - storage

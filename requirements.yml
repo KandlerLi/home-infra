@@ -11,3 +11,8 @@ collections:
 
   - name: community.sops
     version: "2.4.0"
+
+  # site.yml's own pre_tasks -- the amazon.aws.secretsmanager_secret
+  # lookup, part of the SOPS-to-Secrets-Manager cutover (PARKED.md).
+  - name: amazon.aws
+    version: "11.4.0"

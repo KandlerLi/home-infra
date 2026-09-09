@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+import yaml
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ROLE_ROOT = PROJECT_ROOT / "ansible/roles/k3s_node"
 
@@ -202,12 +204,27 @@ class K3sNodeTests(unittest.TestCase):
 
     def test_playbook_is_not_imported_into_site_yml(self) -> None:
         # This is a learning project -- it must never run as a side
-        # effect of a normal homelab apply.
-        site = (PROJECT_ROOT / "ansible/playbooks/site.yml").read_text(
-            encoding="utf-8"
+        # effect of a normal homelab apply. Checks the actual roles
+        # list structurally, not a blind substring scan of the whole
+        # file -- found live 2026-09-09: a comment merely mentioning
+        # "infra/k3s-apps" (unrelated to this concern -- k3s-apps is a
+        # real, always-applied production repo, not the learning
+        # project this test guards against) false-positived a plain
+        # `assertNotIn("k3s", site)` the moment such a comment landed
+        # in site.yml.
+        site = yaml.safe_load(
+            (PROJECT_ROOT / "ansible/playbooks/site.yml").read_text(
+                encoding="utf-8"
+            )
         )
+        roles = [play.get("roles", []) for play in site]
+        role_names = [
+            role if isinstance(role, str) else role.get("role")
+            for play_roles in roles
+            for role in play_roles
+        ]
 
-        self.assertNotIn("k3s", site)
+        self.assertNotIn("k3s_node", role_names)
 
     def test_cloud_init_never_installs_k3s_directly(self) -> None:
         # The VM's cloud-init only ever prepares a bare Debian box --
