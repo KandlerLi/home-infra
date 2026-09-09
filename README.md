@@ -70,10 +70,16 @@ playbook's own header comment) has its own equivalent,
 purpose rather than a mode on `roll-out.sh` -- so a routine
 `roll-out.sh` run can never accidentally reach a k3s VM.
 
-Edit the encrypted secret with the existing GPG key:
+Secrets live in AWS Secrets Manager now, not a SOPS-encrypted file in
+this repo (the SOPS-to-Secrets-Manager cutover, `PARKED.md`) -- edit
+one with the AWS CLI, merging into the existing JSON blob rather than
+overwriting it (each secret holds several related keys):
 
 ```bash
-sops ansible/inventory/group_vars/all/secrets.sops.yml
+aws secretsmanager get-secret-value --secret-id home-infra/<group> --query SecretString --output text \
+  | jq '.<key> = "<new-value>"' > /tmp/secret.json
+aws secretsmanager put-secret-value --secret-id home-infra/<group> --secret-string file:///tmp/secret.json
+rm /tmp/secret.json
 ```
 
 ## Private homeserver agent, Nextcloud tools, and the chat frontend

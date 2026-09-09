@@ -6,12 +6,9 @@
 
   pre_tasks:
     # Replaces the 4 secrets community.sops.sops's own vars plugin used
-    # to expose directly to Ansible (ansible.cfg's vars_plugins_enabled
-    # still lists it too, for now -- both mechanisms coexist until the
-    # rest of the SOPS-to-Secrets-Manager cutover, PARKED.md's own item,
-    # is done and proven; a later set_fact here simply shadows the
-    # vars-plugin-provided value of the same name, so removing the
-    # plugin later is a clean no-op for these 4 names specifically).
+    # to expose directly to Ansible -- that plugin, secrets.sops.yml,
+    # and .sops.yaml are all gone now (the SOPS-to-Secrets-Manager
+    # cutover, PARKED.md's own item, fully done as of 2026-09-09).
     # Explicit per-key facts, not a generic "spread every key" trick --
     # confirmed live there's no documented set_fact mechanism for
     # unpacking a whole dict into separate facts (a single fact holding

@@ -133,9 +133,9 @@ monitoring_prometheus_k3s_bind_address: ""
 # defaults). This one variable survives purely as documentation of the
 # real login username for scripts/sync_secrets_to_pass.py's own
 # convenience copy into `pass` -- monitoring_grafana_admin_password's
-# real value lives only in secrets.sops.yml now (that same script reads
-# it directly from there), not as a role default, since nothing in this
-# role consumes it any more.
+# real value lives only in the home-infra/grafana AWS Secrets Manager
+# group now (that same script reads it directly from there), not as a
+# role default, since nothing in this role consumes it any more.
 monitoring_grafana_admin_user: admin
 
 # Alertmanager itself is no longer deployed by this role -- it runs as

@@ -58,10 +58,10 @@ nextcloud_aio_apache_network_fix_install_path: >-
 
 # Off by default, matching this role's own nextcloud_aio_mount_dir
 # convention for opt-in sub-features -- see tasks/oidc.yml. Client
-# secret comes from the authelia_oidc_nextcloud_client_secret SOPS
-# secret directly (the community.sops.sops vars plugin injects it,
-# see ansible.cfg), not a variable here -- matching every other real
-# credential in this repo, never given a default.
+# secret comes from the authelia_oidc_nextcloud_client_secret AWS
+# Secrets Manager value (home-infra/nextcloud group, exposed by
+# playbooks/site.yml's own pre_tasks), not a variable here -- matching
+# every other real credential in this repo, never given a default.
 nextcloud_aio_oidc_enabled: false
 nextcloud_aio_oidc_provider_name: Authelia
 nextcloud_aio_oidc_client_id: nextcloud

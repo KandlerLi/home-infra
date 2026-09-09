@@ -6,10 +6,15 @@
 # path, and which flags mean "dry run" vs. "for real".
 #
 # Unlike github/repo-infra's and bootstrap/k3s-bootstrap's own
-# roll-out.sh, this one needs no AWS credentials, no SSH tunnel, and no
-# manual secrets export -- Ansible's own community.sops.sops vars
-# plugin (ansible.cfg) already decrypts secrets.sops.yml automatically
-# at playbook-run time. --ask-become-pass stays interactive on
+# roll-out.sh, this one needs no SSH tunnel and no manual secrets
+# export -- playbooks/site.yml's own pre_tasks read the 4 secrets
+# Ansible genuinely consumes straight from AWS Secrets Manager. That
+# does mean this script now needs an ambient `aws login` session with
+# read access to those secret groups (unlike SOPS's old local, offline
+# GPG decrypt) -- a new dependency this repo didn't have before the
+# SOPS-to-Secrets-Manager cutover (PARKED.md), worth knowing if this
+# ever fails with an AWS credentials/region error instead of the
+# playbook error it looks like. --ask-become-pass stays interactive on
 # purpose: sudo password entry is exactly the kind of credential ADR
 # 0018's own principle says shouldn't be scripted away.
 #

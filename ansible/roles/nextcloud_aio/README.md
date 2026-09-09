@@ -24,8 +24,8 @@ repo builds around.
   `nextcloud_aio_mount_dir` above) registers Authelia as a "Sign in
   with Authelia" option on Nextcloud's own login page, via the
   official `user_oidc` app -- see `tasks/oidc.yml`. Needs
-  `authelia_oidc_nextcloud_client_secret` filled in via `sops
-  ansible/inventory/group_vars/all/secrets.sops.yml` first (matching
+  `authelia_oidc_nextcloud_client_secret` set in the
+  `home-infra/nextcloud` AWS Secrets Manager group first (matching
   the client secret `infra/k3s-apps`' own `modules/authelia` hashes
   for its `nextcloud` client). Also sets user_oidc's own
   `allow_multiple_user_backends` app config to force SSO: Nextcloud's

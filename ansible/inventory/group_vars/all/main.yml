@@ -151,16 +151,20 @@ nextcloud_aio_mount_applicable_user: c3d555d14a9e6f55acce409da0bf8fa03e31deff7b9
 # "Sign in with Authelia" on Nextcloud's own login page (infra/k3s-apps'
 # modules/authelia registers the matching "nextcloud" OIDC client) --
 # see nextcloud_aio's own README for the full reasoning. Needs
-# authelia_oidc_nextcloud_client_secret set via sops
-# ansible/inventory/group_vars/all/secrets.sops.yml before a site.yml
-# run against this flag will pass tasks/oidc.yml's own assert.
+# authelia_oidc_nextcloud_client_secret set in the home-infra/nextcloud
+# AWS Secrets Manager group (playbooks/site.yml's own pre_tasks expose
+# it under this same variable name) before a site.yml run against this
+# flag will pass tasks/oidc.yml's own assert.
 nextcloud_aio_oidc_enabled: true
 
 # Prometheus/Grafana/Alertmanager monitoring stack (ADR 0019). Needs
-# monitoring_grafana_admin_password, monitoring_ntfy_topic,
-# monitoring_ses_smtp_username, and monitoring_ses_smtp_password set via
-# sops before a site.yml run against this flag will pass its own
-# validate checks.
+# monitoring_ntfy_topic, monitoring_ses_smtp_username, and
+# monitoring_ses_smtp_password set in the home-infra/monitoring AWS
+# Secrets Manager group (playbooks/site.yml's own pre_tasks expose them
+# under these same variable names) before a site.yml run against this
+# flag will pass its own validate checks. monitoring_grafana_admin_password
+# is a separate case -- see monitoring/defaults/main.yml's own comment,
+# nothing in this role reads it directly.
 monitoring_enabled: true
 shared_ingress_grafana_enabled: true
 # Phase 1 of moving the monitoring stack into the k3s cluster
@@ -214,10 +218,10 @@ shared_ingress_home_upstream: http://192.168.101.10:80
 # (this repo's own Docker deployment and its additive Grafana-reach
 # listener) are both gone -- the blocky role itself was deleted once
 # the cutover was confirmed live, matching shared_ingress's own
-# precedent. blocky_postgres_password (secrets.sops.yml) is still
-# real: infra/k3s-apps' own modules/blocky consumes it directly via
-# TF_VAR_blocky_postgres_password, independent of this repo's own
-# roles entirely.
+# precedent. blocky_postgres_password is still real: infra/k3s-apps'
+# own modules/blocky consumes it directly from the home-infra/blocky
+# AWS Secrets Manager group (secrets.tf), independent of this repo's
+# own roles entirely.
 #
 # The actual cutover: confirmed independently first (2026-09-01) that
 # infra/k3s-apps' own modules/blocky is serving real production LAN

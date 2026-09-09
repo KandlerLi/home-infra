@@ -9,10 +9,9 @@ collections:
   - name: ansible.posix
     version: "2.2.2"
 
-  - name: community.sops
-    version: "2.4.0"
-
   # site.yml's own pre_tasks -- the amazon.aws.secretsmanager_secret
   # lookup, part of the SOPS-to-Secrets-Manager cutover (PARKED.md).
+  # Replaced community.sops entirely, 2026-09-09 -- see that item's own
+  # writeup for the full history.
   - name: amazon.aws
     version: "11.4.0"

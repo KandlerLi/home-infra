@@ -21,9 +21,12 @@
       - authelia_oidc_nextcloud_client_secret | trim != "CHANGE_ME"
     fail_msg: >-
       authelia_oidc_nextcloud_client_secret looks unset or still
-      CHANGE_ME -- run `sops ansible/inventory/group_vars/all/secrets.sops.yml`
-      to fill it in with the same value infra/k3s-apps' own
-      modules/authelia hashes for its "nextcloud" client.
+      CHANGE_ME -- update the home-infra/nextcloud AWS Secrets Manager
+      secret (its own JSON blob, not just this one key --
+      `aws secretsmanager get-secret-value` first, merge in the real
+      value, then `put-secret-value` the whole thing back) with the
+      same value infra/k3s-apps' own modules/authelia hashes for its
+      "nextcloud" client.
 
 # app:install is itself idempotent (a no-op, not an error, if the app
 # is already installed) per Nextcloud's own occ conventions elsewhere

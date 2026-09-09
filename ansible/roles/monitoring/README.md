@@ -58,12 +58,13 @@ target list notifies every address in it for the same firing alert
 (unlike a scrape target list), so listing both Alertmanagers at once
 would double-fire every real notification.
 
-Needs `monitoring_ntfy_topic` and the SES SMTP credentials set through
-SOPS before first enabling. `monitoring_grafana_admin_password` still
-lives in `secrets.sops.yml` too (nothing in this role reads it any
-more, but `infra/k3s-apps`' own `scripts/export-tf-vars.sh` does, and so
-does the `pass` sync below) -- same real login, same real password, just
+Needs `monitoring_ntfy_topic` and the SES SMTP credentials set in the
+`home-infra/monitoring` AWS Secrets Manager group before first
+enabling. `monitoring_grafana_admin_password` lives in the separate
+`home-infra/grafana` group (nothing in this role reads it directly --
+`infra/k3s-apps`' own `secrets.tf` reads it from there, and so does
+the `pass` sync below) -- same real login, same real password, just
 served from the k3s cluster now. A personal copy of the Grafana admin
 login lives in `pass` (`grafana/user`, `grafana/password`) for
-convenience -- sops is always the source of truth; keep `pass` in sync
-with `scripts/sync_secrets_to_pass.py` after rotating it.
+convenience -- AWS Secrets Manager is always the source of truth; keep
+`pass` in sync with `scripts/sync_secrets_to_pass.py` after rotating it.
