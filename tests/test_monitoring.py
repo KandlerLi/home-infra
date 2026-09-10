@@ -489,23 +489,19 @@ class GrafanaK3sMigrationTests(unittest.TestCase):
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 
         # Checked as an actual variable assignment ("name:"), not a bare
-        # substring -- monitoring_grafana_admin_password is legitimately
-        # still mentioned in prose, in the comment explaining why
-        # monitoring_grafana_admin_user (unlike it) survives.
+        # substring -- these are legitimately still mentioned in prose in
+        # defaults/main.yml's comments explaining why they went away.
         for dead_default in (
             "monitoring_grafana_container_name",
             "monitoring_grafana_image_name",
             "monitoring_grafana_port",
             "monitoring_grafana_memory_limit",
             "monitoring_grafana_admin_password",
+            "monitoring_grafana_admin_user",
             "monitoring_grafana_container_user",
         ):
             with self.subTest(default=dead_default):
                 self.assertNotIn(f"{dead_default}:", defaults)
-
-        # monitoring_grafana_admin_user survives on purpose -- see its
-        # own comment in defaults/main.yml.
-        self.assertIn("monitoring_grafana_admin_user: admin", defaults)
 
         for dead_template in (
             "grafana_datasources.yml.j2",

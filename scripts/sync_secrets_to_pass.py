@@ -13,12 +13,15 @@ reads on its own (blocky_postgres_password, the SES SMTP creds, the
 GitHub runner token, the OpenAI API key, shared_ingress's derived bcrypt
 hash) stay out of pass -- there's no login flow they'd ever get pasted
 into, so mirroring them would just be more places for the same secret to
-leak from with no real convenience benefit.
+leak from with no real convenience benefit. grafana/user + grafana/password
+were also dropped 2026-09-10: Grafana's native login is disabled at the
+protocol level (Authelia OIDC only), so that credential can't be typed
+into anything either.
 
     .venv/bin/python scripts/sync_secrets_to_pass.py [--check]
 
 Requires `aws` and `pass` on PATH, and AWS credentials with
-secretsmanager:GetSecretValue on the two secrets below (julian's own
+secretsmanager:GetSecretValue on the secret below (julian's own
 operator policy, bootstrap/terraform-state/operator.tf, already grants
 this).
 """
@@ -29,13 +32,6 @@ import argparse
 import json
 import subprocess
 import sys
-from pathlib import Path
-
-import yaml
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-MONITORING_DEFAULTS_FILE = REPO_ROOT / "ansible" / "roles" / "monitoring" / "defaults" / "main.yml"
-INVENTORY_VARS_FILE = REPO_ROOT / "ansible" / "inventory" / "group_vars" / "all" / "main.yml"
 
 SECRETS_MANAGER_REGION = "eu-central-1"
 
@@ -46,14 +42,6 @@ SECRETS_MANAGER_REGION = "eu-central-1"
 # real consumer since (PARKED.md's own writeup on this cutover).
 SECRET_MAPPINGS = [
     ("home-infra/ingress", "shared_ingress_auth_password", "ingress/password"),
-    ("home-infra/grafana", "monitoring_grafana_admin_password", "grafana/password"),
-]
-
-# Each entry is (Ansible var name, pass path, role defaults.yml
-# fallback). Not secrets themselves (usernames), but worth having
-# alongside the password they pair with in pass.
-VAR_MAPPINGS = [
-    ("monitoring_grafana_admin_user", "grafana/user", MONITORING_DEFAULTS_FILE),
 ]
 
 # ingress/user has no Ansible variable behind it any more --
@@ -104,25 +92,6 @@ def fetch_secret(secret_id: str, *, retries: int = 2) -> dict[str, object]:
         )
     assert last_error is not None
     raise RuntimeError(f"aws secretsmanager get-secret-value for {secret_id} failed: {last_error.stderr.strip()}") from last_error
-
-
-def resolve_var(var_name: str, inventory_vars_file: Path, role_defaults_file: Path) -> str:
-    """Return the effective value of an Ansible var: inventory override, else role default.
-
-    Ansible's real precedence is broader than this (host_vars, group_vars
-    on other groups, -e overrides), but this repo only ever sets these
-    vars in one of these two places -- checked directly rather than
-    assumed.
-    """
-    inventory_vars = yaml.safe_load(inventory_vars_file.read_text()) or {}
-    if var_name in inventory_vars:
-        return str(inventory_vars[var_name])
-
-    role_defaults = yaml.safe_load(role_defaults_file.read_text()) or {}
-    value = role_defaults.get(var_name)
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{var_name} not found in inventory or role defaults")
-    return value
 
 
 def pass_show(entry: str) -> str | None:
@@ -184,8 +153,6 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{key} missing or empty in Secrets Manager secret {secret_id}")
             desired_values.append((entry, value))
-        for var_name, entry, role_defaults_file in VAR_MAPPINGS:
-            desired_values.append((entry, resolve_var(var_name, INVENTORY_VARS_FILE, role_defaults_file)))
         desired_values.extend(STATIC_MAPPINGS)
     except (RuntimeError, ValueError, json.JSONDecodeError) as error:
         print(f"error: {error}", file=sys.stderr)

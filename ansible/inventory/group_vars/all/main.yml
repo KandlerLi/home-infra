@@ -162,9 +162,8 @@ nextcloud_aio_oidc_enabled: true
 # monitoring_ses_smtp_password set in the home-infra/monitoring AWS
 # Secrets Manager group (playbooks/site.yml's own pre_tasks expose them
 # under these same variable names) before a site.yml run against this
-# flag will pass its own validate checks. monitoring_grafana_admin_password
-# is a separate case -- see monitoring/defaults/main.yml's own comment,
-# nothing in this role reads it directly.
+# flag will pass its own validate checks. (Grafana's own admin password
+# isn't a shared secret any more -- see monitoring/README.md.)
 monitoring_enabled: true
 shared_ingress_grafana_enabled: true
 # Phase 1 of moving the monitoring stack into the k3s cluster

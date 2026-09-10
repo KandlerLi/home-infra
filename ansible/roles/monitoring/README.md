@@ -60,11 +60,11 @@ would double-fire every real notification.
 
 Needs `monitoring_ntfy_topic` and the SES SMTP credentials set in the
 `home-infra/monitoring` AWS Secrets Manager group before first
-enabling. `monitoring_grafana_admin_password` lives in the separate
-`home-infra/grafana` group (nothing in this role reads it directly --
-`infra/k3s-apps`' own `secrets.tf` reads it from there, and so does
-the `pass` sync below) -- same real login, same real password, just
-served from the k3s cluster now. A personal copy of the Grafana admin
-login lives in `pass` (`grafana/user`, `grafana/password`) for
-convenience -- AWS Secrets Manager is always the source of truth; keep
-`pass` in sync with `scripts/sync_secrets_to_pass.py` after rotating it.
+enabling. Grafana's own admin password is no longer a shared secret at
+all: its k3s copy (`infra/k3s-apps`, `modules/grafana`) generates a
+throwaway `random_password` for `GF_SECURITY_ADMIN_PASSWORD` because
+native login is disabled at the protocol level (Authelia OIDC only), so
+it can't be typed into anything. `monitoring_grafana_admin_password`
+was removed from the `home-infra/grafana` secret and from the `pass`
+sync 2026-09-10; the `home-infra/grafana` group now holds only the
+Authelia OIDC client secret.
