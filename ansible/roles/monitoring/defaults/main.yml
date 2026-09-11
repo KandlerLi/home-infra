@@ -86,15 +86,27 @@ monitoring_probe_targets:
   - https://www.jkandler.de/
   - http://jkandler.de/
 
-# ai.jkandler.de and torrent.jkandler.de sit behind Traefik Basic Auth
-# (shared_ingress_auth_password_hash, shared across every gated route),
-# and only the bcrypt hash is stored anywhere in this repo -- the
-# plaintext lives solely in Julian's password manager, so blackbox has no
-# credential to send. Probed with the http_2xx_or_401 module instead:
-# 401 still proves DNS/TLS/Traefik/the upstream are all up and correctly
-# gating access, so real outages (timeouts, 5xx, connection refused)
-# still alert -- it just can't distinguish "healthy behind auth" from "up
-# but broken behind auth" the way an unauthenticated 2xx check can.
+# ai.jkandler.de and torrent.jkandler.de sit behind Authelia forward-auth
+# since 2026-09-08 (infra/k3s-apps' modules/ingress/configmap.tf) -- the
+# Traefik Basic Auth this comment used to describe was retired 2026-09-11
+# along with shared_ingress_auth_password(_hash) entirely, once every
+# chain had held stable on forward-auth for days (see BACKLOG.md's own
+# tracked item on the storage bug that motivated keeping it around as a
+# fallback). blackbox has no Authelia session to send, so it still can't
+# get an authenticated 2xx here. Probed with the http_2xx_or_401 module
+# instead: 401 still proves DNS/TLS/Traefik/the upstream are all up and
+# correctly gating access, so real outages (timeouts, 5xx, connection
+# refused) still alert -- it just can't distinguish "healthy behind auth"
+# from "up but broken behind auth" the way an unauthenticated 2xx check
+# can. CAUTION, found live 2026-09-11: Authelia forward-auth actually
+# returns 302 (redirect to auth.jkandler.de), not 401, to an
+# unauthenticated plain GET -- confirmed via curl against both targets
+# below. http_2xx_or_401's valid_status_codes ([200, 401] in
+# blackbox.yml.j2) does not include 302, so these two probes likely read
+# as failing continuously since the 2026-09-08 cutover. Not yet fixed --
+# flagged in PARKED.md rather than silently changed here, since the
+# right fix (add 302, or switch approach) is a real decision, not a
+# typo.
 monitoring_probe_targets_authenticated:
   - https://ai.jkandler.de/healthz
   - https://torrent.jkandler.de/
