@@ -177,6 +177,43 @@
       {{ 'restarted' if (base_e1000e_watchdog_recovery_script.changed
          or base_e1000e_watchdog_recovery_unit.changed) else 'started' }}
 
+# Real production outage 2026-09-11/12 (~22:58-07:51 CEST, ~8h53m):
+# the homeserver stayed powered on (fans running, lights on) but was
+# fully unresponsive -- no SSH, no services -- and needed a manual
+# physical reboot. Unlike the two e1000e watchdog-hang incidents above,
+# root-caused via `journalctl -k -b -1`: zero kernel-level log entries
+# of any kind (no NETDEV WATCHDOG, no panic, no OOM, no hardware
+# error) in the entire window the box was actually dead, and no
+# graceful-shutdown sequence logged either -- a harder, more total
+# freeze than the e1000e bug's own signature, where the kernel stayed
+# alive enough to log "Detected Hardware Unit Hang" continuously.
+# e1000e-watchdog-recovery.service (above) is powerless against this:
+# it only reacts to that one specific kernel message, which never
+# appeared. Root cause of *this* freeze is still unknown.
+#
+# Confirmed live this hardware has a working watchdog timer device
+# (/dev/watchdog, /dev/watchdog0/1) that systemd wasn't using at all
+# (RuntimeWatchdogUSec=0). Enabling it is a root-cause-agnostic safety
+# net, not a fix for a specific bug: if the kernel ever stops
+# scheduling entirely (exactly what this outage looks like) and can't
+# pet the watchdog, the hardware forces a real reset on its own, no
+# software involved -- turns an undetected multi-hour outage requiring
+# physical intervention into an automatic reboot within seconds.
+# daemon-reexec (not daemon-reload, which only reloads unit files) is
+# what actually gets PID1 to pick up a changed system.conf immediately
+# rather than waiting for the next boot.
+- name: Enable the hardware watchdog via systemd
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/system.conf
+    regexp: '^#?RuntimeWatchdogSec='
+    line: "RuntimeWatchdogSec={{ base_watchdog_sec }}"
+  register: base_watchdog_config
+
+- name: Reexec systemd to apply the watchdog setting immediately
+  ansible.builtin.command:
+    cmd: systemctl daemon-reexec
+  when: base_watchdog_config.changed
+
 - name: Ensure www-data group exists
   ansible.builtin.group:
     name: www-data

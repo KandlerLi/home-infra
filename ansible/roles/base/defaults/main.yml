@@ -10,3 +10,12 @@ admin_user: julian
 base_e1000e_interface: enp0s25
 base_e1000e_pci_address: "0000:00:19.0"
 base_e1000e_watchdog_recovery_install_dir: /usr/local/lib/e1000e-watchdog-recovery
+
+# Hardware watchdog timeout -- see the "Enable the hardware watchdog"
+# task's own comment for why (2026-09-11/12's total-freeze outage,
+# unrelated to the e1000e-specific fixes above). 30s balances real
+# recovery speed against false positives from ordinary load spikes
+# (confirmed live: load average briefly hits ~10 in the first minute
+# after a normal boot, well under systemd's own watchdog kicking being
+# effectively independent of general system load).
+base_watchdog_sec: 30s
