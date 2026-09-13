@@ -55,6 +55,18 @@ Check connectivity:
 Apply all infrastructure:
 
 ```bash
+scripts/roll-out.sh apply
+```
+
+(sources AWS credentials for the `home-infra-local` identity from
+`pass` first -- see `bootstrap/terraform-state/README.md`'s
+"home-infra-local Identity" section. Running the raw
+`ansible-playbook` command below works too, but only if
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` are already exported in
+your shell -- `site.yml`'s own `pre_tasks` read 2 secret groups
+straight from AWS Secrets Manager.)
+
+```bash
 .venv/bin/ansible-playbook ansible/playbooks/site.yml --ask-become-pass
 ```
 
@@ -157,7 +169,7 @@ Then apply it (it's included in a normal `site.yml` run once
 role):
 
 ```bash
-.venv/bin/ansible-playbook ansible/playbooks/site.yml --ask-become-pass
+scripts/roll-out.sh apply
 ```
 
 Enabling the role alone changes nothing for your devices -- they keep
@@ -191,8 +203,8 @@ self-hosted home runner (`[self-hosted, home, debian]`). It's checks-only,
 deliberately: it never applies anything and never touches the real
 homeserver, since that has no public API to reach safely the way
 `dyndns`/`website`'s AWS deploys do. Applying changes still always means
-running `ansible-playbook site.yml --ask-become-pass` yourself, on your
-own machine, over the local network, exactly as before. Unlike
+running `scripts/roll-out.sh apply` yourself, on your own machine, over
+the local network, exactly as before. Unlike
 `website`'s deploy pipeline, running these particular checks on the home
 runner has no real availability tradeoff — nothing here ever needs to run
 while the homeserver itself is down.

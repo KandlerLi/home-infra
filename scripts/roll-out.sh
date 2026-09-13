@@ -6,17 +6,17 @@
 # path, and which flags mean "dry run" vs. "for real".
 #
 # Unlike github/repo-infra's and bootstrap/k3s-bootstrap's own
-# roll-out.sh, this one needs no SSH tunnel and no manual secrets
-# export -- playbooks/site.yml's own pre_tasks read the 4 secrets
-# Ansible genuinely consumes straight from AWS Secrets Manager. That
-# does mean this script now needs an ambient `aws login` session with
-# read access to those secret groups (unlike SOPS's old local, offline
-# GPG decrypt) -- a new dependency this repo didn't have before the
-# SOPS-to-Secrets-Manager cutover (PARKED.md), worth knowing if this
-# ever fails with an AWS credentials/region error instead of the
-# playbook error it looks like. --ask-become-pass stays interactive on
-# purpose: sudo password entry is exactly the kind of credential ADR
-# 0018's own principle says shouldn't be scripted away.
+# roll-out.sh, this one needs no SSH tunnel -- but it does need AWS
+# credentials, the same way those two do: playbooks/site.yml's own
+# pre_tasks read the 4 secret values (across 2 groups,
+# home-infra/monitoring and home-infra/nextcloud) Ansible genuinely
+# consumes straight from AWS Secrets Manager. Sourced from the
+# home-infra-local IAM identity in pass (never an ambient `aws login`
+# session -- see bootstrap/terraform-state/README.md's
+# "home-infra-local Identity" section for how those got there).
+# --ask-become-pass stays interactive on purpose: sudo password entry
+# is exactly the kind of credential ADR 0018's own principle says
+# shouldn't be scripted away.
 #
 #   scripts/roll-out.sh dry-run
 #   scripts/roll-out.sh apply
@@ -38,6 +38,20 @@ esac
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(dirname "${script_dir}")"
 cd "${repo_root}"
+
+fail() {
+  echo "roll-out.sh: $1" >&2
+  exit 1
+}
+
+access_key_id="$(pass show aws/home-infra-local/access-key-id 2>/dev/null | head -1 || true)"
+[ -n "${access_key_id}" ] || fail "pass entry aws/home-infra-local/access-key-id is empty or missing -- see bootstrap/terraform-state/README.md's 'home-infra-local Identity' section"
+
+secret_access_key="$(pass show aws/home-infra-local/secret-access-key 2>/dev/null | head -1 || true)"
+[ -n "${secret_access_key}" ] || fail "pass entry aws/home-infra-local/secret-access-key is empty or missing -- see bootstrap/terraform-state/README.md's 'home-infra-local Identity' section"
+
+export AWS_ACCESS_KEY_ID="${access_key_id}"
+export AWS_SECRET_ACCESS_KEY="${secret_access_key}"
 
 [ -x .venv/bin/ansible-playbook ] || {
   echo "roll-out.sh: .venv/bin/ansible-playbook not found -- set up the venv first (see README.md)" >&2
