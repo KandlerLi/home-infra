@@ -49,6 +49,13 @@ jobs:
     with:
       image_name: ${{ matrix.name }}
       image_ref: ${{ matrix.ref }}
+      # GitHub-hosted, not this repo's single self-hosted runner replica
+      # -- the scan needs no AWS credentials or homeserver access, only
+      # outbound internet, so there's no reason to contend with
+      # checks.yml's own build-image/validate jobs for it (PARKED.md's
+      # "Trivy scan and terraform apply serialize on the same
+      # self-hosted runner").
+      runs_on: '["ubuntu-latest"]'
     permissions:
       contents: read
       packages: read
