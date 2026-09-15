@@ -45,10 +45,30 @@ jobs:
           # resolves to on the day the scan runs.
           - name: nextcloud-aio
             ref: ghcr.io/nextcloud-releases/all-in-one:latest
+          # Built here (ansible/roles/home_agent/files/agent,
+          # build-home-agent.yml), consumed by infra/k3s-apps'
+          # terraform.tfvars -- scanned from this repo, not that one,
+          # since a repo-scoped GITHUB_TOKEN only gets implicit read
+          # access to packages *that same repo* published. Tried it from
+          # k3s-apps first (2026-09-15): GHCR returned MANIFEST_UNKNOWN
+          # rather than an auth error for the package it couldn't see,
+          # which looked exactly like the image didn't exist -- worth
+          # remembering next time a cross-repo GHCR pull acts this way.
+          # Kept in sync by hand with terraform.tfvars' own
+          # home_agent_image, same convention as every other entry here.
+          - name: home-agent
+            ref: ghcr.io/kandlerli/home-agent@sha256:a8d7507b05cedee9d339166472ad3cfb5ec4c26b6e7e5797d0c22613b3c37b60
     uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.10
     with:
       image_name: ${{ matrix.name }}
       image_ref: ${{ matrix.ref }}
+      # GitHub-hosted, not this repo's single self-hosted runner replica
+      # -- the scan needs no AWS credentials or homeserver access, only
+      # outbound internet, so there's no reason to contend with
+      # checks.yml's own build-image/validate jobs for it (PARKED.md's
+      # "Trivy scan and terraform apply serialize on the same
+      # self-hosted runner").
+      runs_on: '["ubuntu-latest"]'
     permissions:
       contents: read
       packages: read
