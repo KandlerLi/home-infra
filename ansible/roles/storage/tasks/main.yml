@@ -16,3 +16,21 @@
     dump: "0"
     passno: "2"
     state: mounted
+
+- name: Ensure red HDD mount point exists
+  ansible.builtin.file:
+    path: "{{ red_hdd_mount_point }}"
+    state: directory
+    owner: "{{ red_hdd_owner }}"
+    group: "{{ red_hdd_group }}"
+    mode: "{{ red_hdd_mode }}"
+
+- name: Mount red HDD
+  ansible.posix.mount:
+    path: "{{ red_hdd_mount_point }}"
+    src: "UUID={{ red_hdd_device_uuid }}"
+    fstype: "{{ red_hdd_filesystem }}"
+    opts: "{{ red_hdd_mount_options }}"
+    dump: "0"
+    passno: "2"
+    state: mounted
