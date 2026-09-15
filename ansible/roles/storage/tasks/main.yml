@@ -17,20 +17,20 @@
     passno: "2"
     state: mounted
 
-- name: Ensure backup HDD mount point exists
+- name: Ensure red HDD mount point exists
   ansible.builtin.file:
-    path: "{{ backup_hdd_mount_point }}"
+    path: "{{ red_hdd_mount_point }}"
     state: directory
-    owner: "{{ backup_hdd_owner }}"
-    group: "{{ backup_hdd_group }}"
-    mode: "{{ backup_hdd_mode }}"
+    owner: "{{ red_hdd_owner }}"
+    group: "{{ red_hdd_group }}"
+    mode: "{{ red_hdd_mode }}"
 
-- name: Mount backup HDD
+- name: Mount red HDD
   ansible.posix.mount:
-    path: "{{ backup_hdd_mount_point }}"
-    src: "UUID={{ backup_hdd_device_uuid }}"
-    fstype: "{{ backup_hdd_filesystem }}"
-    opts: "{{ backup_hdd_mount_options }}"
+    path: "{{ red_hdd_mount_point }}"
+    src: "UUID={{ red_hdd_device_uuid }}"
+    fstype: "{{ red_hdd_filesystem }}"
+    opts: "{{ red_hdd_mount_options }}"
     dump: "0"
     passno: "2"
     state: mounted
