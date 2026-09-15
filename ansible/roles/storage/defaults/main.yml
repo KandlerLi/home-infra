@@ -7,3 +7,22 @@ black_hdd_mount_options: "defaults"
 black_hdd_owner: "www-data"
 black_hdd_group: "www-data"
 black_hdd_mode: "02770"
+
+# Installed 2026-09-15 specifically for Nextcloud AIO's own Borg backup
+# feature (see docs/runbooks/nextcloud-aio.md's "Enable the Borg backup"
+# section) -- AIO configures the backup path entirely through its own web
+# interface, not an env var like NEXTCLOUD_DATADIR, so this role only
+# owns the host-side mount; pointing AIO at it is a manual step.
+# root:root/0755 rather than black_hdd's www-data:www-data/02770 -- this
+# mount is written to only by AIO's own backup container (root-equivalent
+# inside Docker), not directly by the Nextcloud app container the way
+# black_hdd's data directory is. Adjust if the first backup attempt
+# reports a permission error.
+backup_hdd_device_uuid: "5ab85a44-1ed0-409e-bf52-340ad025e398"
+backup_hdd_mount_point: "/mnt/backup-hdd"
+backup_hdd_filesystem: "ext4"
+backup_hdd_mount_options: "defaults"
+
+backup_hdd_owner: "root"
+backup_hdd_group: "root"
+backup_hdd_mode: "0755"
