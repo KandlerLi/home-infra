@@ -1,0 +1,54 @@
+name: Security scan
+
+# trivy image CVE scan -- second step of the workspace-level security
+# audit (PARKED.md), after trivy config. This repo was deliberately
+# excluded from the trivy-config wave (Trivy's Ansible IaC scanner only
+# covers AWS S3 cloud-resource modules, and this repo's Ansible manages
+# Docker containers/systemd on the physical homeserver, not AWS
+# resources -- see PARKED.md's "Security audit" entry), but that
+# limitation is specific to config scanning and has no bearing on
+# scanning the actual pinned container images this repo deploys, so
+# this is this repo's first entry into the audit.
+#
+# Deliberately informational only (see gha-common's trivy-image.yml own
+# header comment for why) -- never added as a required status check.
+# One matrix entry per image this repo's Ansible roles deploy directly
+# via Docker (ansible/roles/monitoring, ansible/roles/nextcloud_aio;
+# every other role that used to run a container here has been migrated
+# to infra/k3s-apps and no longer does) -- kept in sync by hand with
+# each role's own defaults/main.yml, same convention as
+# infra/k3s-apps' own matrix.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  trivy-image:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: node-exporter
+            ref: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+          - name: cadvisor
+            ref: ghcr.io/google/cadvisor:v0.60.5@sha256:763aecf1c32c2be8a1a75f9abfc2fc461005c9dbbaa39cb356b354aac1296dbe
+          - name: blackbox-exporter
+            ref: prom/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc
+          - name: prometheus
+            ref: prom/prometheus:v3.14.0@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
+          # Deliberately not digest-pinned, unlike every other image
+          # above (ansible/roles/nextcloud_aio/defaults/main.yml's own
+          # comment) -- this entry will drift to whatever :latest
+          # resolves to on the day the scan runs.
+          - name: nextcloud-aio
+            ref: ghcr.io/nextcloud-releases/all-in-one:latest
+    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.10
+    with:
+      image_name: ${{ matrix.name }}
+      image_ref: ${{ matrix.ref }}
+    permissions:
+      contents: read
+      packages: read
