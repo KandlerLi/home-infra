@@ -44,6 +44,15 @@ aux_backup_sources:
     path: /mnt/black-hdd/deluge-config
   - name: open-webui
     path: /var/lib/open-webui
+    # webui.db is a live SQLite database in WAL mode, actively open by
+    # the real Open WebUI Pod over this same NFS export -- a plain tar
+    # of it fails outright (the -shm file is held locked) and even if
+    # it didn't, a raw copy of a live WAL-mode database isn't
+    # guaranteed consistent. Listed sources here get backed up via
+    # SQLite's own online backup API instead of a raw file copy -- see
+    # the script template's own comment for the full reasoning.
+    sqlite_files:
+      - webui.db
 
 # Matches blocky_ipv6_relay_install_dir's own convention/location for
 # a small, standalone script.

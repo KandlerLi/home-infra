@@ -12,6 +12,19 @@
       aux_backup_sources is empty -- aux_backup_enabled can't be true
       with nothing configured to back up.
 
+# The generated script shells out to rsync for any source with
+# sqlite_files configured (see aux-backup.sh.j2's own comment) --
+# confirmed live it isn't installed on this host by default. Installed
+# unconditionally rather than gated on whether a source currently
+# needs it: rsync is tiny, harmless to always have, and gating it
+# would just be one more thing to remember to flip if a future source
+# adds sqlite_files.
+- name: Install rsync
+  ansible.builtin.apt:
+    name: rsync
+    state: present
+    update_cache: true
+
 - name: Create aux_backup install directory
   ansible.builtin.file:
     path: "{{ aux_backup_install_dir }}"
