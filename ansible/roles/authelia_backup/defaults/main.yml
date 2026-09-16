@@ -1,0 +1,18 @@
+# Opt-in, matching every other role's own convention. Unlike aux_backup
+# (which backs up homeserver-local, NFS-exported directories from this
+# host directly), Authelia's own db.sqlite3 lives on a `local-path`
+# (hostPath-backed) k3s PVC -- physically inside k3s-node-1's own guest
+# filesystem, not reachable from this host at all. This role only
+# creates the *destination* side (a service account + directory, NFS
+# exported to that VM) that a k3s CronJob writes into -- the actual
+# backup logic (SQLite's own online backup API, matching aux_backup's
+# own Open WebUI handling) runs inside that CronJob, in
+# infra/k3s-apps' own modules/authelia/cronjob.tf.
+authelia_backup_enabled: false
+
+# Same disk aux_backup's own archives already live on
+# (storage's own red_hdd_mount_point), a fresh subdirectory so the two
+# backup mechanisms never share files.
+authelia_backup_dir: /mnt/red-hdd/authelia-backup
+
+authelia_backup_user: authelia-backup

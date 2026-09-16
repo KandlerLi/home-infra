@@ -131,6 +131,14 @@ nfs_server_exports:
   - path: /var/lib/open-webui
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
+  # Write target for infra/k3s-apps' own Authelia backup CronJob --
+  # see the authelia_backup role for the account/directory this
+  # exports, and that CronJob's own comments for why Authelia's real
+  # data can't just be read off this host's disk directly the way
+  # Deluge's/Open WebUI's own exports above are.
+  - path: /mnt/red-hdd/authelia-backup
+    client: 192.168.101.10
+    options: rw,sync,no_subtree_check,root_squash
 
 # Nextcloud external storage for Deluge's downloads folder, visible only to
 # the personal account below (not a service account) -- confirmed working
@@ -264,3 +272,10 @@ blocky_ipv6_relay_lan_prefix: fd71:c3c8:f74d::/64
 # and left real, correctly-sized archives for both sources in
 # aux_backup_dest_dir.
 aux_backup_enabled: true
+
+# Destination side only (service account + NFS-exported directory) --
+# infra/k3s-apps' own modules/authelia/cronjob.tf does the actual
+# backup work. See the authelia_backup role's own README for why
+# Authelia's data needs this different shape from aux_backup's own
+# homeserver-local sources above.
+authelia_backup_enabled: true

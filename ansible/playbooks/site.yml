@@ -68,4 +68,5 @@
     - open_webui
     - monitoring
     - blocky_ipv6_relay
+    - authelia_backup
     - aux_backup
