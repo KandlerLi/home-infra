@@ -1,0 +1,24 @@
+#!/bin/bash
+# Managed by Ansible (aux_backup role) -- do not edit by hand, changes
+# will be overwritten on the next apply.
+set -euo pipefail
+
+DEST_DIR="{{ aux_backup_dest_dir }}"
+RETENTION_DAYS="{{ aux_backup_retention_days }}"
+DATE="$(date +%Y%m%d-%H%M%S)"
+
+mkdir -p "${DEST_DIR}"
+
+{% for source in aux_backup_sources %}
+if [ ! -d "{{ source.path }}" ] || [ -z "$(ls -A "{{ source.path }}" 2>/dev/null)" ]; then
+  echo "{{ source.name }}: {{ source.path }} is missing or empty -- refusing to write an empty/misleading backup" >&2
+  exit 1
+fi
+echo "Backing up {{ source.name }} ({{ source.path }})..."
+tar -czf "${DEST_DIR}/{{ source.name }}-${DATE}.tar.gz" -C "$(dirname "{{ source.path }}")" "$(basename "{{ source.path }}")"
+{% endfor %}
+
+echo "Pruning archives older than ${RETENTION_DAYS} days..."
+find "${DEST_DIR}" -maxdepth 1 -name '*.tar.gz' -mtime "+${RETENTION_DAYS}" -delete
+
+echo "aux_backup finished successfully."
