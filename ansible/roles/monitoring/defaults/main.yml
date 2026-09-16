@@ -98,15 +98,17 @@ monitoring_probe_targets:
 # correctly gating access, so real outages (timeouts, 5xx, connection
 # refused) still alert -- it just can't distinguish "healthy behind auth"
 # from "up but broken behind auth" the way an unauthenticated 2xx check
-# can. CAUTION, found live 2026-09-11: Authelia forward-auth actually
-# returns 302 (redirect to auth.jkandler.de), not 401, to an
-# unauthenticated plain GET -- confirmed via curl against both targets
-# below. http_2xx_or_401's valid_status_codes ([200, 401] in
-# blackbox.yml.j2) does not include 302, so these two probes likely read
-# as failing continuously since the 2026-09-08 cutover. Not yet fixed --
-# flagged in PARKED.md rather than silently changed here, since the
-# right fix (add 302, or switch approach) is a real decision, not a
-# typo.
+# can. Found live 2026-09-11: Authelia forward-auth actually returns
+# 302 (redirect to auth.jkandler.de), not 401, to an unauthenticated
+# plain GET. Initially flagged as a likely monitoring bug (302 isn't in
+# http_2xx_or_401's [200, 401] valid_status_codes) -- **turned out to
+# be a non-issue, confirmed 2026-09-16**: this module's own
+# follow_redirects: true means blackbox_exporter follows that 302 all
+# the way to auth.jkandler.de's real login page, which returns a plain
+# 200 -- already inside valid_status_codes, no change needed. Verified
+# against live Prometheus (probe_success=1 for both targets) and a
+# real curl -L reproducing blackbox's own redirect-following behavior,
+# not just re-read from this comment.
 monitoring_probe_targets_authenticated:
   - https://ai.jkandler.de/healthz
   - https://torrent.jkandler.de/
