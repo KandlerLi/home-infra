@@ -302,9 +302,19 @@ class MonitoringRoleTests(unittest.TestCase):
         parsed = yaml.safe_load(rendered)
 
         group_names = {group["name"] for group in parsed["groups"]}
+        # blocky_health added 2026-09-16, on top of ADR 0017's original
+        # four -- a real, separately-motivated gap (Blocky's own
+        # query-log writer has no reconnect logic), not part of that
+        # ADR's own scope.
         self.assertEqual(
             group_names,
-            {"host_health", "container_health", "service_reachability", "certificate_expiry"},
+            {
+                "host_health",
+                "container_health",
+                "service_reachability",
+                "certificate_expiry",
+                "blocky_health",
+            },
         )
 
     def test_container_down_ignores_stale_ids_from_ordinary_recreates(self) -> None:
@@ -329,6 +339,39 @@ class MonitoringRoleTests(unittest.TestCase):
         )
 
         self.assertIn("max by (name) (container_last_seen", container_down["expr"])
+
+    def test_blocky_query_log_stale_alert_covers_both_missing_and_flat_metric(
+        self,
+    ) -> None:
+        # Real gap this closes, confirmed live 2026-09-02: an ~18h
+        # silent logging gap after Postgres restarted mid-Pod-lifetime,
+        # only caught by chance -- Blocky's own `up` metric stayed
+        # green the whole time. Both failure shapes need covering:
+        # absent() if the exporter scrape target itself is down, and a
+        # flat increase() if the exporter is up but Blocky's own writer
+        # silently stopped.
+        rendered = render("alert_rules.yml.j2")
+        parsed = yaml.safe_load(rendered)
+
+        blocky_health = next(
+            group for group in parsed["groups"] if group["name"] == "blocky_health"
+        )
+        stale_alert = next(
+            rule
+            for rule in blocky_health["rules"]
+            if rule["alert"] == "BlockyQueryLogStale"
+        )
+
+        self.assertIn(
+            'absent(pg_stat_user_tables_n_tup_ins{relname="log_entries"})',
+            stale_alert["expr"],
+        )
+        self.assertIn(
+            'increase(pg_stat_user_tables_n_tup_ins{relname="log_entries"}[10m]) == 0',
+            stale_alert["expr"],
+        )
+        self.assertEqual(stale_alert["for"], "10m")
+        self.assertEqual(stale_alert["labels"]["severity"], "warning")
 
     def test_dashboards_are_valid_json_and_reference_the_prometheus_datasource(
         self,
@@ -406,6 +449,38 @@ class BlockyIntegrationTests(unittest.TestCase):
         self.assertEqual(
             blocky_job["static_configs"][0]["targets"], ["192.168.101.10:4000"]
         )
+
+    def test_blocky_postgres_exporter_is_scraped_alongside_blocky(self) -> None:
+        # Added 2026-09-16 to close a real gap: Blocky's own query-log
+        # Postgres writer has no reconnect logic, and Blocky's own `up`
+        # metric stays green through a silent logging gap -- see
+        # BlockyQueryLogStale's own tests below for the alert this
+        # scrape target enables.
+        overrides = {
+            "monitoring_blocky_enabled": True,
+            "monitoring_blocky_postgres_exporter_upstream": "192.168.101.10:9187",
+        }
+        rendered = yaml.safe_load(render("prometheus.yml.j2", **overrides))
+
+        exporter_job = next(
+            job
+            for job in rendered["scrape_configs"]
+            if job["job_name"] == "blocky_postgres_exporter"
+        )
+        self.assertEqual(
+            exporter_job["static_configs"][0]["targets"], ["192.168.101.10:9187"]
+        )
+
+    def test_blocky_postgres_exporter_is_gated_on_blocky_enabled(self) -> None:
+        # Unlike monitoring_blocky_upstream, this scrape target only
+        # ever has one possible value (infra/k3s-apps' own modules/
+        # blocky) -- there's no homeserver-side Postgres to point at
+        # instead, so it's gated on the same flag rather than getting
+        # its own.
+        rendered = yaml.safe_load(render("prometheus.yml.j2"))
+
+        job_names = {job["job_name"] for job in rendered["scrape_configs"]}
+        self.assertNotIn("blocky_postgres_exporter", job_names)
 
     def test_blocky_upstream_is_a_closed_allowlist(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
