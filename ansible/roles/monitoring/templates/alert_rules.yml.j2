@@ -80,3 +80,35 @@ groups:
           description: >-
             Traefik's own ACME renewal should handle this automatically --
             this alert exists to catch the case where it doesn't.
+
+  - name: blocky_health
+    rules:
+      - alert: BlockyQueryLogStale
+        # Closes a real, confirmed-live gap: Blocky's own query-log
+        # Postgres writer has no reconnect logic at all (upstream
+        # behavior, not fixable here) -- an ~18h silent gap after
+        # Postgres restarted mid-Pod-lifetime was found once, only by
+        # chance. Blocky's own `up` metric (the `blocky` scrape job)
+        # stays green the whole time this happens, so nothing else in
+        # this file would ever catch a repeat -- DNS resolution itself
+        # keeps working fine even during the gap, only the log write
+        # path is affected. pg_stat_user_tables_n_tup_ins is a
+        # monotonic counter of rows inserted into a table (the
+        # blocky_postgres_exporter job's own default collector, no
+        # custom query needed) -- zero increase over the window means
+        # zero new queries got logged.
+        expr: >-
+          absent(pg_stat_user_tables_n_tup_ins{relname="log_entries"})
+          or (increase(pg_stat_user_tables_n_tup_ins{relname="log_entries"}[10m]) == 0)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Blocky's query log hasn't recorded a new DNS query in over 10 minutes"
+          description: >-
+            Either the postgres_exporter scrape target itself is down
+            (absent()), or Blocky's own writer silently stopped logging
+            after a Postgres restart -- Blocky itself is very likely
+            still resolving DNS fine either way. Check the blocky Pod's
+            own postgres/postgres-exporter container logs; restarting
+            the blocky Pod forces Blocky to reconnect its writer.

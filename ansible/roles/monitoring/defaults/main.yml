@@ -249,3 +249,16 @@ monitoring_blocky_http_port: 4000
 # reachable internally -- switching this before that would make
 # monitoring blind to the instance actually serving the LAN.
 monitoring_blocky_upstream: "127.0.0.1:{{ monitoring_blocky_http_port }}"
+
+# Closes a real, confirmed-live gap: Blocky's own query-log Postgres
+# writer has no reconnect logic (upstream behavior), and Blocky's own
+# `up` metric stays green through a silent logging gap -- this
+# exporter (infra/k3s-apps' own modules/blocky, added 2026-09-16)
+# exposes standard pg_stat_user_tables metrics so alert_rules.yml.j2
+# can catch "no new log_entries rows in N minutes" directly. Same
+# "stays pointed at the homeserver until the k3s copy is confirmed
+# live" reasoning doesn't apply here -- there is no homeserver-side
+# Postgres any more to point at instead, this exporter only ever had
+# one possible target.
+monitoring_blocky_postgres_exporter_port: 9187
+monitoring_blocky_postgres_exporter_upstream: "192.168.101.10:{{ monitoring_blocky_postgres_exporter_port }}"

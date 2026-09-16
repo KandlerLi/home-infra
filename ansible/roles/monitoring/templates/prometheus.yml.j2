@@ -35,6 +35,17 @@ scrape_configs:
     static_configs:
       - targets:
           - {{ monitoring_blocky_upstream }}
+
+  # A dedicated sidecar exporter, unlike Blocky itself above -- Postgres
+  # has no native Prometheus endpoint of its own. Exposes
+  # pg_stat_user_tables (row insert/update/delete counts per table) via
+  # its default collector, no custom queries needed -- see
+  # alert_rules.yml.j2's own BlockyQueryLogStale rule for what this
+  # scrape target actually enables.
+  - job_name: blocky_postgres_exporter
+    static_configs:
+      - targets:
+          - {{ monitoring_blocky_postgres_exporter_upstream }}
 {% endif %}
 
   # blackbox_exporter's own multi-target pattern: each real target is
