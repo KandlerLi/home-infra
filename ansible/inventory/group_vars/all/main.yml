@@ -250,3 +250,17 @@ monitoring_blocky_upstream: 192.168.101.10:4000
 # traffic changes yet just from this being enabled.
 blocky_ipv6_relay_enabled: true
 blocky_ipv6_relay_lan_prefix: fd71:c3c8:f74d::/64
+
+# aux_backup: daily backup of Deluge's config and Open WebUI's real
+# data to the local backup disk (see that role's own README). Two
+# real bugs found and fixed getting here, both confirmed live before
+# this flag was persisted, not assumed from a clean apply: the service
+# unit's own ReadWritePaths= needed its destination directory created
+# before the unit's first start (226/NAMESPACE otherwise, home-infra#34),
+# and Open WebUI's live SQLite database needed SQLite's own online
+# backup API rather than a raw file copy -- its -shm file is held
+# locked by the real, actively-running Pod (home-infra#35). Confirmed
+# working 2026-09-16: a manually-triggered run completed successfully
+# and left real, correctly-sized archives for both sources in
+# aux_backup_dest_dir.
+aux_backup_enabled: true
