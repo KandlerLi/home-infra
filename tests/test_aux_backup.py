@@ -27,6 +27,22 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("name: open-webui", defaults)
         self.assertIn("path: /var/lib/open-webui", defaults)
 
+    def test_open_webui_flags_its_live_sqlite_database(self) -> None:
+        defaults = yaml.safe_load((ROLE_ROOT / "defaults/main.yml").read_text())
+        sources = {s["name"]: s for s in defaults["aux_backup_sources"]}
+
+        self.assertEqual(sources["open-webui"]["sqlite_files"], ["webui.db"])
+        self.assertNotIn("sqlite_files", sources["deluge-config"])
+
+    def test_rsync_is_installed(self) -> None:
+        # The generated script shells out to rsync for any source with
+        # sqlite_files -- confirmed live it isn't on this host by
+        # default.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("name: rsync", tasks)
+        self.assertIn("ansible.builtin.apt", tasks)
+
     def test_downloads_directory_is_deliberately_not_a_source(self) -> None:
         # Large and re-attainable by re-downloading -- not worth
         # backup storage/time, unlike deluge-config's small session
@@ -79,7 +95,7 @@ class DeploymentTests(unittest.TestCase):
 
 
 class ScriptRenderingTests(unittest.TestCase):
-    def test_renders_a_tar_command_per_configured_source(self) -> None:
+    def test_renders_a_plain_tar_for_a_source_with_no_sqlite_files(self) -> None:
         rendered = render("aux-backup.sh.j2")
 
         self.assertIn(
@@ -88,12 +104,45 @@ class ScriptRenderingTests(unittest.TestCase):
             '"$(basename "/mnt/black-hdd/deluge-config")"',
             rendered,
         )
+
+    def test_renders_a_staged_sqlite_aware_backup_for_open_webui(self) -> None:
+        rendered = render("aux-backup.sh.j2")
+
+        # Raw db/-shm/-wal files excluded from the plain rsync copy --
+        # the live -shm file is held locked by the real Open WebUI
+        # process and can't be safely read directly.
+        self.assertIn('--exclude="webui.db"', rendered)
+        self.assertIn('--exclude="webui.db-shm"', rendered)
+        self.assertIn('--exclude="webui.db-wal"', rendered)
+        self.assertIn(
+            'rsync -a', rendered
+        )
+        # The database itself is snapshotted via SQLite's own online
+        # backup API (Python's stdlib sqlite3 binding), not copied
+        # raw.
+        self.assertIn("source_conn.backup(dest_conn)", rendered)
+        self.assertIn(
+            '"/var/lib/open-webui/webui.db" "$STAGING_TARGET/webui.db"', rendered
+        )
+        # Final archive still comes from the staging dir, not the live
+        # directory directly.
         self.assertIn(
             'tar -czf "${DEST_DIR}/open-webui-${DATE}.tar.gz" '
-            '-C "$(dirname "/var/lib/open-webui")" '
-            '"$(basename "/var/lib/open-webui")"',
+            '-C "$STAGING_DIR" "$(basename "/var/lib/open-webui")"',
             rendered,
         )
+
+    def test_staging_dirs_are_cleaned_up_via_a_single_accumulating_trap(self) -> None:
+        # Real bug class avoided: registering `trap ... EXIT` once per
+        # source (inside the Jinja loop) would silently replace the
+        # previous handler instead of accumulating, since bash only
+        # keeps the last one -- leaking every earlier source's staging
+        # dir. Check there's exactly one trap registration for the
+        # whole script, not one per source.
+        rendered = render("aux-backup.sh.j2")
+
+        self.assertEqual(rendered.count("trap cleanup EXIT"), 1)
+        self.assertIn("STAGING_DIRS+=(", rendered)
 
     def test_refuses_to_back_up_a_missing_or_empty_source(self) -> None:
         rendered = render("aux-backup.sh.j2")

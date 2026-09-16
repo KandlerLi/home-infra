@@ -9,13 +9,66 @@ DATE="$(date +%Y%m%d-%H%M%S)"
 
 mkdir -p "${DEST_DIR}"
 
+# Accumulates every source's own staging dir (only sources with
+# sqlite_files get one) so a single EXIT trap can clean all of them up
+# -- registering a fresh `trap ... EXIT` per source would silently
+# replace the previous one instead of accumulating, since bash only
+# keeps the last handler for a given signal.
+STAGING_DIRS=()
+cleanup() {
+  for d in "${STAGING_DIRS[@]:-}"; do
+    [ -n "$d" ] && rm -rf "$d"
+  done
+}
+trap cleanup EXIT
+
 {% for source in aux_backup_sources %}
 if [ ! -d "{{ source.path }}" ] || [ -z "$(ls -A "{{ source.path }}" 2>/dev/null)" ]; then
   echo "{{ source.name }}: {{ source.path }} is missing or empty -- refusing to write an empty/misleading backup" >&2
   exit 1
 fi
 echo "Backing up {{ source.name }} ({{ source.path }})..."
+{% if source.sqlite_files is defined and source.sqlite_files | length > 0 %}
+# {{ source.name }} has a live SQLite database in WAL mode
+# ({{ source.sqlite_files | join(', ') }}) -- confirmed live 2026-09-16
+# that a plain tar of the raw file fails outright ("Cannot open:
+# Resource temporarily unavailable" on the -shm file, held locked by
+# the process that actually has the database open) and even if it
+# hadn't failed, a raw copy of a live WAL-mode database is not
+# guaranteed to be a consistent point-in-time snapshot. SQLite's own
+# online backup API (Connection.backup(), used here via Python's
+# stdlib sqlite3 binding rather than the separate sqlite3 CLI package,
+# which isn't installed on this host) is specifically designed to
+# produce a consistent snapshot of a database that's actively open
+# elsewhere, without needing exclusive access.
+STAGING_DIR="$(mktemp -d)"
+STAGING_DIRS+=("$STAGING_DIR")
+STAGING_TARGET="$STAGING_DIR/$(basename "{{ source.path }}")"
+mkdir -p "$STAGING_TARGET"
+rsync -a \
+{% for db in source.sqlite_files %}
+  --exclude="{{ db }}" --exclude="{{ db }}-shm" --exclude="{{ db }}-wal" \
+{% endfor %}
+  "{{ source.path }}/" "$STAGING_TARGET/"
+{% for db in source.sqlite_files %}
+echo "Snapshotting {{ db }} via SQLite's own online backup API..."
+python3 -c '
+import sqlite3
+import sys
+
+source_conn = sqlite3.connect(sys.argv[1])
+dest_conn = sqlite3.connect(sys.argv[2])
+with dest_conn:
+    source_conn.backup(dest_conn)
+source_conn.close()
+dest_conn.close()
+' "{{ source.path }}/{{ db }}" "$STAGING_TARGET/{{ db }}"
+{% endfor %}
+tar -czf "${DEST_DIR}/{{ source.name }}-${DATE}.tar.gz" -C "$STAGING_DIR" "$(basename "{{ source.path }}")"
+rm -rf "$STAGING_DIR"
+{% else %}
 tar -czf "${DEST_DIR}/{{ source.name }}-${DATE}.tar.gz" -C "$(dirname "{{ source.path }}")" "$(basename "{{ source.path }}")"
+{% endif %}
 {% endfor %}
 
 echo "Pruning archives older than ${RETENTION_DAYS} days..."
