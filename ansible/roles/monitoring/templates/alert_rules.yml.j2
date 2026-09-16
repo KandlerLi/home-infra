@@ -112,3 +112,66 @@ groups:
             still resolving DNS fine either way. Check the blocky Pod's
             own postgres/postgres-exporter container logs; restarting
             the blocky Pod forces Blocky to reconnect its writer.
+
+{% if monitoring_k3s_node_health_enabled | bool %}
+  - name: k3s_node_health
+    rules:
+      - alert: K3sNodeDown
+        expr: up{job="k3s_node_exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ '{{' }} $labels.node {{ '}}' }}'s own node-exporter is unreachable"
+          description: >-
+            Prometheus can no longer scrape this k3s node's own
+            node-exporter DaemonSet Pod -- the node itself may be down,
+            or kubelet may have stopped scheduling Pods on it.
+
+      # Real, sustained usage -- not the request-vs-actual bookkeeping
+      # gap kube-state-metrics exists to surface on the dashboard
+      # itself (that's a capacity-planning signal to look at, not
+      # something worth waking anyone up over).
+      - alert: K3sNodeCPUHigh
+        expr: >-
+          100 - (avg by (node) (rate(node_cpu_seconds_total{job="k3s_node_exporter", mode="idle"}[5m])) * 100)
+          > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ '{{' }} $labels.node {{ '}}' }} has been over 90% CPU for 10+ minutes"
+          description: >-
+            Sustained real CPU usage, not a request/limit bookkeeping
+            gap -- check `kubectl top pods` on this node for what's
+            actually driving it.
+
+      - alert: K3sNodeMemoryHigh
+        expr: >-
+          100 * (1 - (node_memory_MemAvailable_bytes{job="k3s_node_exporter"}
+          / node_memory_MemTotal_bytes{job="k3s_node_exporter"}))
+          > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ '{{' }} $labels.node {{ '}}' }} has been over 90% memory for 10+ minutes"
+          description: >-
+            Sustained real memory usage -- a node this full risks the
+            kubelet evicting Pods to reclaim space.
+
+      - alert: K3sNodeDiskAlmostFull
+        expr: >-
+          100 * (1 - (node_filesystem_avail_bytes{job="k3s_node_exporter", mountpoint="/"}
+          / node_filesystem_size_bytes{job="k3s_node_exporter", mountpoint="/"}))
+          > {{ monitoring_alert_disk_full_percent }}
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ '{{' }} $labels.node {{ '}}' }}'s root disk is over {{ monitoring_alert_disk_full_percent }}% full"
+          description: >-
+            Same threshold as the homeserver's own RootDiskAlmostFull --
+            a full root disk on either k3s node risks containerd/kubelet
+            themselves failing, not just workloads on it.
+{% endif %}

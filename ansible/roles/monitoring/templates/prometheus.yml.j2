@@ -48,6 +48,29 @@ scrape_configs:
           - {{ monitoring_blocky_postgres_exporter_upstream }}
 {% endif %}
 
+{% if monitoring_k3s_node_health_enabled | bool %}
+  # Distinct job_name from the homeserver's own "node_exporter" above --
+  # both jobs expose identically-named metrics (node_cpu_seconds_total
+  # etc.), so k3s-node-health.json's own PromQL filters on
+  # job="k3s_node_exporter" specifically to avoid mixing the two.
+  # Per-target "node" labels (not a single static_configs block) so
+  # every k3s_node_exporter series carries a friendly k3s-node-1/
+  # k3s-node-2 label instead of just its scrape address.
+  - job_name: k3s_node_exporter
+    static_configs:
+{% for target in monitoring_k3s_node_exporter_targets %}
+      - targets:
+          - {{ target.address }}
+        labels:
+          node: {{ target.node }}
+{% endfor %}
+
+  - job_name: k3s_kube_state_metrics
+    static_configs:
+      - targets:
+          - {{ monitoring_k3s_kube_state_metrics_upstream }}
+{% endif %}
+
   # blackbox_exporter's own multi-target pattern: each real target is
   # passed as a "target" query param on a single /probe endpoint, not
   # scraped directly -- the exporter does the actual probing per request.
