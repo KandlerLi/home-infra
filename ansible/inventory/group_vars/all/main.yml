@@ -209,6 +209,17 @@ monitoring_ntfy_relay_k3s_bind_address: 192.168.101.1
 # Alertmanagers at once would double-fire every real notification).
 monitoring_alertmanager_upstream: 192.168.101.10:9093
 
+# Phase 3: per-k3s-node CPU/mem/disk visibility (BACKLOG.md's
+# "Per-k3s-node Grafana dashboard + alerting", infra/k3s-apps' own
+# modules/node_exporter). Confirmed live before flipping this on, the
+# same bar monitoring_alertmanager_upstream's own cutover was held to:
+# both node-exporter Pods (kubectl get daemonset node-exporter: 2/2
+# ready) answer real /metrics on their own node's address from this
+# homeserver directly (curl 192.168.101.10:9100 and .11:9100), and
+# kube-state-metrics answers both /healthz and /metrics at
+# 192.168.101.10:8080.
+monitoring_k3s_node_health_enabled: true
+
 # home.jkandler.de -- served by the k3s-native copy of this service
 # (infra/k3s-apps, Terraform-managed), not by anything in this repo.
 # The landing_page role that used to run this as a Docker container is
