@@ -60,6 +60,15 @@
   roles:
     - base
     - storage
+    # Must run before nfs_server -- its own "Reload NFS exports"
+    # task (exportfs -ra) fails outright if an export's directory
+    # doesn't exist yet ("Failed to stat ...: No such file or
+    # directory", confirmed live 2026-09-16 the one time this ran
+    # after nfs_server instead). Deluge's/Open WebUI's own export
+    # directories never hit this because they already existed on disk
+    # from before those exports were ever added -- a genuinely new
+    # export's owning role has to run first.
+    - authelia_backup
     - nfs_server
     - docker
     - deluge
@@ -68,5 +77,4 @@
     - open_webui
     - monitoring
     - blocky_ipv6_relay
-    - authelia_backup
     - aux_backup
