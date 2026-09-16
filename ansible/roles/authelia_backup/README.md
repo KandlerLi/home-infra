@@ -19,10 +19,12 @@ CronJob instead, `infra/k3s-apps`' own
 (see `nfs_server_exports` in `group_vars/all/main.yml`) as its write
 target.
 
-`authelia_backup_uid`'s expected value (979) is hardcoded into that
-CronJob's `run_as_user`/`run_as_group` -- this role's own validate task
-fails loudly if the real assigned uid ever drifts from that, the same
-safety net `open_webui`'s role already relies on.
+This account's real assigned uid/gid (984/979 -- confirmed live
+2026-09-16 these are two *different* numbers, unlike `open_webui`'s
+own uid=gid account) are hardcoded into that CronJob's
+`run_as_user`/`run_as_group`. This role's own validate task fails
+loudly if either ever drifts from that, the same safety net
+`open_webui`'s role already relies on.
 
 - Repo: `infra/home-infra` (this role, `nfs_server_exports`),
   `infra/k3s-apps` (`modules/authelia/cronjob.tf`),

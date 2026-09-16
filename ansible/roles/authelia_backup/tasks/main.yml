@@ -17,23 +17,30 @@
     - name: Record Authelia backup runtime identity
       ansible.builtin.set_fact:
         authelia_backup_uid: "{{ ansible_facts.getent_passwd[authelia_backup_user][1] }}"
+        authelia_backup_gid: "{{ ansible_facts.getent_passwd[authelia_backup_user][2] }}"
 
     # infra/k3s-apps' CronJob hardcodes run_as_user/run_as_group to
-    # whatever uid this account was actually assigned (see this role's
-    # own README) rather than looking it up dynamically -- same
-    # "confirmed live, then hardcoded, then drift-checked here" pattern
-    # open_webui's own role already established for exactly this
-    # NFS-plus-non-root-uid problem.
+    # whatever uid/gid this account was actually assigned (see this
+    # role's own README) rather than looking them up dynamically --
+    # same "confirmed live, then hardcoded, then drift-checked here"
+    # pattern open_webui's own role already established for exactly
+    # this NFS-plus-non-root-uid problem. Confirmed live 2026-09-16
+    # these two are NOT the same number here (uid 984, gid 979) --
+    # unlike open_webui's own single uid=gid coincidence, this
+    # account's primary group happened to land on a different free
+    # slot than its own uid -- so both need their own hardcoded
+    # expectation and their own drift check, not one shared value.
     - name: Validate the Authelia backup service account matches what k3s-apps hardcodes
       ansible.builtin.assert:
         that:
-          - authelia_backup_uid == "979"
+          - authelia_backup_uid == "984"
+          - authelia_backup_gid == "979"
         fail_msg: >-
-          authelia-backup's uid drifted from 979, which infra/k3s-apps'
-          modules/authelia/cronjob.tf hardcodes as run_as_user/
-          run_as_group. Either recreate the account with the expected
-          uid, or update that CronJob and re-apply it to match the new
-          value.
+          authelia-backup's uid/gid drifted from 984/979, which
+          infra/k3s-apps' modules/authelia/cronjob.tf hardcodes as
+          run_as_user/run_as_group. Either recreate the account with
+          the expected uid/gid, or update that CronJob and re-apply it
+          to match the new values.
 
     - name: Create Authelia backup destination directory
       ansible.builtin.file:
