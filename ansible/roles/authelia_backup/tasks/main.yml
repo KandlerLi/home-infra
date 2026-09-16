@@ -1,0 +1,44 @@
+---
+- name: Configure Authelia backup destination
+  when: authelia_backup_enabled | bool
+  block:
+    - name: Create Authelia backup service account
+      ansible.builtin.user:
+        name: "{{ authelia_backup_user }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Read Authelia backup service account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ authelia_backup_user }}"
+
+    - name: Record Authelia backup runtime identity
+      ansible.builtin.set_fact:
+        authelia_backup_uid: "{{ ansible_facts.getent_passwd[authelia_backup_user][1] }}"
+
+    # infra/k3s-apps' CronJob hardcodes run_as_user/run_as_group to
+    # whatever uid this account was actually assigned (see this role's
+    # own README) rather than looking it up dynamically -- same
+    # "confirmed live, then hardcoded, then drift-checked here" pattern
+    # open_webui's own role already established for exactly this
+    # NFS-plus-non-root-uid problem.
+    - name: Validate the Authelia backup service account matches what k3s-apps hardcodes
+      ansible.builtin.assert:
+        that:
+          - authelia_backup_uid == "979"
+        fail_msg: >-
+          authelia-backup's uid drifted from 979, which infra/k3s-apps'
+          modules/authelia/cronjob.tf hardcodes as run_as_user/
+          run_as_group. Either recreate the account with the expected
+          uid, or update that CronJob and re-apply it to match the new
+          value.
+
+    - name: Create Authelia backup destination directory
+      ansible.builtin.file:
+        path: "{{ authelia_backup_dir }}"
+        state: directory
+        owner: "{{ authelia_backup_user }}"
+        group: "{{ authelia_backup_user }}"
+        mode: "0700"
