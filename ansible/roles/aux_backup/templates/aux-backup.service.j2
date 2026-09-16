@@ -1,0 +1,44 @@
+[Unit]
+Description=Back up Deluge config and Open WebUI data to the local backup disk
+# local-fs.target, not a guessed/escaped mnt-red\x2dhdd.mount unit
+# name -- red-hdd is a plain fstab entry (storage role's own
+# ansible.posix.mount), and local-fs.target is the standard,
+# safe-to-depend-on systemd target every such mount is already
+# ordered before.
+After=local-fs.target
+Requires=local-fs.target
+
+[Service]
+Type=oneshot
+# Deliberately root, not a dedicated service user: this job's whole
+# job is reading across several *different* dedicated-host-uid
+# directories (see each source role's own "dedicated host-uid
+# container" convention) in one pass, which a single non-root user
+# can't do without being added to every one of those groups --
+# fragile and expanding, unlike this narrowly-scoped, offline,
+# non-network oneshot job. Every hardening directive below that
+# doesn't touch DAC/capabilities is still applied; none of them are
+# loosened to compensate for running as root.
+ExecStart={{ aux_backup_install_dir }}/aux-backup.sh
+TimeoutStartSec=1800
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ReadWritePaths={{ aux_backup_dest_dir }}
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native

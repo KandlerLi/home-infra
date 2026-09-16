@@ -1,0 +1,72 @@
+# Always runs, regardless of aux_backup_enabled -- matches
+# blocky_ipv6_relay's/k3s_ingress_forward's own validation precedent:
+# a misconfigured source list should never lie dormant until the day
+# someone flips enabled=true without re-checking.
+- name: Validate aux_backup configuration
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (aux_backup_enabled | bool)
+        or (aux_backup_sources | length > 0)
+    fail_msg: >-
+      aux_backup_sources is empty -- aux_backup_enabled can't be true
+      with nothing configured to back up.
+
+- name: Create aux_backup install directory
+  ansible.builtin.file:
+    path: "{{ aux_backup_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install aux-backup script
+  ansible.builtin.template:
+    src: aux-backup.sh.j2
+    dest: "{{ aux_backup_install_dir }}/aux-backup.sh"
+    owner: root
+    group: root
+    mode: "0755"
+  register: aux_backup_script
+
+- name: Install aux-backup systemd service unit
+  ansible.builtin.template:
+    src: aux-backup.service.j2
+    dest: /etc/systemd/system/aux-backup.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: aux_backup_service_unit
+
+- name: Install aux-backup systemd timer unit
+  ansible.builtin.template:
+    src: aux-backup.timer.j2
+    dest: /etc/systemd/system/aux-backup.timer
+    owner: root
+    group: root
+    mode: "0644"
+  register: aux_backup_timer_unit
+
+- name: Reload systemd for the aux-backup units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: >-
+    aux_backup_script.changed
+    or aux_backup_service_unit.changed
+    or aux_backup_timer_unit.changed
+
+# A real toggle, not just a skip-guard: enabled/state both flip off
+# disabling this, actually stopping the timer rather than merely
+# skipping its creation on a host that never had it. Only the timer is
+# managed directly -- aux-backup.service is Type=oneshot, started by
+# the timer, never itself enabled/started here.
+- name: Ensure aux-backup timer is in its desired running state
+  ansible.builtin.systemd_service:
+    name: aux-backup.timer
+    enabled: "{{ aux_backup_enabled | bool }}"
+    state: >-
+      {{
+        ('restarted' if (aux_backup_timer_unit.changed) else 'started')
+        if (aux_backup_enabled | bool)
+        else 'stopped'
+      }}
