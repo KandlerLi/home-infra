@@ -47,6 +47,27 @@ class DeploymentTests(unittest.TestCase):
 
         self.assertIn("- aux_backup", site)
 
+    def test_destination_directory_is_created_before_the_service_unit_is_installed(
+        self,
+    ) -> None:
+        # Real regression, confirmed live: the service unit's own
+        # ReadWritePaths= needs this directory to already exist when
+        # systemd sets up the unit's mount namespace, before the
+        # script itself ever runs -- without this task, the service
+        # fails immediately with exit code 226/NAMESPACE and zero log
+        # output, not a script bug.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        create_dest_index = tasks.index("Create aux_backup destination directory")
+        install_unit_index = tasks.index("Install aux-backup systemd service unit")
+
+        self.assertIn('path: "{{ aux_backup_dest_dir }}"', tasks)
+        self.assertLess(
+            create_dest_index,
+            install_unit_index,
+            "destination directory must be created before the service unit "
+            "that references it via ReadWritePaths=",
+        )
+
     def test_disabling_actually_stops_the_timer_not_just_skips_creation(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 

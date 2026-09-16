@@ -20,6 +20,22 @@
     group: root
     mode: "0755"
 
+# The service unit's own ReadWritePaths= (aux-backup.service.j2) needs
+# this directory to exist *before* the unit ever starts -- systemd sets
+# up the mount namespace ahead of exec'ing anything, so the script's
+# own `mkdir -p` never gets a chance to run if this is missing.
+# Confirmed live: without this task, the service fails immediately
+# with exit code 226/NAMESPACE and zero log output (systemd refuses to
+# construct the namespace at all, before the script's own echo
+# statements ever execute) -- not a script bug, a missing prerequisite.
+- name: Create aux_backup destination directory
+  ansible.builtin.file:
+    path: "{{ aux_backup_dest_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
 - name: Install aux-backup script
   ansible.builtin.template:
     src: aux-backup.sh.j2
