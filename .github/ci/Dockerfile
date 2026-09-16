@@ -16,7 +16,14 @@ COPY requirements.txt requirements.yml ./
 # --break-system-packages: this is an ephemeral CI image, not a system
 # Python anyone else depends on -- Debian trixie's PEP 668 protection has
 # nothing to protect here.
-RUN pip install --break-system-packages --no-cache-dir -r requirements.txt
+# --resume-retries: the self-hosted runner's uplink has been observed to
+# stall mid-download of the ansible wheel (~59MB) under transient
+# congestion, confirmed live 2026-09-16 (4 consecutive CI failures, all
+# "Connection timed out while downloading" at varying byte offsets, with
+# a direct curl/docker-container download succeeding minutes later at
+# ~5MB/s) -- this resumes the partial download instead of restarting the
+# whole file from byte zero on every retry.
+RUN pip install --break-system-packages --no-cache-dir --resume-retries 5 -r requirements.txt
 
 # /usr/share/ansible/collections is one of Ansible's default collection
 # search paths regardless of which user runs ansible-playbook later --
