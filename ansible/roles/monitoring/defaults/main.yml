@@ -262,3 +262,25 @@ monitoring_blocky_upstream: "127.0.0.1:{{ monitoring_blocky_http_port }}"
 # one possible target.
 monitoring_blocky_postgres_exporter_port: 9187
 monitoring_blocky_postgres_exporter_upstream: "192.168.101.10:{{ monitoring_blocky_postgres_exporter_port }}"
+
+# Per-k3s-node CPU/mem/disk visibility (BACKLOG.md's "Per-k3s-node
+# Grafana dashboard + alerting") -- infra/k3s-apps' own
+# modules/node_exporter (a DaemonSet + kube-state-metrics), reached the
+# same way Blocky/Alertmanager already are: k3s's bundled ServiceLB
+# binds each Service directly to a node's own address. Off by default,
+# same "additive capability, not live until explicitly turned on"
+# pattern as monitoring_prometheus_k3s_bind_address above -- flip once
+# that module is confirmed applied, so Prometheus doesn't spend this
+# scrape_interval's window alerting on a target that doesn't exist yet
+# during the rollout.
+monitoring_k3s_node_health_enabled: false
+# node-exporter runs as a DaemonSet (host_network: true), so each
+# node's own real IP:9100 is the target directly -- no Service/LoadBalancer
+# involved, unlike kube-state-metrics below. Both k3s nodes' addresses
+# (ansible/roles/k3s_node/defaults/main.yml has the canonical values).
+monitoring_k3s_node_exporter_targets:
+  - address: 192.168.101.10:9100
+    node: k3s-node-1
+  - address: 192.168.101.11:9100
+    node: k3s-node-2
+monitoring_k3s_kube_state_metrics_upstream: 192.168.101.10:8080

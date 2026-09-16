@@ -58,6 +58,18 @@ target list notifies every address in it for the same firing alert
 (unlike a scrape target list), so listing both Alertmanagers at once
 would double-fire every real notification.
 
+`monitoring_k3s_node_health_enabled` (default `false`) is the reverse
+direction of the two listeners above: this Prometheus reaching *into*
+the k3s cluster, to scrape `infra/k3s-apps`' own `modules/node_exporter`
+(a node-exporter DaemonSet + kube-state-metrics, both reached the same
+way Blocky/Alertmanager already are -- k3s's bundled ServiceLB). Off
+until that module is confirmed applied, so this doesn't spend a scrape
+interval alerting on a target that doesn't exist yet. `k3s-node-health.json`
+(one of the canonical dashboards above) and the `k3s_node_health` alert
+group (`alert_rules.yml.j2`) both filter on `job="k3s_node_exporter"`
+specifically, since that job's metrics share names with this host's own
+`node_exporter` job above but must never be aggregated together.
+
 Needs `monitoring_ntfy_topic` and the SES SMTP credentials set in the
 `home-infra/monitoring` AWS Secrets Manager group before first
 enabling. Grafana's own admin password is no longer a shared secret at
