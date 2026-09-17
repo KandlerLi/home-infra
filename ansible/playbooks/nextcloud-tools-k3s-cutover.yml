@@ -1,0 +1,81 @@
+---
+# One-time cutover playbook for the ansible/roles/nextcloud_tools role's
+# own move to k3s (see BACKLOG.md's "Unclear whether
+# nextcloud-tools.service is still a live dependency or an orphaned
+# leftover"). That role was retired outright, not reshaped, on
+# 2026-08-30 (commit 018c5ff) once its only real consumer (home_agent's
+# Docker container) was gone -- but no task in that commit ever told
+# the already-running systemd service on the live host to stop, so it
+# just kept running (and surviving reboots, since it stayed `enabled`)
+# purely on inertia. Confirmed live 2026-09-17 that nothing can
+# legitimately still depend on it: infra/k3s-apps' own home_agent
+# module runs its own copy of nextcloud_tools_service.py as an in-Pod
+# sidecar, sharing a Unix socket through that Pod's own emptyDir --
+# architecturally unreachable from this homeserver's own separate
+# /run/nextcloud-tools socket, which never crosses the host/network
+# boundary.
+#
+# Stops and disables the service -- never deletes its installed files,
+# service account, or config -- same "fast, reviewed rollback path"
+# philosophy as shared-ingress-k3s-cutover.yml/blocky-k3s-cutover.yml.
+# Manages the service directly (systemd_service: state/enabled) rather
+# than through the role, since that role (and its own
+# nextcloud_tools_enabled flag) no longer exists to flip and re-apply.
+#
+# Cut over:
+#   ansible-playbook ansible/playbooks/nextcloud-tools-k3s-cutover.yml \
+#     -e nextcloud_tools_cutover_confirmation=CUTOVER_NEXTCLOUD_TOOLS_TO_K3S \
+#     --ask-become-pass
+#
+# Roll back (starts the existing, already-installed service back up
+# exactly as it was -- no reinstall, no config regeneration):
+#   ansible-playbook ansible/playbooks/nextcloud-tools-k3s-cutover.yml \
+#     -e nextcloud_tools_cutover_confirmation=CUTOVER_NEXTCLOUD_TOOLS_TO_K3S \
+#     -e nextcloud_tools_k3s_cutover_action=rollback \
+#     --ask-become-pass
+
+- name: Cut the homeserver's own nextcloud-tools.service over to k3s, or roll back
+  hosts: home_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    nextcloud_tools_k3s_cutover_action: cutover
+
+  pre_tasks:
+    - name: Require explicit cutover confirmation
+      ansible.builtin.assert:
+        that:
+          - >-
+            nextcloud_tools_cutover_confirmation | default('')
+            == "CUTOVER_NEXTCLOUD_TOOLS_TO_K3S"
+        fail_msg: >-
+          Pass -e
+          nextcloud_tools_cutover_confirmation=CUTOVER_NEXTCLOUD_TOOLS_TO_K3S
+          only during a reviewed cutover or rollback.
+
+    - name: Validate cutover action
+      ansible.builtin.assert:
+        that:
+          - nextcloud_tools_k3s_cutover_action in ["cutover", "rollback"]
+        fail_msg: >-
+          nextcloud_tools_k3s_cutover_action must be "cutover" or
+          "rollback".
+
+  tasks:
+    # Literal unit name, not a role default -- the role that used to
+    # define nextcloud_tools_service_user/nextcloud-tools.service no
+    # longer exists to reference at all.
+    - name: Stop and disable nextcloud-tools.service
+      ansible.builtin.systemd_service:
+        name: nextcloud-tools.service
+        state: stopped
+        enabled: false
+      when: nextcloud_tools_k3s_cutover_action == "cutover"
+
+    - name: Start and enable nextcloud-tools.service back up
+      ansible.builtin.systemd_service:
+        name: nextcloud-tools.service
+        state: started
+        enabled: true
+      when: nextcloud_tools_k3s_cutover_action == "rollback"
