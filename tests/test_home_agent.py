@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ROLE_ROOT = PROJECT_ROOT / "ansible/roles/home_agent"
 sys.path.insert(0, str(ROLE_ROOT / "files/agent"))
 
-from home_agent.agent import OpenAIResponsesProvider
+from home_agent.agent import AnthropicMessagesProvider
 from home_agent.api import AgentHTTPServer, AgentRequestHandler, normalize_conversation
 from home_agent.home_tools import HomeToolsClient
 
@@ -62,22 +62,25 @@ class HomeAgentRoleReshapeTests(unittest.TestCase):
         self.assertIn("home_tools_service.py", tasks)
 
 
-class FakeResponses:
+class FakeMessages:
     def __init__(self) -> None:
         self.requests = []
         self.responses = [
             SimpleNamespace(
-                output=[
+                content=[
                     SimpleNamespace(
-                        type="function_call",
+                        type="tool_use",
                         name="get_system_health",
-                        arguments="{}",
-                        call_id="call-1",
+                        input={},
+                        id="call-1",
                     )
                 ],
-                output_text="",
             ),
-            SimpleNamespace(output=[], output_text="The homeserver is healthy."),
+            SimpleNamespace(
+                content=[
+                    SimpleNamespace(type="text", text="The homeserver is healthy.")
+                ],
+            ),
         ]
 
     def create(self, **request):
@@ -105,10 +108,10 @@ class FakeNextcloudTools:
 
 class HomeAgentTests(unittest.TestCase):
     def test_provider_executes_only_named_tool_and_returns_final_text(self) -> None:
-        responses = FakeResponses()
-        client = SimpleNamespace(responses=responses)
+        messages_api = FakeMessages()
+        client = SimpleNamespace(messages=messages_api)
         home_tools = FakeHomeTools()
-        provider = OpenAIResponsesProvider(
+        provider = AnthropicMessagesProvider(
             api_key="unused-test-key",
             model="test-model",
             home_tools=home_tools,
@@ -119,20 +122,23 @@ class HomeAgentTests(unittest.TestCase):
 
         self.assertEqual(answer, "The homeserver is healthy.")
         self.assertEqual(home_tools.calls, ["get_system_health"])
-        second_input = responses.requests[1]["input"]
-        self.assertEqual(second_input[-1]["type"], "function_call_output")
-        self.assertEqual(second_input[-1]["call_id"], "call-1")
+        second_messages = messages_api.requests[1]["messages"]
+        tool_result_turn = second_messages[-1]
+        self.assertEqual(tool_result_turn["content"][0]["type"], "tool_result")
+        self.assertEqual(tool_result_turn["content"][0]["tool_use_id"], "call-1")
 
     def test_provider_preserves_bounded_conversation_history(self) -> None:
-        responses = FakeResponses()
-        responses.responses = [
-            SimpleNamespace(output=[], output_text="The current load is normal.")
+        messages_api = FakeMessages()
+        messages_api.responses = [
+            SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="The current load is normal.")]
+            )
         ]
-        provider = OpenAIResponsesProvider(
+        provider = AnthropicMessagesProvider(
             api_key="unused-test-key",
             model="test-model",
             home_tools=FakeHomeTools(),
-            client=SimpleNamespace(responses=responses),
+            client=SimpleNamespace(messages=messages_api),
         )
         messages = [
             {"role": "user", "content": "Check the load."},
@@ -143,21 +149,22 @@ class HomeAgentTests(unittest.TestCase):
         answer = provider.respond(messages)
 
         self.assertEqual(answer, "The current load is normal.")
-        self.assertEqual(responses.requests[0]["input"], messages)
+        self.assertEqual(messages_api.requests[0]["messages"], messages)
 
     def test_provider_calls_bounded_nextcloud_tool_when_enabled(self) -> None:
-        responses = FakeResponses()
-        responses.responses[0].output[0].name = "search_nextcloud_files"
-        responses.responses[0].output[0].arguments = (
-            '{"query":"sunset","path":"Photos"}'
-        )
+        messages_api = FakeMessages()
+        messages_api.responses[0].content[0].name = "search_nextcloud_files"
+        messages_api.responses[0].content[0].input = {
+            "query": "sunset",
+            "path": "Photos",
+        }
         nextcloud_tools = FakeNextcloudTools()
-        provider = OpenAIResponsesProvider(
+        provider = AnthropicMessagesProvider(
             api_key="unused-test-key",
             model="test-model",
             home_tools=FakeHomeTools(),
             nextcloud_tools=nextcloud_tools,
-            client=SimpleNamespace(responses=responses),
+            client=SimpleNamespace(messages=messages_api),
         )
 
         provider.respond("Find my sunset photos.")
@@ -167,26 +174,28 @@ class HomeAgentTests(unittest.TestCase):
             [("search_nextcloud_files", {"query": "sunset", "path": "Photos"})],
         )
         offered_names = {
-            tool["name"] for tool in responses.requests[0]["tools"]
+            tool["name"] for tool in messages_api.requests[0]["tools"]
         }
         self.assertIn("search_nextcloud_files", offered_names)
 
     def test_write_nextcloud_file_dispatches_immediately(self) -> None:
         # No confirmation round-trip: the model requests a write and it
         # happens in the same turn, same as any other Nextcloud tool call.
-        responses = FakeResponses()
-        responses.responses[0].output[0].name = "write_nextcloud_file"
-        responses.responses[0].output[0].arguments = (
-            '{"operation":"create","path":"note.txt","content":"hi",'
-            '"destination_path":null}'
-        )
+        messages_api = FakeMessages()
+        messages_api.responses[0].content[0].name = "write_nextcloud_file"
+        messages_api.responses[0].content[0].input = {
+            "operation": "create",
+            "path": "note.txt",
+            "content": "hi",
+            "destination_path": None,
+        }
         nextcloud_tools = FakeNextcloudTools()
-        provider = OpenAIResponsesProvider(
+        provider = AnthropicMessagesProvider(
             api_key="unused-test-key",
             model="test-model",
             home_tools=FakeHomeTools(),
             nextcloud_tools=nextcloud_tools,
-            client=SimpleNamespace(responses=responses),
+            client=SimpleNamespace(messages=messages_api),
         )
 
         provider.respond("Save a note called note.txt with the text hi.")
@@ -211,18 +220,21 @@ class HomeAgentTests(unittest.TestCase):
     ) -> None:
         # No shopping-list-specific wiring in agent.py -- any name in
         # NEXTCLOUD_TOOL_PATHS already routes through nextcloud_tools.call().
-        responses = FakeResponses()
-        responses.responses[0].output[0].name = "update_shopping_list"
-        responses.responses[0].output[0].arguments = (
-            '{"operation":"add","list":null,"item":"Milk","quantity":null}'
-        )
+        messages_api = FakeMessages()
+        messages_api.responses[0].content[0].name = "update_shopping_list"
+        messages_api.responses[0].content[0].input = {
+            "operation": "add",
+            "list": None,
+            "item": "Milk",
+            "quantity": None,
+        }
         nextcloud_tools = FakeNextcloudTools()
-        provider = OpenAIResponsesProvider(
+        provider = AnthropicMessagesProvider(
             api_key="unused-test-key",
             model="test-model",
             home_tools=FakeHomeTools(),
             nextcloud_tools=nextcloud_tools,
-            client=SimpleNamespace(responses=responses),
+            client=SimpleNamespace(messages=messages_api),
         )
 
         provider.respond("Put milk on my shopping list.")
