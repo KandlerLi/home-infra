@@ -131,7 +131,6 @@ class AnthropicMessagesProvider:
                 tools=tools,
                 messages=conversation,
             )
-            conversation.append({"role": "assistant", "content": response.content})
             calls = [block for block in response.content if block.type == "tool_use"]
 
             if not calls:
@@ -141,6 +140,11 @@ class AnthropicMessagesProvider:
                 if not text:
                     raise AgentError("model returned no final text")
                 return text
+
+            # Only appended once we know there are tool_use blocks to answer --
+            # a conversation that ends here (the branch above) has no reason
+            # to grow its own history right before returning.
+            conversation.append({"role": "assistant", "content": response.content})
 
             if round_number == self.max_tool_rounds:
                 raise AgentError("model exceeded the tool round limit")
