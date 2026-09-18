@@ -1,4 +1,4 @@
-"""OpenAI Responses API orchestration with a fixed read-only tool set."""
+"""Anthropic Messages API orchestration with a fixed read-only tool set."""
 
 from __future__ import annotations
 
@@ -59,12 +59,33 @@ HOME_TOOL_DEFINITIONS = [
 ]
 
 
+def _to_anthropic_tool(openai_style_tool: dict[str, Any]) -> dict[str, Any]:
+    """Convert one of this module's OpenAI-function-style tool defs to Anthropic's shape.
+
+    Anthropic tools carry the parameter schema under "input_schema" instead of
+    "parameters", and have no "type"/"strict" top-level fields -- everything
+    else (name, description) is identical, so it's simpler to convert the one
+    set of tool defs than to maintain two parallel copies.
+    """
+    return {
+        "name": openai_style_tool["name"],
+        "description": openai_style_tool["description"],
+        "input_schema": openai_style_tool["parameters"],
+    }
+
+
+ANTHROPIC_HOME_TOOL_DEFINITIONS = [_to_anthropic_tool(tool) for tool in HOME_TOOL_DEFINITIONS]
+ANTHROPIC_NEXTCLOUD_TOOL_DEFINITIONS = [
+    _to_anthropic_tool(tool) for tool in NEXTCLOUD_TOOL_DEFINITIONS
+]
+
+
 class AgentError(RuntimeError):
     """Indicate that the model/tool orchestration could not complete safely."""
 
 
-class OpenAIResponsesProvider:
-    """A provider boundary around the OpenAI Responses API."""
+class AnthropicMessagesProvider:
+    """A provider boundary around the Anthropic Messages API."""
 
     def __init__(
         self,
@@ -77,9 +98,9 @@ class OpenAIResponsesProvider:
         max_tool_calls: int = 8,
     ) -> None:
         if client is None:
-            from openai import OpenAI
+            from anthropic import Anthropic
 
-            client = OpenAI(api_key=api_key, timeout=60.0, max_retries=2)
+            client = Anthropic(api_key=api_key, timeout=60.0, max_retries=2)
         self.client = client
         self.model = model
         self.home_tools = home_tools
@@ -89,32 +110,42 @@ class OpenAIResponsesProvider:
 
     def respond(self, messages: str | list[dict[str, str]]) -> str:
         if isinstance(messages, str):
-            input_items: list[Any] = [{"role": "user", "content": messages}]
+            conversation: list[dict[str, Any]] = [{"role": "user", "content": messages}]
         else:
-            input_items = [dict(message) for message in messages]
+            conversation = [dict(message) for message in messages]
         tool_call_count = 0
-        tools = HOME_TOOL_DEFINITIONS + (
-            NEXTCLOUD_TOOL_DEFINITIONS if self.nextcloud_tools is not None else []
+        tools = ANTHROPIC_HOME_TOOL_DEFINITIONS + (
+            ANTHROPIC_NEXTCLOUD_TOOL_DEFINITIONS if self.nextcloud_tools is not None else []
         )
 
         for round_number in range(self.max_tool_rounds + 1):
-            response = self.client.responses.create(
+            response = self.client.messages.create(
                 model=self.model,
-                instructions=SYSTEM_INSTRUCTIONS,
+                max_tokens=4096,
+                system=SYSTEM_INSTRUCTIONS,
+                # This is a quick conversational homeserver assistant, not a
+                # coding/agentic workload -- low effort keeps cost close to
+                # the previous gpt-5.4-mini baseline instead of defaulting to
+                # this workload onto full reasoning depth.
+                output_config={"effort": "low"},
                 tools=tools,
-                input=input_items,
+                messages=conversation,
             )
-            input_items.extend(response.output)
-            calls = [item for item in response.output if item.type == "function_call"]
+            conversation.append({"role": "assistant", "content": response.content})
+            calls = [block for block in response.content if block.type == "tool_use"]
 
             if not calls:
-                if not response.output_text:
+                text = "".join(
+                    block.text for block in response.content if block.type == "text"
+                )
+                if not text:
                     raise AgentError("model returned no final text")
-                return response.output_text
+                return text
 
             if round_number == self.max_tool_rounds:
                 raise AgentError("model exceeded the tool round limit")
 
+            tool_results: list[dict[str, Any]] = []
             for call in calls:
                 tool_call_count += 1
                 if tool_call_count > self.max_tool_calls:
@@ -126,7 +157,7 @@ class OpenAIResponsesProvider:
                         and call.name not in NEXTCLOUD_TOOL_PATHS
                     ):
                         raise AgentError("model requested an unknown tool")
-                    arguments = json.loads(call.arguments)
+                    arguments = call.input
                     if not isinstance(arguments, dict):
                         raise AgentError("model returned invalid tool arguments")
                     if call.name in TOOL_PATHS:
@@ -137,20 +168,17 @@ class OpenAIResponsesProvider:
                         if self.nextcloud_tools is None:
                             raise AgentError("Nextcloud tools are unavailable")
                         result = self.nextcloud_tools.call(call.name, arguments)
-                except (
-                    json.JSONDecodeError,
-                    HomeToolsError,
-                    NextcloudToolsError,
-                    AgentError,
-                ):
+                except (HomeToolsError, NextcloudToolsError, AgentError):
                     result = {"error": "tool_unavailable"}
 
-                input_items.append(
+                tool_results.append(
                     {
-                        "type": "function_call_output",
-                        "call_id": call.call_id,
-                        "output": json.dumps(result, separators=(",", ":")),
+                        "type": "tool_result",
+                        "tool_use_id": call.id,
+                        "content": json.dumps(result, separators=(",", ":")),
                     }
                 )
+
+            conversation.append({"role": "user", "content": tool_results})
 
         raise AgentError("model exceeded the tool round limit")
