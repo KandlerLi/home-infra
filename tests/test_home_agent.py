@@ -5,16 +5,24 @@ import importlib.util
 import json
 import sys
 import threading
+import os
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ROLE_ROOT = PROJECT_ROOT / "ansible/roles/home_agent"
 sys.path.insert(0, str(ROLE_ROOT / "files/agent"))
 
 from home_agent.agent import AnthropicMessagesProvider
-from home_agent.api import AgentHTTPServer, AgentRequestHandler, normalize_conversation
+from home_agent.agent import AgentError, TOOL_LIMIT_WRAP_UP
+from home_agent.api import (
+    AgentHTTPServer,
+    AgentRequestHandler,
+    _int_env,
+    normalize_conversation,
+)
 from home_agent.home_tools import HomeToolsClient
 
 _home_tools_service_spec = importlib.util.spec_from_file_location(
@@ -325,6 +333,110 @@ class HomeAgentTests(unittest.TestCase):
                 [{"role": "assistant", "content": "No pending request."}]
             )
         )
+
+
+def _tool_use(*call_ids: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        content=[
+            SimpleNamespace(type="tool_use", name="get_system_health", input={}, id=i)
+            for i in call_ids
+        ]
+    )
+
+
+def _text(text: str) -> SimpleNamespace:
+    return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)])
+
+
+class ToolLimitTests(unittest.TestCase):
+    """Hitting a tool limit must still answer, not throw the paid-for work away."""
+
+    def _provider(self, responses, **limits):
+        messages_api = FakeMessages()
+        messages_api.responses = list(responses)
+        home_tools = FakeHomeTools()
+        provider = AnthropicMessagesProvider(
+            api_key="unused-test-key",
+            model="test-model",
+            home_tools=home_tools,
+            client=SimpleNamespace(messages=messages_api),
+            **limits,
+        )
+        return provider, messages_api, home_tools
+
+    def test_round_limit_returns_a_wrap_up_answer_instead_of_failing(self) -> None:
+        provider, api, home_tools = self._provider(
+            [_tool_use("c1"), _tool_use("c2"), _text("Partial answer.")],
+            max_tool_rounds=1,
+        )
+
+        answer = provider.respond("Check my homeserver.")
+
+        self.assertEqual(answer, "Partial answer.")
+        self.assertEqual(home_tools.calls, ["get_system_health"])
+        final = api.requests[-1]
+        self.assertEqual(final["tool_choice"], {"type": "none"})
+        self.assertTrue(final["tools"])
+        turn = final["messages"][-1]["content"]
+        # The unanswered tool_use gets a result (the API requires one),
+        # followed by the wrap-up instruction.
+        self.assertEqual(turn[0]["type"], "tool_result")
+        self.assertEqual(turn[0]["tool_use_id"], "c2")
+        self.assertIn("tool_limit_reached", turn[0]["content"])
+        self.assertEqual(turn[-1], {"type": "text", "text": TOOL_LIMIT_WRAP_UP})
+
+    def test_call_limit_runs_only_the_allowed_calls_then_wraps_up(self) -> None:
+        provider, api, home_tools = self._provider(
+            [_tool_use("c1", "c2", "c3"), _text("Partial answer.")],
+            max_tool_calls=2,
+        )
+
+        answer = provider.respond("Check my homeserver.")
+
+        self.assertEqual(answer, "Partial answer.")
+        self.assertEqual(home_tools.calls, ["get_system_health"] * 2)
+        turn = api.requests[-1]["messages"][-1]["content"]
+        self.assertEqual([b["tool_use_id"] for b in turn[:3]], ["c1", "c2", "c3"])
+        self.assertNotIn("tool_limit_reached", turn[0]["content"])
+        self.assertIn("tool_limit_reached", turn[2]["content"])
+        self.assertEqual(api.requests[-1]["tool_choice"], {"type": "none"})
+
+    def test_calls_within_the_limits_are_untouched(self) -> None:
+        provider, api, _ = self._provider([_tool_use("c1"), _text("Fine.")])
+
+        self.assertEqual(provider.respond("Check."), "Fine.")
+        self.assertTrue(all("tool_choice" not in r for r in api.requests))
+
+    def test_a_wrap_up_with_no_text_still_fails_loudly(self) -> None:
+        provider, _, _ = self._provider(
+            [_tool_use("c1"), _tool_use("c2"), SimpleNamespace(content=[])],
+            max_tool_rounds=1,
+        )
+
+        with self.assertRaises(AgentError):
+            provider.respond("Check.")
+
+
+class ToolLimitSettingsTests(unittest.TestCase):
+    def _read(self, value: str | None) -> int:
+        env = {} if value is None else {"HOME_AGENT_TEST_LIMIT": value}
+        with patch.dict(os.environ, env, clear=False):
+            if value is None:
+                os.environ.pop("HOME_AGENT_TEST_LIMIT", None)
+            return _int_env("HOME_AGENT_TEST_LIMIT", 6, 1, 12)
+
+    def test_unset_and_invalid_values_keep_the_default(self) -> None:
+        self.assertEqual(self._read(None), 6)
+        self.assertEqual(self._read(""), 6)
+        self.assertEqual(self._read("lots"), 6)
+
+    def test_valid_values_are_used(self) -> None:
+        self.assertEqual(self._read("9"), 9)
+
+    def test_values_are_clamped_so_a_typo_cannot_remove_the_cost_cap(self) -> None:
+        self.assertEqual(self._read("100000"), 12)
+        self.assertEqual(self._read("0"), 1)
+        self.assertEqual(self._read("-5"), 1)
 
 
 class FakeProvider:
