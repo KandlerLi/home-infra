@@ -100,10 +100,11 @@ class FakeHomeTools:
 class FakeNextcloudTools:
     def __init__(self) -> None:
         self.calls = []
+        self.result = {"matches": [{"path": "Photos/sunset.jpg"}]}
 
     def call(self, name: str, arguments: dict):
         self.calls.append((name, arguments))
-        return {"matches": [{"path": "Photos/sunset.jpg"}]}
+        return self.result
 
 
 class HomeAgentTests(unittest.TestCase):
@@ -253,6 +254,58 @@ class HomeAgentTests(unittest.TestCase):
                 )
             ],
         )
+
+    def test_pdf_document_result_is_passed_to_the_model_as_a_document_block(
+        self,
+    ) -> None:
+        messages_api = FakeMessages()
+        messages_api.responses[0].content[0].name = "read_nextcloud_document"
+        messages_api.responses[0].content[0].input = {"path": "Finance/statement.pdf"}
+        nextcloud_tools = FakeNextcloudTools()
+        nextcloud_tools.result = {
+            "path": "Finance/statement.pdf",
+            "document_type": "pdf",
+            "data_base64": "JVBERi0=",
+        }
+        provider = AnthropicMessagesProvider(
+            api_key="unused-test-key",
+            model="test-model",
+            home_tools=FakeHomeTools(),
+            nextcloud_tools=nextcloud_tools,
+            client=SimpleNamespace(messages=messages_api),
+        )
+
+        provider.respond("Summarise my statement.")
+
+        content = messages_api.requests[1]["messages"][-1]["content"][0]["content"]
+        self.assertEqual(content[1]["type"], "document")
+        self.assertEqual(content[1]["source"]["media_type"], "application/pdf")
+        self.assertEqual(content[1]["source"]["data"], "JVBERi0=")
+        self.assertNotIn("JVBERi0=", content[0]["text"])
+
+    def test_xlsx_document_result_stays_plain_json_text(self) -> None:
+        messages_api = FakeMessages()
+        messages_api.responses[0].content[0].name = "read_nextcloud_document"
+        messages_api.responses[0].content[0].input = {"path": "Budget.xlsx"}
+        nextcloud_tools = FakeNextcloudTools()
+        nextcloud_tools.result = {
+            "path": "Budget.xlsx",
+            "document_type": "xlsx",
+            "content": "## Sheet: A",
+        }
+        provider = AnthropicMessagesProvider(
+            api_key="unused-test-key",
+            model="test-model",
+            home_tools=FakeHomeTools(),
+            nextcloud_tools=nextcloud_tools,
+            client=SimpleNamespace(messages=messages_api),
+        )
+
+        provider.respond("What is in my budget?")
+
+        content = messages_api.requests[1]["messages"][-1]["content"][0]["content"]
+        self.assertIsInstance(content, str)
+        self.assertIn("## Sheet: A", content)
 
     def test_conversation_ignores_external_system_instructions(self) -> None:
         messages = normalize_conversation(

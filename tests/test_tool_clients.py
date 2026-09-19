@@ -189,6 +189,20 @@ class NextcloudToolsClientTests(unittest.TestCase):
             nextcloud_tools.TOOL_PATHS["update_shopping_list"], "/v1/shopping/write"
         )
 
+    def test_document_tool_allows_a_larger_response_than_other_tools(self) -> None:
+        big = json.dumps({"document_type": "pdf", "data_base64": "A" * (2 * 1024 * 1024)})
+        socket_path = self._serve(200, big.encode("utf-8"))
+
+        result = NextcloudToolsClient(socket_path).call(
+            "read_nextcloud_document", {"path": "a.pdf"}
+        )
+        self.assertEqual(result["document_type"], "pdf")
+
+        with self.assertRaises(NextcloudToolsError):
+            NextcloudToolsClient(socket_path).call(
+                "read_nextcloud_text_file", {"path": "a.md"}
+            )
+
     def test_update_shopping_list_reaches_the_write_endpoint(self) -> None:
         socket_path = self._serve(
             200, b'{"operation": "add", "list": "Groceries", "item": "Milk"}'

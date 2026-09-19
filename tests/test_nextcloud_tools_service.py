@@ -73,6 +73,9 @@ class FakeClient:
     def read_text_file(self, path: str):
         return {"path": path, "content": "safe text", "etag": "etag-safe"}
 
+    def read_document(self, path: str):
+        return {"path": path, "document_type": "xlsx", "content": "## Sheet: A"}
+
     def stat(self, path: str):
         return _entry(path=path, kind=self.stat_kind)
 
@@ -238,6 +241,165 @@ class NextcloudToolsServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(reason, "upstream_response_invalid")
+
+
+def _xlsx_bytes(
+    *,
+    sheet_xml: str | None = None,
+    extra_parts: dict[str, str] | None = None,
+) -> bytes:
+    import io
+    import zipfile
+
+    ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    rel_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    workbook = (
+        f'<workbook xmlns="{ns}" xmlns:r="{rel_ns}"><sheets>'
+        '<sheet name="Budget" sheetId="1" r:id="rId1"/>'
+        '<sheet name="Old" sheetId="2" state="hidden" r:id="rId2"/>'
+        "</sheets></workbook>"
+    )
+    rels = (
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Target="worksheets/sheet1.xml"/>'
+        '<Relationship Id="rId2" Target="/xl/worksheets/sheet2.xml"/>'
+        "</Relationships>"
+    )
+    shared = (
+        f'<sst xmlns="{ns}"><si><t>Item</t></si>'
+        "<si><r><t>Ren</t></r><r><t>t</t></r></si></sst>"
+    )
+    sheet1 = sheet_xml or (
+        f'<worksheet xmlns="{ns}"><sheetData>'
+        '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="s"><v>1</v></c></row>'
+        '<row r="2"><c r="A2" t="inlineStr"><is><t>Food</t></is></c>'
+        '<c r="B2"><v>12.5</v></c><c r="C2" t="b"><v>1</v></c></row>'
+        '<row r="3"/>'
+        "</sheetData></worksheet>"
+    )
+    sheet2 = (
+        f'<worksheet xmlns="{ns}"><sheetData><row r="1">'
+        '<c r="A1" t="str"><f>1+1</f><v>two</v></c></row></sheetData></worksheet>'
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("xl/workbook.xml", workbook)
+        archive.writestr("xl/_rels/workbook.xml.rels", rels)
+        archive.writestr("xl/sharedStrings.xml", shared)
+        archive.writestr("xl/worksheets/sheet1.xml", sheet1)
+        archive.writestr("xl/worksheets/sheet2.xml", sheet2)
+        for name, content in (extra_parts or {}).items():
+            archive.writestr(name, content)
+    return buffer.getvalue()
+
+
+class DocumentReadingTests(unittest.TestCase):
+    def test_xlsx_becomes_tab_separated_text_per_sheet(self) -> None:
+        text, truncated = nextcloud_tools.xlsx_to_text(_xlsx_bytes())
+
+        self.assertFalse(truncated)
+        self.assertEqual(
+            text.split("\n"),
+            [
+                "## Sheet: Budget",
+                "Item\t\tRent",
+                "Food\t12.5\tTRUE",
+                "## Sheet: Old (hidden)",
+                "two",
+            ],
+        )
+
+    def test_xlsx_with_a_doctype_is_refused(self) -> None:
+        evil = '<!DOCTYPE x [<!ENTITY a "aaaa">]><worksheet><sheetData/></worksheet>'
+
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.xlsx_to_text(_xlsx_bytes(sheet_xml=evil))
+
+    def test_xlsx_part_over_the_declared_size_limit_is_refused(self) -> None:
+        with patch.object(nextcloud_tools, "MAX_XLSX_PART_BYTES", 100):
+            with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+                nextcloud_tools.xlsx_to_text(_xlsx_bytes())
+
+    def test_xlsx_total_uncompressed_size_is_capped(self) -> None:
+        with patch.object(nextcloud_tools, "MAX_XLSX_TOTAL_BYTES", 500):
+            with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+                nextcloud_tools.xlsx_to_text(_xlsx_bytes())
+
+    def test_xlsx_output_is_truncated_at_the_read_limit(self) -> None:
+        with patch.object(nextcloud_tools, "MAX_READ_BYTES", 20):
+            text, truncated = nextcloud_tools.xlsx_to_text(_xlsx_bytes())
+
+        self.assertTrue(truncated)
+        self.assertLessEqual(len(text.encode("utf-8")), 20)
+
+    def test_a_non_zip_file_is_refused(self) -> None:
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.xlsx_to_text(b"not a spreadsheet")
+
+    def test_extra_zip_parts_are_never_opened(self) -> None:
+        # A part outside the named spreadsheet parts (even a huge one) must
+        # not count against the budget or be read.
+        with patch.object(nextcloud_tools, "MAX_XLSX_TOTAL_BYTES", 5_000):
+            text, _ = nextcloud_tools.xlsx_to_text(
+                _xlsx_bytes(extra_parts={"junk.bin": "x" * 1_000_000})
+            )
+
+        self.assertIn("## Sheet: Budget", text)
+
+    def test_pdf_is_returned_as_base64_bytes(self) -> None:
+        import base64
+
+        client = _webdav_client()
+        pdf = b"%PDF-1.7\n%payload"
+        entry = _entry(path="Finance/statement.pdf")
+
+        with patch.object(client, "stat", return_value=entry), patch.object(
+            client, "_request", return_value=(200, {}, pdf)
+        ):
+            result = client.read_document("Finance/statement.pdf")
+
+        self.assertEqual(result["document_type"], "pdf")
+        self.assertEqual(base64.b64decode(result["data_base64"]), pdf)
+
+    def test_a_file_named_pdf_without_the_pdf_magic_is_refused(self) -> None:
+        client = _webdav_client()
+
+        with patch.object(client, "stat", return_value=_entry(path="a.pdf")), patch.object(
+            client, "_request", return_value=(200, {}, b"<html>not a pdf</html>")
+        ):
+            with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+                client.read_document("a.pdf")
+
+    def test_other_extensions_are_refused_by_read_document(self) -> None:
+        client = _webdav_client()
+
+        for path in ("a.docx", "a.xls", "a.exe", "a.txt", "a"):
+            with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+                client.read_document(path)
+
+    def test_oversized_documents_are_refused_before_download(self) -> None:
+        client = _webdav_client()
+        too_big = _entry(path="big.pdf")
+        object.__setattr__(too_big, "size_bytes", nextcloud_tools.MAX_DOCUMENT_BYTES + 1)
+
+        with patch.object(client, "stat", return_value=too_big), patch.object(
+            client, "_request"
+        ) as request:
+            with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+                client.read_document("big.pdf")
+
+        request.assert_not_called()
+
+    def test_handle_tool_routes_read_document_with_exactly_one_path(self) -> None:
+        result = nextcloud_tools.handle_tool(
+            "/v1/read_document", {"path": "Budget.xlsx"}, FakeClient()
+        )
+
+        self.assertEqual(result["document_type"], "xlsx")
+        with self.assertRaises(nextcloud_tools.InvalidToolRequest):
+            nextcloud_tools.handle_tool(
+                "/v1/read_document", {"path": "a.pdf", "extra": 1}, FakeClient()
+            )
 
 
 class NextcloudWebDAVWriteTests(unittest.TestCase):
