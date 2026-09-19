@@ -12,7 +12,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from .agent import AnthropicMessagesProvider
+from .agent import (
+    DEFAULT_MAX_TOOL_CALLS,
+    DEFAULT_MAX_TOOL_ROUNDS,
+    AnthropicMessagesProvider,
+)
 from .audio import MAX_AUDIO_BYTES, OpenAIAudioTranscriber
 from .home_tools import HomeToolsClient
 from .nextcloud_tools import NextcloudToolsClient
@@ -37,6 +41,20 @@ def read_secret(path: str, label: str = "API key") -> str:
     return value
 
 
+def _int_env(name: str, default: int, minimum: int, maximum: int) -> int:
+    """Read a bounded integer setting; anything unset or invalid keeps the default.
+
+    The ceiling is hard-coded on purpose: these limits cap the cost of one
+    question, so a typo in the deployment config must not remove that cap.
+    """
+    raw = os.environ.get(name)
+    try:
+        value = int(raw) if raw else default
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
+
+
 def create_provider() -> AnthropicMessagesProvider:
     key_path = os.environ.get("ANTHROPIC_API_KEY_FILE", "/run/secrets/anthropic/anthropic_api_key")
     model = os.environ.get("HOME_AGENT_MODEL", "claude-opus-5")
@@ -59,6 +77,12 @@ def create_provider() -> AnthropicMessagesProvider:
             NextcloudToolsClient(nextcloud_socket_path)
             if nextcloud_socket_path
             else None
+        ),
+        max_tool_rounds=_int_env(
+            "HOME_AGENT_MAX_TOOL_ROUNDS", DEFAULT_MAX_TOOL_ROUNDS, 1, 12
+        ),
+        max_tool_calls=_int_env(
+            "HOME_AGENT_MAX_TOOL_CALLS", DEFAULT_MAX_TOOL_CALLS, 1, 40
         ),
     )
 

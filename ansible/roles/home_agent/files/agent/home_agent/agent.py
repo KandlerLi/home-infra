@@ -83,8 +83,34 @@ ANTHROPIC_NEXTCLOUD_TOOL_DEFINITIONS = [
 ]
 
 
+# Per-request ceilings on how much tool use one question may trigger. Every
+# round re-sends the whole conversation (PDFs included), so these bound the
+# worst-case cost of a single question. Overridable in api.create_provider.
+DEFAULT_MAX_TOOL_ROUNDS = 6
+DEFAULT_MAX_TOOL_CALLS = 20
+
+# Sent instead of results once a limit is hit, so the model still answers
+# with what it already retrieved instead of the whole request failing.
+TOOL_LIMIT_ERROR = {"error": "tool_limit_reached"}
+TOOL_LIMIT_WRAP_UP = (
+    "You have reached the limit of tool calls allowed for this request, so "
+    "no more tools can be used. Answer now using only what you already "
+    "retrieved. Say clearly which parts you could not finish, and suggest "
+    "how the user can ask for them in smaller steps (for example fewer "
+    "files or one period at a time). Reply in the user's language."
+)
+
+
 class AgentError(RuntimeError):
     """Indicate that the model/tool orchestration could not complete safely."""
+
+
+def _tool_limit_result(call: Any) -> dict[str, Any]:
+    return {
+        "type": "tool_result",
+        "tool_use_id": call.id,
+        "content": json.dumps(TOOL_LIMIT_ERROR, separators=(",", ":")),
+    }
 
 
 def _tool_result_content(result: dict[str, Any]) -> str | list[dict[str, Any]]:
@@ -116,8 +142,8 @@ class AnthropicMessagesProvider:
         home_tools: HomeToolsClient,
         nextcloud_tools: NextcloudToolsClient | None = None,
         client: Any | None = None,
-        max_tool_rounds: int = 4,
-        max_tool_calls: int = 8,
+        max_tool_rounds: int = DEFAULT_MAX_TOOL_ROUNDS,
+        max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
     ) -> None:
         if client is None:
             from anthropic import Anthropic
@@ -141,27 +167,11 @@ class AnthropicMessagesProvider:
         )
 
         for round_number in range(self.max_tool_rounds + 1):
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                system=SYSTEM_INSTRUCTIONS,
-                # This is a quick conversational homeserver assistant, not a
-                # coding/agentic workload -- low effort keeps cost close to
-                # the previous gpt-5.4-mini baseline instead of defaulting to
-                # this workload onto full reasoning depth.
-                output_config={"effort": "low"},
-                tools=tools,
-                messages=conversation,
-            )
+            response = self._create(conversation, tools)
             calls = [block for block in response.content if block.type == "tool_use"]
 
             if not calls:
-                text = "".join(
-                    block.text for block in response.content if block.type == "text"
-                )
-                if not text:
-                    raise AgentError("model returned no final text")
-                return text
+                return self._final_text(response)
 
             # Only appended once we know there are tool_use blocks to answer --
             # a conversation that ends here (the branch above) has no reason
@@ -169,13 +179,18 @@ class AnthropicMessagesProvider:
             conversation.append({"role": "assistant", "content": response.content})
 
             if round_number == self.max_tool_rounds:
-                raise AgentError("model exceeded the tool round limit")
+                return self._wrap_up(conversation, tools, calls, [])
 
             tool_results: list[dict[str, Any]] = []
+            limit_hit = False
             for call in calls:
                 tool_call_count += 1
-                if tool_call_count > self.max_tool_calls:
-                    raise AgentError("model exceeded the tool call limit")
+                if limit_hit or tool_call_count > self.max_tool_calls:
+                    # Every tool_use still needs a tool_result, so the rest of
+                    # this round is answered with the limit error, not run.
+                    limit_hit = True
+                    tool_results.append(_tool_limit_result(call))
+                    continue
 
                 try:
                     if (
@@ -205,6 +220,60 @@ class AnthropicMessagesProvider:
                     }
                 )
 
+            if limit_hit:
+                return self._wrap_up(conversation, tools, [], tool_results)
+
             conversation.append({"role": "user", "content": tool_results})
 
         raise AgentError("model exceeded the tool round limit")
+
+    def _create(
+        self,
+        conversation: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        **extra: Any,
+    ) -> Any:
+        return self.client.messages.create(
+            model=self.model,
+            max_tokens=4096,
+            system=SYSTEM_INSTRUCTIONS,
+            # This is a quick conversational homeserver assistant, not a
+            # coding/agentic workload -- low effort keeps cost close to
+            # the previous gpt-5.4-mini baseline instead of defaulting to
+            # this workload onto full reasoning depth.
+            output_config={"effort": "low"},
+            tools=tools,
+            messages=conversation,
+            **extra,
+        )
+
+    @staticmethod
+    def _final_text(response: Any) -> str:
+        text = "".join(block.text for block in response.content if block.type == "text")
+        if not text:
+            raise AgentError("model returned no final text")
+        return text
+
+    def _wrap_up(
+        self,
+        conversation: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        unanswered_calls: list[Any],
+        tool_results: list[dict[str, Any]],
+    ) -> str:
+        """Ask for a text-only answer once a tool limit is reached.
+
+        Returns whatever the model already gathered instead of failing the
+        whole request, which had discarded work that was already paid for.
+        tools stays declared (the API rejects tool_use/tool_result blocks
+        without it); tool_choice "none" is what forbids further calls.
+        """
+        results = tool_results + [_tool_limit_result(call) for call in unanswered_calls]
+        conversation.append(
+            {
+                "role": "user",
+                "content": results + [{"type": "text", "text": TOOL_LIMIT_WRAP_UP}],
+            }
+        )
+        response = self._create(conversation, tools, tool_choice={"type": "none"})
+        return self._final_text(response)
