@@ -4,7 +4,12 @@ k3s_node_role_mode: provision_vm
 k3s_node_vm_name: k3s-node-1
 k3s_node_vm_memory_mb: 4096
 k3s_node_vm_vcpus: 2
+# Applied at creation *and* on later runs: a larger value grows an existing
+# node's disk (VM is stopped and restarted once); a smaller one is refused.
 k3s_node_vm_disk_size_gb: 40
+# Where the guest's root filesystem lives, for growing it after a disk resize.
+k3s_node_root_disk: /dev/vda
+k3s_node_root_partition: 1
 
 k3s_node_storage_mount: /mnt/black-hdd
 k3s_node_vm_storage_dir: /mnt/black-hdd/k3s

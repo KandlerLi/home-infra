@@ -15,6 +15,31 @@
       - --wait
   changed_when: false
 
+# The host grows the qcow2 while the VM is stopped (provision_vm.yml), but the
+# guest's partition and ext4 filesystem still have their old size until
+# something grows them. cloud-init's own growpart/resizefs modules normally do
+# this on boot; these two tasks make it explicit and idempotent, so a node
+# whose disk was grown is never left with the space unused. Both are no-ops
+# when the filesystem already fills the disk.
+- name: Grow the root partition to fill the disk
+  ansible.builtin.command:
+    argv:
+      - growpart
+      - "{{ k3s_node_root_disk }}"
+      - "{{ k3s_node_root_partition }}"
+  register: k3s_node_growpart
+  # growpart exits 1 with "NOCHANGE" when the partition already fills the disk.
+  changed_when: "'CHANGED' in k3s_node_growpart.stdout"
+  failed_when: k3s_node_growpart.rc not in [0, 1] or (k3s_node_growpart.rc == 1 and 'NOCHANGE' not in k3s_node_growpart.stdout)
+
+- name: Grow the root filesystem to fill its partition
+  ansible.builtin.command:
+    argv:
+      - resize2fs
+      - "{{ k3s_node_root_disk }}{{ k3s_node_root_partition }}"
+  register: k3s_node_resize2fs
+  changed_when: "'Nothing to do' not in k3s_node_resize2fs.stderr and 'Nothing to do' not in k3s_node_resize2fs.stdout"
+
 # Debian's default systemd-resolved setup points /etc/resolv.conf at
 # its own loopback stub (127.0.0.53). glibc's NSS resolver (what
 # ordinary shell tools -- dig, getent, an HTTP client -- go through)
