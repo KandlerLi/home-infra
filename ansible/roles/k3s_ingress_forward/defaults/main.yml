@@ -63,3 +63,13 @@ k3s_ingress_forward_rules:
   - public_port: 53
     target_port: 53
     protocol: udp
+  # Inbound SMTP for the k3s-native Stalwart mail server (infra/k3s-apps'
+  # own modules/stalwart/). The FRITZ!Box's own port-forward for 25
+  # (manual, out-of-band) targets the homeserver's LAN IP, same as
+  # 80/443; this rule is what carries it the rest of the way into the
+  # cluster. Only inbound port 25 -- submission/IMAP are not exposed
+  # publicly by this change. Harmless while nothing listens yet: the
+  # connection is simply refused at 192.168.101.10:25.
+  - public_port: 25
+    target_port: 25
+    protocol: tcp
