@@ -78,6 +78,23 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         for rule in dns_rules:
             self.assertEqual(rule["target_port"], 53)
 
+    def test_default_rules_forward_inbound_smtp_over_tcp(self) -> None:
+        # Inbound mail for infra/k3s-apps' own modules/stalwart. Port 25
+        # only -- nothing else mail-related is meant to be publicly
+        # reachable through this relay.
+        defaults = yaml.safe_load(
+            (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        )
+
+        smtp_rules = [
+            rule
+            for rule in defaults["k3s_ingress_forward_rules"]
+            if rule["public_port"] == 25
+        ]
+        self.assertEqual(len(smtp_rules), 1)
+        self.assertEqual(smtp_rules[0]["target_port"], 25)
+        self.assertEqual(smtp_rules[0]["protocol"], "tcp")
+
     def test_forward_accept_rule_is_inserted_ahead_of_docker_and_libvirt(
         self,
     ) -> None:
