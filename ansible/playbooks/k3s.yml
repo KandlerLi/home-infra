@@ -22,6 +22,9 @@
       # node-1 specifically, where everything except the CI runner
       # Pods actually runs.
       k3s_node_vm_vcpus: 3
+      # Bumped 4096 -> 6144 2026-09-19 alongside the host's own RAM
+      # upgrade (16 -> 32 GiB).
+      k3s_node_vm_memory_mb: 6144
 
 # Second node: dedicated to infra/k3s-apps' own modules/github_runner/
 # workload, tainted so nothing else in the cluster schedules there.
@@ -36,6 +39,11 @@
   roles:
     - role: k3s_node
       k3s_node_vm_name: k3s-node-2
+      # Bumped 4096 -> 8192 2026-09-19 (host RAM 16 -> 32 GiB): every
+      # repository now runs 2 concurrent runner slots (bootstrap/
+      # k3s-bootstrap's github_runner_slots_per_repository), each a
+      # runner + dind Pod that can burst to ~1.75 GiB.
+      k3s_node_vm_memory_mb: 8192
       k3s_node_vm_disk_path: /mnt/black-hdd/k3s/k3s-node-2.qcow2
       k3s_node_vm_ip: 192.168.101.11
       k3s_node_vm_mac: "52:54:00:00:00:21"
