@@ -111,13 +111,48 @@
       | regex_replace('</vcpu>$', '') }}
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
-- name: Gracefully shut down the k3s node VM to apply a changed vCPU allocation
+# Memory has no live path here either (the domain template pins both
+# <memory> and <currentMemory>, no ballooning/hotplug), so it needs the
+# same stop/redefine/start as vCPUs. Missed on the first memory bump
+# (2026-09-19, #46: node-1 4096->6144, node-2 4096->8192): only vCPU was
+# compared, so a memory-only change was a silent no-op on the existing VMs
+# and the k3s nodes kept reporting 4 GiB. libvirt's get_xml always
+# reports <memory unit='KiB'>; the assert below fails the run loudly if
+# that ever stops being true, because a wrongly-parsed value here would
+# make every single run shut both nodes down again.
+- name: Verify the existing domain reports its memory in KiB
+  ansible.builtin.assert:
+    that:
+      - "\"<memory unit='KiB'>\" in k3s_node_existing_vm_xml.get_xml"
+    fail_msg: >-
+      {{ k3s_node_vm_name }}'s domain XML does not report <memory
+      unit='KiB'>, so the memory comparison below cannot be trusted.
+      Refusing to shut the VM down on a value that might be misread.
+  when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
+- name: Extract the current memory allocation from the existing domain definition
+  ansible.builtin.set_fact:
+    k3s_node_existing_vm_memory_mb: >-
+      {{ ((k3s_node_existing_vm_xml.get_xml
+      | regex_search('<memory unit=.KiB.>[0-9]+</memory>'))
+      | regex_replace('^<memory[^>]*>', '')
+      | regex_replace('</memory>$', '') | int) // 1024 }}
+  when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
+- name: Work out whether the existing k3s node VM needs a resize
+  ansible.builtin.set_fact:
+    k3s_node_vm_resize_pending: >-
+      {{ k3s_node_existing_vm_vcpus | int != k3s_node_vm_vcpus | int
+      or k3s_node_existing_vm_memory_mb | int != k3s_node_vm_memory_mb | int }}
+  when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
+- name: Gracefully shut down the k3s node VM to apply a changed vCPU or memory allocation
   community.libvirt.virt:
     name: "{{ k3s_node_vm_name }}"
     state: shutdown
   when: >-
     k3s_node_vm_name in k3s_node_defined_vms.list_vms
-    and k3s_node_existing_vm_vcpus | int != k3s_node_vm_vcpus | int
+    and k3s_node_vm_resize_pending | bool
 
 # Only polled outside check mode -- under --check the shutdown above is
 # simulated, not real, so the domain never actually reaches "shutdown"
@@ -143,15 +178,15 @@
   when: >-
     not ansible_check_mode
     and k3s_node_vm_name in k3s_node_defined_vms.list_vms
-    and k3s_node_existing_vm_vcpus | int != k3s_node_vm_vcpus | int
+    and k3s_node_vm_resize_pending | bool
 
-- name: Redefine the k3s node VM with its updated vCPU allocation
+- name: Redefine the k3s node VM with its updated vCPU and memory allocation
   community.libvirt.virt:
     command: define
     xml: "{{ lookup('template', 'k3s-node-domain.xml.j2') }}"
   when: >-
     k3s_node_vm_name in k3s_node_defined_vms.list_vms
-    and k3s_node_existing_vm_vcpus | int != k3s_node_vm_vcpus | int
+    and k3s_node_vm_resize_pending | bool
 
 - name: Allow libvirt to traverse the HDD mount
   ansible.posix.acl:

@@ -95,15 +95,44 @@ class K3sNodeTests(unittest.TestCase):
             tasks,
         )
         self.assertIn(
-            "Gracefully shut down the k3s node VM to apply a changed vCPU allocation",
+            "Gracefully shut down the k3s node VM to apply a changed vCPU or "
+            "memory allocation",
             tasks,
         )
         self.assertIn(
-            "Redefine the k3s node VM with its updated vCPU allocation", tasks
+            "Redefine the k3s node VM with its updated vCPU and memory allocation",
+            tasks,
         )
         self.assertIn(
             "k3s_node_existing_vm_vcpus | int != k3s_node_vm_vcpus | int", tasks
         )
+
+    def test_memory_only_change_also_triggers_the_resize(self) -> None:
+        # 2026-09-19: #46 bumped only k3s_node_vm_memory_mb. The resize block
+        # compared vCPUs alone, so applying it changed nothing and both nodes
+        # kept reporting 4 GiB (a CI runner Pod stayed Pending on
+        # "Insufficient memory"). Memory must drive the same
+        # shutdown/redefine/start path as vCPUs.
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "k3s_node_existing_vm_memory_mb | int != k3s_node_vm_memory_mb | int",
+            tasks,
+        )
+        for step in ("shut down", "Redefine", "actually stop"):
+            self.assertIn(step, tasks)
+        self.assertEqual(tasks.count("k3s_node_vm_resize_pending | bool"), 3)
+
+    def test_unparseable_memory_unit_fails_instead_of_rebooting_every_run(
+        self,
+    ) -> None:
+        # A misread existing-memory value would look like a pending resize on
+        # every run and shut both nodes down each time -- so the comparison
+        # is guarded by an assert on libvirt's <memory unit='KiB'> format.
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
+
+        self.assertIn("Verify the existing domain reports its memory in KiB", tasks)
+        self.assertIn("<memory unit='KiB'>", tasks)
 
     def test_vcpu_resize_wait_is_skipped_under_check_mode(self) -> None:
         # A simulated shutdown under --check never actually stops the
@@ -118,7 +147,7 @@ class K3sNodeTests(unittest.TestCase):
         )
         self.assertIn(
             "not ansible_check_mode\n    and k3s_node_vm_name in "
-            "k3s_node_defined_vms.list_vms\n    and k3s_node_existing_vm_vcpus",
+            "k3s_node_defined_vms.list_vms\n    and k3s_node_vm_resize_pending",
             tasks,
         )
 
