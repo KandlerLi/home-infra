@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import http.client
+import io
 import json
 import logging
 import os
@@ -12,6 +13,7 @@ import re
 import socket
 import socketserver
 import xml.etree.ElementTree as ET
+import zipfile
 from collections import deque
 from dataclasses import dataclass
 from difflib import unified_diff
@@ -53,6 +55,20 @@ MAX_WRITE_BYTES = int(os.environ.get("NEXTCLOUD_MAX_WRITE_BYTES", str(256 * 1024
 MAX_SUMMARY_CHARS = int(os.environ.get("NEXTCLOUD_MAX_SUMMARY_CHARS", "4000"))
 MAX_ITEM_NAME_CHARS = int(os.environ.get("NEXTCLOUD_MAX_ITEM_NAME_CHARS", "200"))
 MAX_QUANTITY_CHARS = int(os.environ.get("NEXTCLOUD_MAX_QUANTITY_CHARS", "32"))
+# read_document (PDF/xlsx, see the "Document reading" section below).
+MAX_DOCUMENT_BYTES = int(
+    os.environ.get("NEXTCLOUD_MAX_DOCUMENT_BYTES", str(4 * 1024 * 1024))
+)
+MAX_XLSX_PART_BYTES = int(
+    os.environ.get("NEXTCLOUD_MAX_XLSX_PART_BYTES", str(8 * 1024 * 1024))
+)
+MAX_XLSX_TOTAL_BYTES = int(
+    os.environ.get("NEXTCLOUD_MAX_XLSX_TOTAL_BYTES", str(16 * 1024 * 1024))
+)
+MAX_XLSX_SHEETS = 50
+MAX_XLSX_COLUMNS = 1000
+MAX_XLSX_SHARED_STRINGS = 200_000
+MAX_XLSX_CELL_CHARS = 32_000
 
 # Scope for the Shopping List app is enforced entirely by Nextcloud's own
 # list sharing (the dedicated account only ever sees lists shared with it),
@@ -76,6 +92,7 @@ PROPFIND_BODY = b"""<?xml version="1.0" encoding="UTF-8"?>
 READABLE_EXTENSIONS = frozenset(
     {".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".log"}
 )
+DOCUMENT_EXTENSIONS = frozenset({".pdf", ".xlsx"})
 
 
 class ToolUnavailable(RuntimeError):
@@ -189,6 +206,169 @@ def _send_http_request(
         ) from error
     finally:
         connection.close()
+
+
+# --- Document reading (PDF/xlsx) -------------------------------------------
+#
+# Deliberately dependency-free: an .xlsx is a zip of XML, so it is turned
+# into plain text with zipfile + streaming ElementTree, never a third-party
+# parser. A PDF is not parsed here at all -- its bytes are handed to the
+# caller unchanged (after a magic-number check) and the model provider reads
+# it natively. Both file types are untrusted input, so everything below is
+# bounded: declared sizes are capped before anything is read, only named
+# parts are ever opened, XML with a DOCTYPE/ENTITY is refused outright, and
+# sheets are streamed instead of building a DOM (this runs in a 128 MiB
+# container).
+_SS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+_PKG_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+
+
+def _xlsx_part(
+    archive: zipfile.ZipFile, name: str, budget: list[int], *, required: bool = True
+) -> bytes | None:
+    try:
+        info = archive.getinfo(name)
+    except KeyError:
+        if required:
+            raise InvalidToolRequest("spreadsheet is missing a required part") from None
+        return None
+    if info.flag_bits & 0x1:
+        raise InvalidToolRequest("encrypted spreadsheets are not supported")
+    if info.file_size > MAX_XLSX_PART_BYTES:
+        raise InvalidToolRequest("spreadsheet part exceeds the size limit")
+    budget[0] -= info.file_size
+    if budget[0] < 0:
+        raise InvalidToolRequest("spreadsheet exceeds the total size limit")
+    with archive.open(info) as handle:
+        data = handle.read(info.file_size + 1)
+    if len(data) > info.file_size:
+        raise InvalidToolRequest("spreadsheet part is inconsistent")
+    if b"\x00" in data[:4] or data.startswith((b"\xff\xfe", b"\xfe\xff")) or (
+        b"<!DOCTYPE" in data or b"<!ENTITY" in data
+    ):
+        raise InvalidToolRequest("spreadsheet part uses unsupported XML")
+    return data
+
+
+def _xlsx_column_index(cell_ref: str) -> int:
+    index = 0
+    for char in cell_ref:
+        if not "A" <= char <= "Z":
+            break
+        index = index * 26 + (ord(char) - 64)
+    return index - 1
+
+
+def _xlsx_shared_strings(data: bytes | None) -> list[str]:
+    strings: list[str] = []
+    if data is None:
+        return strings
+    for _, element in ET.iterparse(io.BytesIO(data), events=("end",)):
+        if element.tag != f"{_SS}si":
+            continue
+        parts: list[str] = []
+        for node in element:
+            if node.tag == f"{_SS}t":
+                parts.append(node.text or "")
+            elif node.tag == f"{_SS}r":
+                parts.extend(
+                    sub.text or "" for sub in node if sub.tag == f"{_SS}t"
+                )
+        strings.append("".join(parts)[:MAX_XLSX_CELL_CHARS])
+        element.clear()
+        if len(strings) > MAX_XLSX_SHARED_STRINGS:
+            raise InvalidToolRequest("spreadsheet has too many shared strings")
+    return strings
+
+
+def _xlsx_cell_text(cell: ET.Element, shared: list[str]) -> str:
+    cell_type = cell.get("t", "n")
+    if cell_type == "inlineStr":
+        node = cell.find(f"{_SS}is")
+        text = "".join(t.text or "" for t in node.iter(f"{_SS}t")) if node is not None else ""
+    else:
+        value = cell.find(f"{_SS}v")
+        text = value.text or "" if value is not None else ""
+        if cell_type == "s":
+            try:
+                text = shared[int(text)]
+            except (ValueError, IndexError):
+                text = ""
+        elif cell_type == "b":
+            text = "TRUE" if text == "1" else "FALSE"
+    return " ".join(text[:MAX_XLSX_CELL_CHARS].split("\t")).replace("\n", " ").replace("\r", " ")
+
+
+def _xlsx_sheet_lines(data: bytes, shared: list[str], budget_chars: list[int]) -> list[str]:
+    lines: list[str] = []
+    cells: dict[int, str] = {}
+    for event, element in ET.iterparse(io.BytesIO(data), events=("end",)):
+        if element.tag == f"{_SS}c":
+            column = _xlsx_column_index(element.get("r", ""))
+            if 0 <= column < MAX_XLSX_COLUMNS:
+                text = _xlsx_cell_text(element, shared)
+                if text:
+                    cells[column] = text
+            element.clear()
+        elif element.tag == f"{_SS}row":
+            if cells:
+                line = "\t".join(cells.get(i, "") for i in range(max(cells) + 1))
+                lines.append(line)
+                budget_chars[0] -= len(line) + 1
+                cells = {}
+            element.clear()
+            if budget_chars[0] <= 0:
+                break
+    return lines
+
+
+def xlsx_to_text(data: bytes) -> tuple[str, bool]:
+    """Return (tab-separated text per sheet, truncated) for an .xlsx file."""
+    if not zipfile.is_zipfile(io.BytesIO(data)):
+        raise InvalidToolRequest("file is not a valid spreadsheet")
+    budget = [MAX_XLSX_TOTAL_BYTES]
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            workbook = ET.fromstring(_xlsx_part(archive, "xl/workbook.xml", budget))
+            rels = ET.fromstring(
+                _xlsx_part(archive, "xl/_rels/workbook.xml.rels", budget)
+            )
+            targets = {
+                rel.get("Id"): rel.get("Target", "")
+                for rel in rels.iter(f"{_PKG_REL}Relationship")
+            }
+            shared = _xlsx_shared_strings(
+                _xlsx_part(archive, "xl/sharedStrings.xml", budget, required=False)
+            )
+            output: list[str] = []
+            budget_chars = [MAX_READ_BYTES]
+            truncated = False
+            sheets = list(workbook.iter(f"{_SS}sheet"))[:MAX_XLSX_SHEETS]
+            for sheet in sheets:
+                target = targets.get(sheet.get(f"{_REL}id"), "")
+                part = posixpath.normpath(
+                    target[1:] if target.startswith("/") else f"xl/{target}"
+                )
+                if not (part.startswith("xl/worksheets/") and part.endswith(".xml")):
+                    continue
+                sheet_data = _xlsx_part(archive, part, budget, required=False)
+                if sheet_data is None:
+                    continue
+                name = sheet.get("name", "")[:100]
+                hidden = " (hidden)" if sheet.get("state", "visible") != "visible" else ""
+                output.append(f"## Sheet: {name}{hidden}")
+                output.extend(_xlsx_sheet_lines(sheet_data, shared, budget_chars))
+                if budget_chars[0] <= 0:
+                    truncated = True
+                    break
+    except (zipfile.BadZipFile, ET.ParseError, NotImplementedError, RuntimeError) as error:
+        raise InvalidToolRequest("spreadsheet could not be parsed") from error
+    text = "\n".join(output)
+    if len(text.encode("utf-8")) > MAX_READ_BYTES:
+        text = text.encode("utf-8")[:MAX_READ_BYTES].decode("utf-8", "ignore")
+        truncated = True
+    return text, truncated
 
 
 class NextcloudWebDAV:
@@ -309,6 +489,35 @@ class NextcloudWebDAV:
             raise InvalidToolRequest("file is not valid UTF-8 text") from error
         result = entry.as_dict()
         result["content"] = content
+        return result
+
+    def read_document(self, relative_path: str) -> dict[str, Any]:
+        """Read one .pdf (returned as raw base64 bytes) or .xlsx (as text)."""
+        relative_path = normalize_relative_path(relative_path, allow_empty=False)
+        extension = PurePosixPath(relative_path).suffix.lower()
+        if extension not in DOCUMENT_EXTENSIONS:
+            raise InvalidToolRequest("file type is not approved for document reading")
+        entry = self.stat(relative_path)
+        if entry.kind != "file":
+            raise InvalidToolRequest("path is not a file")
+        if entry.size_bytes is not None and entry.size_bytes > MAX_DOCUMENT_BYTES:
+            raise InvalidToolRequest("file exceeds the document size limit")
+        status, _, body = self._request(
+            "GET", relative_path, max_bytes=MAX_DOCUMENT_BYTES
+        )
+        if status != 200:
+            raise ToolUnavailable("Nextcloud file read failed")
+        result = entry.as_dict()
+        if extension == ".pdf":
+            if not body.startswith(b"%PDF-"):
+                raise InvalidToolRequest("file is not a valid PDF")
+            result["document_type"] = "pdf"
+            result["data_base64"] = base64.b64encode(body).decode("ascii")
+        else:
+            content, truncated = xlsx_to_text(body)
+            result["document_type"] = "xlsx"
+            result["content"] = content
+            result["truncated"] = truncated
         return result
 
     def search(self, query: str, relative_path: str = "") -> dict[str, Any]:
@@ -970,6 +1179,11 @@ def handle_tool(
             raise InvalidToolRequest("read requires exactly one path")
         file_path = normalize_relative_path(payload["path"], allow_empty=False)
         return client.read_text_file(file_path)
+    if path == "/v1/read_document":
+        if set(payload) != {"path"}:
+            raise InvalidToolRequest("read requires exactly one path")
+        file_path = normalize_relative_path(payload["path"], allow_empty=False)
+        return client.read_document(file_path)
     if path == "/v1/write":
         return write_file(payload, client)
     raise InvalidToolRequest("unknown tool")
