@@ -139,14 +139,61 @@
       | regex_replace('</memory>$', '') | int) // 1024 }}
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
+# The system disk is the third thing with no online path here: k3s_node_vm_disk_size_gb
+# was only ever applied when the qcow2 was first created (the "creates:" guard on
+# the convert task), so raising it for an existing node silently did nothing --
+# the same class of gap as the vCPU and memory bumps above. Found 2026-09-19:
+# k3s-node-2's 40 GiB disk filled (runner Docker/Terraform caches) and the role
+# had no way to grow it. -U (--force-share) because the image is normally held
+# open by the running VM, and a plain "qemu-img info" refuses a locked image.
+- name: Read the existing k3s node disk's virtual size
+  ansible.builtin.command:
+    argv:
+      - qemu-img
+      - info
+      - -U
+      - --output=json
+      - "{{ k3s_node_vm_disk_path }}"
+  register: k3s_node_existing_vm_disk_info
+  changed_when: false
+  check_mode: false
+  when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
+- name: Extract the current disk size from qemu-img
+  ansible.builtin.set_fact:
+    k3s_node_existing_vm_disk_gb: >-
+      {{ (k3s_node_existing_vm_disk_info.stdout | from_json)['virtual-size']
+      // (1024 * 1024 * 1024) }}
+  when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
+# A shrink cannot be done safely at the image level (it would truncate the
+# guest's partition and filesystem), so it is refused outright instead of
+# quietly ignored or attempted.
+- name: Refuse to shrink the existing k3s node disk
+  ansible.builtin.assert:
+    that:
+      - k3s_node_existing_vm_disk_gb | int <= k3s_node_vm_disk_size_gb | int
+    fail_msg: >-
+      {{ k3s_node_vm_name }}'s disk is {{ k3s_node_existing_vm_disk_gb }} GiB
+      but k3s_node_vm_disk_size_gb is {{ k3s_node_vm_disk_size_gb }}. The role
+      only ever grows a disk; shrinking would destroy guest data.
+  when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
+- name: Work out whether the existing k3s node disk needs to grow
+  ansible.builtin.set_fact:
+    k3s_node_vm_disk_grow_pending: >-
+      {{ k3s_node_existing_vm_disk_gb | int < k3s_node_vm_disk_size_gb | int }}
+  when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
+
 - name: Work out whether the existing k3s node VM needs a resize
   ansible.builtin.set_fact:
     k3s_node_vm_resize_pending: >-
       {{ k3s_node_existing_vm_vcpus | int != k3s_node_vm_vcpus | int
-      or k3s_node_existing_vm_memory_mb | int != k3s_node_vm_memory_mb | int }}
+      or k3s_node_existing_vm_memory_mb | int != k3s_node_vm_memory_mb | int
+      or k3s_node_vm_disk_grow_pending | bool }}
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
-- name: Gracefully shut down the k3s node VM to apply a changed vCPU or memory allocation
+- name: Gracefully shut down the k3s node VM to apply a changed vCPU, memory or disk allocation
   community.libvirt.virt:
     name: "{{ k3s_node_vm_name }}"
     state: shutdown
@@ -180,7 +227,22 @@
     and k3s_node_vm_name in k3s_node_defined_vms.list_vms
     and k3s_node_vm_resize_pending | bool
 
-- name: Redefine the k3s node VM with its updated vCPU and memory allocation
+# Only after the wait above has confirmed the domain is really stopped: growing
+# a qcow2 under a running VM from the command line is not safe. The guest picks
+# the extra space up on its next boot (configure_guest.yml).
+- name: Grow the k3s node system disk
+  ansible.builtin.command:
+    argv:
+      - qemu-img
+      - resize
+      - "{{ k3s_node_vm_disk_path }}"
+      - "{{ k3s_node_vm_disk_size_gb }}G"
+  when: >-
+    not ansible_check_mode
+    and k3s_node_vm_name in k3s_node_defined_vms.list_vms
+    and k3s_node_vm_disk_grow_pending | bool
+
+- name: Redefine the k3s node VM with its updated vCPU, memory and disk allocation
   community.libvirt.virt:
     command: define
     xml: "{{ lookup('template', 'k3s-node-domain.xml.j2') }}"

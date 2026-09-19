@@ -95,12 +95,13 @@ class K3sNodeTests(unittest.TestCase):
             tasks,
         )
         self.assertIn(
-            "Gracefully shut down the k3s node VM to apply a changed vCPU or "
-            "memory allocation",
+            "Gracefully shut down the k3s node VM to apply a changed vCPU, "
+            "memory or disk allocation",
             tasks,
         )
         self.assertIn(
-            "Redefine the k3s node VM with its updated vCPU and memory allocation",
+            "Redefine the k3s node VM with its updated vCPU, memory and disk "
+            "allocation",
             tasks,
         )
         self.assertIn(
@@ -122,6 +123,73 @@ class K3sNodeTests(unittest.TestCase):
         for step in ("shut down", "Redefine", "actually stop"):
             self.assertIn(step, tasks)
         self.assertEqual(tasks.count("k3s_node_vm_resize_pending | bool"), 3)
+
+    def test_disk_size_change_grows_an_existing_vm_only_while_it_is_stopped(
+        self,
+    ) -> None:
+        # 2026-09-19: k3s_node_vm_disk_size_gb was only applied when the qcow2
+        # was first created, so raising it for an existing node did nothing
+        # -- k3s-node-2's 40 GiB disk filled twice in one day with no way to
+        # grow it. It must drive the same stop/redefine/start path, and the
+        # qemu-img resize must run only after the domain is really stopped.
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
+
+        self.assertIn("k3s_node_vm_disk_grow_pending | bool }}", tasks)
+        self.assertLess(
+            tasks.index("Wait for the k3s node VM to actually stop"),
+            tasks.index("Grow the k3s node system disk"),
+        )
+        self.assertLess(
+            tasks.index("Grow the k3s node system disk"),
+            tasks.index("Redefine the k3s node VM with its updated"),
+        )
+        grow = tasks[tasks.index("- name: Grow the k3s node system disk") :]
+        grow = grow[: grow.index("\n\n")]
+        self.assertIn("not ansible_check_mode", grow)
+        self.assertIn("k3s_node_vm_disk_grow_pending | bool", grow)
+        # Reads the size of a disk the running VM holds open.
+        self.assertIn("- -U\n", tasks)
+        self.assertIn("--output=json", tasks)
+
+    def test_a_smaller_disk_size_is_refused_not_applied(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
+
+        self.assertIn("Refuse to shrink the existing k3s node disk", tasks)
+        self.assertIn(
+            "k3s_node_existing_vm_disk_gb | int <= k3s_node_vm_disk_size_gb | int",
+            tasks,
+        )
+        # The refusal has to come before anything shuts the VM down.
+        self.assertLess(
+            tasks.index("Refuse to shrink the existing k3s node disk"),
+            tasks.index("Gracefully shut down the k3s node VM"),
+        )
+
+    def test_guest_grows_its_partition_and_filesystem_idempotently(self) -> None:
+        guest = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(encoding="utf-8")
+
+        self.assertIn("Grow the root partition to fill the disk", guest)
+        self.assertIn("Grow the root filesystem to fill its partition", guest)
+        # growpart exits 1 with NOCHANGE when there is nothing to grow, which
+        # must not fail every run of an already-grown node.
+        self.assertIn("NOCHANGE", guest)
+        self.assertIn("Nothing to do", guest)
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        self.assertIn("k3s_node_root_disk: /dev/vda", defaults)
+        self.assertIn("k3s_node_root_partition: 1", defaults)
+
+    def test_only_the_runner_node_gets_the_bigger_disk(self) -> None:
+        k3s_playbook = (PROJECT_ROOT / "ansible/playbooks/k3s.yml").read_text(
+            encoding="utf-8"
+        )
+
+        node2 = k3s_playbook[k3s_playbook.index("k3s_node_vm_name: k3s-node-2") :]
+        node2 = node2[: node2.index("k3s_node_inventory_group")]
+        self.assertIn("k3s_node_vm_disk_size_gb: 100", node2)
+        # node-1 keeps the role default (40); a stray override there would
+        # try to resize a disk nothing asked to change.
+        node1 = k3s_playbook[: k3s_playbook.index("k3s_node_vm_name: k3s-node-2")]
+        self.assertNotIn("k3s_node_vm_disk_size_gb", node1)
 
     def test_unparseable_memory_unit_fails_instead_of_rebooting_every_run(
         self,

@@ -68,3 +68,14 @@ Two modes, run as two separate plays in `ansible/playbooks/k3s.yml`:
   Ready-wait polls its systemd unit's own `ActiveState` rather than
   `kubectl get nodes` -- the real Ready check happens from
   `k3s-node-1`'s own side instead.
+
+**Resizing an existing node** (`k3s_node_vm_vcpus`, `_memory_mb`,
+`_disk_size_gb`): none has a live path here, so raising any of them for an
+already-running node gracefully shuts the VM down, applies the change, and
+starts it again -- expect a few minutes of downtime for that node. The disk
+is the third case, added 2026-09-19: `qemu-img resize` runs only after the
+domain is confirmed stopped, and `configure_guest.yml` then grows the root
+partition (`growpart`) and ext4 filesystem (`resize2fs`) so the space is
+actually usable. A disk is only ever grown: a smaller
+`k3s_node_vm_disk_size_gb` than the existing image makes the play fail
+before anything is shut down. Run `scripts/roll-out-k3s.sh dry-run` first.
