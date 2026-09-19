@@ -75,6 +75,12 @@ class HomeToolsClientTests(unittest.TestCase):
         with self.assertRaises(HomeToolsError):
             HomeToolsClient(socket_path).call("get_system_health")
 
+    def test_does_not_pass_a_404_through_even_with_an_error_body(self) -> None:
+        socket_path = self._serve(404, b'{"error":"not_found"}')
+
+        with self.assertRaises(HomeToolsError):
+            HomeToolsClient(socket_path).call("get_system_health")
+
     def test_wraps_an_oversized_response(self) -> None:
         from home_agent import home_tools
 
@@ -124,6 +130,23 @@ class NextcloudToolsClientTests(unittest.TestCase):
 
     def test_wraps_a_non_200_status(self) -> None:
         socket_path = self._serve(404, b"{}")
+
+        with self.assertRaises(NextcloudToolsError):
+            NextcloudToolsClient(socket_path).call("list_nextcloud_files", {"path": ""})
+
+    def test_a_structured_not_found_reaches_the_model_as_data(self) -> None:
+        socket_path = self._serve(
+            404, b'{"error":"not_found","message":"not shared with this account"}'
+        )
+
+        result = NextcloudToolsClient(socket_path).call(
+            "list_nextcloud_files", {"path": "Nope"}
+        )
+
+        self.assertEqual(result["error"], "not_found")
+
+    def test_a_503_stays_an_outage_even_with_an_error_body(self) -> None:
+        socket_path = self._serve(503, b'{"error":"tool_unavailable"}')
 
         with self.assertRaises(NextcloudToolsError):
             NextcloudToolsClient(socket_path).call("list_nextcloud_files", {"path": ""})

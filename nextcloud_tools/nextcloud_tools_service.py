@@ -99,6 +99,16 @@ class ToolUnavailable(RuntimeError):
     """Indicate that Nextcloud could not safely answer a tool request."""
 
 
+class ToolNotFound(ToolUnavailable):
+    """Indicate the path does not exist for this account.
+
+    Nextcloud answers 404 both for a path that was never created and for
+    one that simply isn't shared with the tool user, so callers can't tell
+    the two apart. Kept distinct from a real outage so the model can say
+    "that isn't shared with me" instead of "Nextcloud is down".
+    """
+
+
 def safe_unavailable_reason(error: ToolUnavailable) -> str:
     """Return only allowlisted diagnostic categories to the socket client."""
     message = str(error)
@@ -438,6 +448,8 @@ class NextcloudWebDAV:
             body=PROPFIND_BODY,
             headers={"Content-Type": "application/xml", "Depth": "1"},
         )
+        if status == 404:
+            raise ToolNotFound("Nextcloud directory not found")
         if status != 207:
             raise ToolUnavailable(
                 f"Nextcloud directory listing returned HTTP {status}"
@@ -454,6 +466,8 @@ class NextcloudWebDAV:
             body=PROPFIND_BODY,
             headers={"Content-Type": "application/xml", "Depth": "0"},
         )
+        if status == 404:
+            raise ToolNotFound("Nextcloud file not found")
         if status != 207:
             raise ToolUnavailable("Nextcloud file metadata is unavailable")
         entries = parse_multistatus(body, self._decoded_root_path)
@@ -1227,6 +1241,19 @@ class NextcloudToolsRequestHandler(BaseHTTPRequestHandler):
             )
         except (UnicodeDecodeError, json.JSONDecodeError, InvalidToolRequest):
             self._send_json(400, {"error": "invalid_request"})
+            return
+        except ToolNotFound as error:
+            LOGGER.info("Nextcloud tool request failed: %s", error)
+            self._send_json(
+                404,
+                {
+                    "error": "not_found",
+                    "message": (
+                        "That path does not exist, or it is not shared "
+                        "with this account."
+                    ),
+                },
+            )
             return
         except ToolUnavailable as error:
             LOGGER.warning("Nextcloud tool request failed: %s", error)

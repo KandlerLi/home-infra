@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import http.client
 import json
+import shutil
+import socket
 import sys
+import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -222,18 +227,40 @@ class NextcloudToolsServiceTests(unittest.TestCase):
             "AI Workspace",
         )
 
-        with patch.object(client, "_request", return_value=(404, {}, b"")):
+        with patch.object(client, "_request", return_value=(500, {}, b"")):
             with self.assertRaises(nextcloud_tools.ToolUnavailable) as raised:
                 client.list_directory("private-name-must-not-be-logged")
 
+        self.assertNotIsInstance(raised.exception, nextcloud_tools.ToolNotFound)
         self.assertEqual(
             str(raised.exception),
-            "Nextcloud directory listing returned HTTP 404",
+            "Nextcloud directory listing returned HTTP 500",
         )
         self.assertEqual(
             nextcloud_tools.safe_unavailable_reason(raised.exception),
-            "upstream_http_404",
+            "upstream_http_500",
         )
+
+    def test_missing_directory_is_not_found_and_does_not_echo_the_path(self) -> None:
+        client = _webdav_client()
+
+        with patch.object(client, "_request", return_value=(404, {}, b"")):
+            with self.assertRaises(nextcloud_tools.ToolNotFound) as raised:
+                client.list_directory("private-name-must-not-be-logged")
+
+        self.assertNotIn("private-name-must-not-be-logged", str(raised.exception))
+
+    def test_missing_file_metadata_is_not_found_but_a_server_error_is_not(self) -> None:
+        client = _webdav_client()
+
+        with patch.object(client, "_request", return_value=(404, {}, b"")):
+            with self.assertRaises(nextcloud_tools.ToolNotFound):
+                client.stat("Photos/sunset.jpg")
+
+        with patch.object(client, "_request", return_value=(500, {}, b"")):
+            with self.assertRaises(nextcloud_tools.ToolUnavailable) as raised:
+                client.stat("Photos/sunset.jpg")
+        self.assertNotIsInstance(raised.exception, nextcloud_tools.ToolNotFound)
 
     def test_unavailable_reason_rejects_unstructured_detail(self) -> None:
         reason = nextcloud_tools.safe_unavailable_reason(
@@ -931,3 +958,69 @@ class EndpointHostAllowlistTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _UnixHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, socket_path: str) -> None:
+        super().__init__("nextcloud-tools")
+        self._socket_path = socket_path
+
+    def connect(self) -> None:
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(self._socket_path)
+
+
+class MissingPathHttpTests(unittest.TestCase):
+    """Run the real sidecar server: a missing path must not look like an outage."""
+
+    def _post(self, client, path: str, payload: dict) -> tuple[int, dict]:
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        socket_path = f"{tmp}/s.sock"
+        server = nextcloud_tools.ThreadingUnixServer(
+            socket_path, nextcloud_tools.NextcloudToolsRequestHandler
+        )
+        server.client = client
+        server.shopping_list_client = FakeShoppingListClient()
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join, 5)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        connection = _UnixHTTPConnection(socket_path)
+        connection.request(
+            "POST",
+            path,
+            body=json.dumps(payload),
+            headers={"Content-Type": "application/json"},
+        )
+        response = connection.getresponse()
+        body = json.loads(response.read())
+        connection.close()
+        return response.status, body
+
+    def test_missing_path_answers_404_not_found_with_a_hint(self) -> None:
+        class Missing(FakeClient):
+            def list_directory(self, path: str):
+                raise nextcloud_tools.ToolNotFound("Nextcloud directory not found")
+
+        status, body = self._post(Missing(), "/v1/list", {"path": "Nope"})
+
+        self.assertEqual(status, 404)
+        self.assertEqual(body["error"], "not_found")
+        self.assertIn("not shared", body["message"])
+        self.assertNotIn("Nope", json.dumps(body))
+
+    def test_real_outage_still_answers_503_tool_unavailable(self) -> None:
+        class Down(FakeClient):
+            def list_directory(self, path: str):
+                raise nextcloud_tools.ToolUnavailable(
+                    "Nextcloud directory listing returned HTTP 500"
+                )
+
+        status, body = self._post(Down(), "/v1/list", {"path": "Photos"})
+
+        self.assertEqual(status, 503)
+        self.assertEqual(body["error"], "tool_unavailable")
+        self.assertEqual(body["reason"], "upstream_http_500")

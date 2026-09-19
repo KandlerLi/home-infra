@@ -36,12 +36,14 @@ def call_unix_socket_json(
     error_cls: type[Exception],
     body: bytes | None = None,
     headers: dict[str, str] | None = None,
+    passthrough_statuses: frozenset[int] = frozenset(),
 ) -> dict[str, Any]:
     """Send one request and return its decoded JSON object.
 
     Raises error_cls (with a short, caller-safe message) for a connection
-    failure, a non-200 status, an oversized response, or a body that isn't
-    a JSON object. Goes over the Unix socket at socket_path when given,
+    failure, a non-200 status (unless it is in passthrough_statuses, whose
+    JSON body is returned like a 200), an oversized response, or a body
+    that isn't a JSON object. Goes over the Unix socket at socket_path when given,
     otherwise a plain TCP connection to base_url.
     """
     transport = httpx2.HTTPTransport(uds=socket_path) if socket_path else None
@@ -57,11 +59,19 @@ def call_unix_socket_json(
                     response_body.extend(chunk)
                     if len(response_body) > max_response_bytes:
                         raise error_cls("tool response exceeded the size limit")
-                if response.status_code != 200:
+                if (
+                    response.status_code != 200
+                    and response.status_code not in passthrough_statuses
+                ):
                     raise error_cls("tool is unavailable")
         payload = json.loads(bytes(response_body))
         if not isinstance(payload, dict):
             raise error_cls("tool returned an unexpected response")
+        if response.status_code != 200 and "error" not in payload:
+            # A pass-through status only counts when the service itself
+            # sent a structured error; a bare 404 (wrong route, proxy)
+            # must not look like an empty successful result.
+            raise error_cls("tool is unavailable")
         return payload
     except (httpx2.HTTPError, json.JSONDecodeError) as error:
         raise error_cls("tool request failed") from error

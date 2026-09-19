@@ -278,4 +278,7 @@ class NextcloudToolsClient:
             error_cls=NextcloudToolsError,
             body=body,
             headers={"Content-Type": "application/json"},
+            # A missing/unshared path is an answer the model should see,
+            # not an outage: the sidecar sends 404 {"error": "not_found"}.
+            passthrough_statuses=frozenset({404}),
         )
