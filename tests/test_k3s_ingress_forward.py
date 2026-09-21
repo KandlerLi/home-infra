@@ -95,6 +95,23 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         self.assertEqual(smtp_rules[0]["target_port"], 25)
         self.assertEqual(smtp_rules[0]["protocol"], "tcp")
 
+    def test_default_rules_forward_imaps_and_submissions_over_tcp(self) -> None:
+        # Mail clients, to infra/k3s-apps' modules/stalwart. TLS-only
+        # ports: 993 (IMAPS) and 465 (implicit-TLS submission). The
+        # plaintext ports (143/587) must never be forwarded.
+        defaults = yaml.safe_load(
+            (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        )
+        rules = defaults["k3s_ingress_forward_rules"]
+
+        for port in (993, 465):
+            matching = [r for r in rules if r["public_port"] == port]
+            self.assertEqual(len(matching), 1, port)
+            self.assertEqual(matching[0]["target_port"], port)
+            self.assertEqual(matching[0]["protocol"], "tcp")
+        forwarded = {r["public_port"] for r in rules}
+        self.assertFalse(forwarded & {143, 587})
+
     def test_forward_accept_rule_is_inserted_ahead_of_docker_and_libvirt(
         self,
     ) -> None:
