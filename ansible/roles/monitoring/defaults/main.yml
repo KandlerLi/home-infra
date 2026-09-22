@@ -284,3 +284,12 @@ monitoring_k3s_node_exporter_targets:
   - address: 192.168.101.11:9100
     node: k3s-node-2
 monitoring_k3s_kube_state_metrics_upstream: 192.168.101.10:8080
+
+# Shared Docker logging bounds for every container this role manages
+# (node_exporter, cAdvisor, blackbox_exporter, Prometheus) -- was a
+# 4x-repeated literal block in tasks/main.yml (ponytail-audit,
+# 2026-09-22), now one value merged into each container's own
+# log_options.
+monitoring_docker_log_options:
+  max-size: 10m
+  max-file: "3"
