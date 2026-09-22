@@ -325,9 +325,7 @@
           - --web.listen-address={{ monitoring_bind_address }}:{{ monitoring_node_exporter_port }}
           - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)
         log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
+        log_options: "{{ monitoring_docker_log_options }}"
 
     # Read-only docker.sock access, precedented by nextcloud_aio's own
     # master container already doing exactly this -- not a new exception.
@@ -389,9 +387,7 @@
           timeout: 5s
           retries: 5
         log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
+        log_options: "{{ monitoring_docker_log_options }}"
 
     - name: Ensure blackbox_exporter container is running
       community.docker.docker_container:
@@ -415,9 +411,7 @@
           - --config.file=/config/blackbox.yml
           - --web.listen-address={{ monitoring_bind_address }}:{{ monitoring_blackbox_exporter_port }}
         log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
+        log_options: "{{ monitoring_docker_log_options }}"
 
     - name: Ensure Prometheus container is running
       community.docker.docker_container:
@@ -476,9 +470,7 @@
           retries: 5
           start_period: 30s
         log_driver: json-file
-        log_options:
-          max-size: 10m
-          max-file: "3"
+        log_options: "{{ monitoring_docker_log_options }}"
 
     - name: Verify Prometheus is ready on host loopback
       ansible.builtin.uri:
