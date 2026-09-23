@@ -6,12 +6,9 @@ monitoring_restart_policy: unless-stopped
 monitoring_config_dir: /etc/monitoring
 monitoring_data_dir: /var/lib/monitoring
 
-# node_exporter: host health. Needs accurate host filesystem/network
-# stats, which only network_mode: host can give it -- the same precedent
-# shared_ingress already established, and every container in this role
-# uses it uniformly (see tasks/main.yml) so Prometheus's own scrape
-# configs can address everything as a plain 127.0.0.1:<port>, with no
-# published_ports mapping to configure anywhere in this role.
+# node_exporter: host health. Every container in this role runs
+# network_mode: host (ADR 0017) so Prometheus's own scrape configs can
+# address everything as a plain 127.0.0.1:<port>.
 monitoring_node_exporter_container_name: node-exporter
 monitoring_node_exporter_image_name: prom/node-exporter
 monitoring_node_exporter_image_tag: v1.12.1
@@ -24,13 +21,10 @@ monitoring_node_exporter_memory_limit: 128M
 monitoring_node_exporter_cpu_limit: 0.5
 monitoring_node_exporter_pids_limit: 64
 
-# cAdvisor: container health. Needs read-only access to the Docker socket
-# and host cgroup/container filesystems to report per-container metrics --
-# the same category of exception nextcloud_aio's own master container
-# already has (also a read-only docker.sock mount), not a new one. Runs
-# as its image's own default (root inside the container), unlike every
-# other role's dedicated unprivileged account: a restricted uid can't read
-# /var/lib/docker or the cgroup hierarchy this needs either.
+# cAdvisor: container health. Runs as its image's own default (root
+# inside the container), not a dedicated unprivileged account -- a
+# restricted uid can't read /var/lib/docker or the cgroup hierarchy
+# this needs.
 monitoring_cadvisor_container_name: cadvisor
 monitoring_cadvisor_image_name: ghcr.io/google/cadvisor
 monitoring_cadvisor_image_tag: v0.60.5
@@ -38,15 +32,9 @@ monitoring_cadvisor_image_digest: >-
   sha256:763aecf1c32c2be8a1a75f9abfc2fc461005c9dbbaa39cb356b354aac1296dbe
 monitoring_cadvisor_image: >-
   {{ monitoring_cadvisor_image_name }}:{{ monitoring_cadvisor_image_tag }}@{{ monitoring_cadvisor_image_digest }}
-# NOT 8080 -- that's Nextcloud AIO's own mastercontainer admin
-# interface port (nextcloud_aio's own listener, unrelated to Ansible).
-# Confirmed live: cAdvisor's network_mode: host listener silently won
-# that port (started later than the mastercontainer, or restarted more
-# recently), leaving nothing listening on 0.0.0.0:8080 for AIO's own
-# interface at all -- found only when the user needed https://<homeserver>:8080
-# again and it was unreachable. cAdvisor itself has no fixed
-# "conventional" port to preserve here, unlike e.g. Prometheus/Grafana's
-# well-known defaults, so there's no reason to fight AIO for 8080.
+# NOT 8080 -- that collides with Nextcloud AIO's own mastercontainer
+# admin interface. See docs/home-infra-ai-context's current-state.md
+# for the outage this caused before the port moved.
 monitoring_cadvisor_port: 8081
 monitoring_cadvisor_memory_limit: 256M
 monitoring_cadvisor_cpu_limit: 0.5
@@ -68,47 +56,18 @@ monitoring_blackbox_exporter_cpu_limit: 0.25
 monitoring_blackbox_exporter_pids_limit: 32
 
 # Every URL blackbox_exporter probes with its HTTPS/HTTP module for both
-# reachability and (for the https:// ones) certificate expiry.
-#
-# http://127.0.0.1:8082/ping (shared_ingress's own Traefik loopback
-# ping endpoint) used to be included here too, so a Traefik outage
-# showed up the same way any other service outage would -- removed
-# 2026-09-01, confirmed live as a real, actively-firing false alarm:
-# shared_ingress was deleted that same day (Traefik moved to k3s,
-# infra/k3s-apps' own modules/ingress/), so nothing has listened on
-# this host's own loopback:8082 since, and this target had been
-# silently alerting on a service that was never coming back the whole
-# time. The public probes below already cover Traefik's own health
-# indirectly (they all route through it), so no direct replacement
-# was added.
+# reachability and (for the https:// ones) certificate expiry. See ADR
+# 0019's own Update section for the retired shared_ingress ping probe
+# this list used to also carry.
 monitoring_probe_targets:
   - https://nextcloud.jkandler.de/
   - https://www.jkandler.de/
   - http://jkandler.de/
 
 # ai.jkandler.de and torrent.jkandler.de sit behind Authelia forward-auth
-# since 2026-09-08 (infra/k3s-apps' modules/ingress/configmap.tf) -- the
-# Traefik Basic Auth this comment used to describe was retired 2026-09-11
-# along with shared_ingress_auth_password(_hash) entirely, once every
-# chain had held stable on forward-auth for days (see BACKLOG.md's own
-# tracked item on the storage bug that motivated keeping it around as a
-# fallback). blackbox has no Authelia session to send, so it still can't
-# get an authenticated 2xx here. Probed with the http_2xx_or_401 module
-# instead: 401 still proves DNS/TLS/Traefik/the upstream are all up and
-# correctly gating access, so real outages (timeouts, 5xx, connection
-# refused) still alert -- it just can't distinguish "healthy behind auth"
-# from "up but broken behind auth" the way an unauthenticated 2xx check
-# can. Found live 2026-09-11: Authelia forward-auth actually returns
-# 302 (redirect to auth.jkandler.de), not 401, to an unauthenticated
-# plain GET. Initially flagged as a likely monitoring bug (302 isn't in
-# http_2xx_or_401's [200, 401] valid_status_codes) -- **turned out to
-# be a non-issue, confirmed 2026-09-16**: this module's own
-# follow_redirects: true means blackbox_exporter follows that 302 all
-# the way to auth.jkandler.de's real login page, which returns a plain
-# 200 -- already inside valid_status_codes, no change needed. Verified
-# against live Prometheus (probe_success=1 for both targets) and a
-# real curl -L reproducing blackbox's own redirect-following behavior,
-# not just re-read from this comment.
+# -- blackbox has no session to send, so it's probed with
+# http_2xx_or_401 instead. See ADR 0019's own Update section for why
+# 302 (not 401) is what's actually returned, and why that's fine.
 monitoring_probe_targets_authenticated:
   - https://ai.jkandler.de/healthz
   - https://torrent.jkandler.de/
@@ -133,38 +92,18 @@ monitoring_prometheus_retention_size: 2GB
 monitoring_prometheus_container_user: monitoring-prometheus
 
 # Off by default (loopback only). When set, Prometheus additionally
-# listens on this address (Prometheus's own --web.listen-address flag
-# can be repeated, confirmed via `prometheus --help`) -- lets the
-# k3s-native Grafana (infra/k3s-apps, modules/grafana) reach this as
-# its own datasource. 192.168.101.1 (this homeserver's own address on
-# the k3s VM's isolated network) is the only value the role's own
+# listens on this address, letting the k3s-native Grafana reach it as
+# its own datasource. 192.168.101.1 is the only value the role's own
 # validation allows.
 monitoring_prometheus_k3s_bind_address: ""
 
-# Grafana itself is no longer deployed by this role -- it runs as a
-# k3s-native copy instead (infra/k3s-apps, modules/grafana). Nothing
-# here configures it, so there are no monitoring_grafana_* defaults left:
-# monitoring_grafana_admin_user went away 2026-09-10 alongside
-# monitoring_grafana_admin_password (which was removed from the
-# home-infra/grafana secret entirely -- Grafana's native login is
-# disabled at the protocol level, Authelia OIDC only, so it could not be
-# typed into anything and had no reason to sit in `pass`).
-
-# Alertmanager itself is no longer deployed by this role -- it runs as
-# a k3s-native copy instead (infra/k3s-apps, modules/alertmanager),
-# reached by Prometheus over monitoring_alertmanager_upstream below.
-# Phase 2 of moving the monitoring stack into k3s: unlike
-# monitoring_prometheus_k3s_bind_address/monitoring_ntfy_relay_k3s_bind_address
-# above, this is a clean switch, not an addition -- Prometheus's own
-# alerting.alertmanagers target list notifies *every* address in it for
-# the same firing alert (unlike a scrape target list), so listing both
-# the homeserver's own Alertmanager and the k3s-native one
-# simultaneously would double-fire every real notification.
-# 192.168.101.10:9093 is infra/k3s-apps' own modules/alertmanager
-# LoadBalancer Service address (same port number, so no other value is
-# needed here) -- confirmed independently first (a real synthetic alert
-# reaching both ntfy and SES through the k3s copy) before ever pointing
-# Prometheus at it.
+# Grafana and Alertmanager are no longer deployed by this role -- both
+# run as k3s-native copies instead (infra/k3s-apps). This is a clean
+# switch, not an addition, unlike the *_k3s_bind_address variables
+# above -- listing both the homeserver's own Alertmanager and the
+# k3s-native one would double-fire every notification. See
+# docs/home-infra-ai-context's current-state.md ("k3s learning
+# cluster") for the full cutover history.
 monitoring_alertmanager_upstream: 127.0.0.1:9093
 
 # Alerting: deliberately dual-channel (ntfy push + email), both wired to
@@ -198,15 +137,10 @@ monitoring_ntfy_relay_port: 9096
 monitoring_ntfy_relay_service_user: monitoring-ntfy-relay
 monitoring_ntfy_relay_install_dir: /usr/local/lib/monitoring/ntfy-relay
 
-# Off by default (loopback only); set live in inventory now that
-# Alertmanager has fully moved into k3s (infra/k3s-apps, modules/
-# alertmanager) -- the relay then listens on this address additionally
-# (a second server instance in its own thread -- see ntfy_relay.py's
-# own comment on LISTEN_HOST_K3S) so the k3s-native Alertmanager can
-# reach it, alongside the loopback listener every other consumer on
-# this host still uses. 192.168.101.1 (this homeserver's own address on
-# the k3s VM's isolated network) is the only value this role's own
-# validation allows.
+# Off by default (loopback only); set live in inventory so the
+# k3s-native Alertmanager can reach the relay too -- see
+# ntfy_relay.py's own comment on LISTEN_HOST_K3S. 192.168.101.1 is the
+# only value this role's own validation allows.
 monitoring_ntfy_relay_k3s_bind_address: ""
 
 # SES SMTP credentials come from aws/ses-relay's Terraform outputs, not
@@ -225,54 +159,26 @@ monitoring_alert_disk_full_percent: 85
 monitoring_alert_cert_expiry_days: 14
 
 # Blocky is fully k3s-native now (infra/k3s-apps, modules/blocky/) --
-# the home-infra blocky role these were originally a default()-guarded
-# cross-role reference into is gone entirely, deleted once the cutover
-# was confirmed live (2026-08-31/09-01). No role in this repo owns
-# Blocky's own existence any more, so monitoring_blocky_enabled is a
-# plain, unconditional true rather than a reference to a variable that
-# no longer has anywhere to come from. monitoring_blocky_postgres_port/
-# _database/_user/_password (a matching default()-guarded set) were
-# already dead before this cleanup -- Grafana's own blocky-postgresql
-# datasource is provisioned by infra/k3s-apps' own modules/grafana
-# (templates/datasources.yaml.tftpl) now, not by anything reading
-# these -- removed rather than carried forward unused.
+# no role in this repo owns Blocky's own existence any more, so this is
+# a plain, unconditional true.
 monitoring_blocky_enabled: true
 monitoring_blocky_http_port: 4000
-# A clean switch, not an addition -- same reasoning and shape as
-# monitoring_alertmanager_upstream above (a scrape target list doesn't
-# double-count the way alerting.alertmanagers would, but scraping both
-# the homeserver's own Blocky and infra/k3s-apps' own one at once would
-# still be actively misleading: two independent, identically-labeled
-# series for what's really one logical service). Stays pointed at the
+# A clean switch, not an addition -- same reasoning as
+# monitoring_alertmanager_upstream above. Stays pointed at the
 # homeserver's own address until infra/k3s-apps' own modules/blocky is
-# confirmed handling real production DNS traffic, not just verified
-# reachable internally -- switching this before that would make
-# monitoring blind to the instance actually serving the LAN.
+# confirmed handling real production DNS traffic.
 monitoring_blocky_upstream: "127.0.0.1:{{ monitoring_blocky_http_port }}"
 
-# Closes a real, confirmed-live gap: Blocky's own query-log Postgres
-# writer has no reconnect logic (upstream behavior), and Blocky's own
-# `up` metric stays green through a silent logging gap -- this
-# exporter (infra/k3s-apps' own modules/blocky, added 2026-09-16)
-# exposes standard pg_stat_user_tables metrics so alert_rules.yml.j2
-# can catch "no new log_entries rows in N minutes" directly. Same
-# "stays pointed at the homeserver until the k3s copy is confirmed
-# live" reasoning doesn't apply here -- there is no homeserver-side
-# Postgres any more to point at instead, this exporter only ever had
-# one possible target.
+# Blocky's own query-log Postgres writer has no reconnect logic, and
+# its `up` metric stays green through a silent logging gap -- this
+# exporter exposes pg_stat_user_tables metrics so alert_rules.yml.j2
+# can catch "no new log_entries rows in N minutes" directly.
 monitoring_blocky_postgres_exporter_port: 9187
 monitoring_blocky_postgres_exporter_upstream: "192.168.101.10:{{ monitoring_blocky_postgres_exporter_port }}"
 
 # Per-k3s-node CPU/mem/disk visibility (BACKLOG.md's "Per-k3s-node
-# Grafana dashboard + alerting") -- infra/k3s-apps' own
-# modules/node_exporter (a DaemonSet + kube-state-metrics), reached the
-# same way Blocky/Alertmanager already are: k3s's bundled ServiceLB
-# binds each Service directly to a node's own address. Off by default,
-# same "additive capability, not live until explicitly turned on"
-# pattern as monitoring_prometheus_k3s_bind_address above -- flip once
-# that module is confirmed applied, so Prometheus doesn't spend this
-# scrape_interval's window alerting on a target that doesn't exist yet
-# during the rollout.
+# Grafana dashboard + alerting"). Off by default -- flip once
+# infra/k3s-apps' own modules/node_exporter is confirmed applied.
 monitoring_k3s_node_health_enabled: false
 # node-exporter runs as a DaemonSet (host_network: true), so each
 # node's own real IP:9100 is the target directly -- no Service/LoadBalancer
@@ -285,11 +191,7 @@ monitoring_k3s_node_exporter_targets:
     node: k3s-node-2
 monitoring_k3s_kube_state_metrics_upstream: 192.168.101.10:8080
 
-# Shared Docker logging bounds for every container this role manages
-# (node_exporter, cAdvisor, blackbox_exporter, Prometheus) -- was a
-# 4x-repeated literal block in tasks/main.yml (ponytail-audit,
-# 2026-09-22), now one value merged into each container's own
-# log_options.
+# Shared Docker logging bounds for every container this role manages.
 monitoring_docker_log_options:
   max-size: 10m
   max-file: "3"

@@ -2,7 +2,8 @@
 
 Opt-in Prometheus stack for host health, container health, service
 reachability, and TLS/DNS expiry (`monitoring_enabled`, default `false`;
-see ADR 0017). Loopback-only, not published through `shared_ingress`.
+see ADR 0017). Prometheus itself and its exporters are loopback-only,
+not published anywhere.
 
 - **node_exporter** (host stats) and **cAdvisor** (container stats) feed
   **Prometheus**, which also runs `blackbox_exporter` probes against the
@@ -21,42 +22,26 @@ see ADR 0017). Loopback-only, not published through `shared_ingress`.
 
 **Grafana and Alertmanager no longer run here.** Both are k3s-native
 copies instead (`infra/k3s-apps`, `modules/grafana` and `modules/
-alertmanager`) -- Phases 1 and 2 of moving this stack into the k3s
-cluster. Grafana is reached at `grafana.jkandler.de` through
-`shared_ingress_grafana_upstream`, confirmed live 2026-08-30 (real
-admin login, both datasources healthy, a real PromQL query returning
-real scrape data). Alertmanager is reached by Prometheus over
-`monitoring_alertmanager_upstream`, confirmed live 2026-08-31 (a
-synthetic test alert posted straight to its own API reached both ntfy
-and the real SES inbox, and Prometheus's own `/api/v1/alertmanagers`
-showed exactly that target, healthy) before either role's own Docker
-deployment was removed. Prometheus, the exporters, and Blocky stay on
-this host permanently -- they report *this physical host's* own
-hardware/Docker daemon, or are LAN-facing, so moving them into the k3s
-VM would monitor the wrong thing entirely. `files/dashboards/*.json`
-stay here as the canonical source `infra/k3s-apps`' own `modules/
-grafana` vendors a synced copy from (same pattern as
-`nextcloud_tools_service.py`, kept at the top-level `nextcloud_tools/`
-directory for the same reason), even though nothing here installs
-them any more.
+alertmanager`). Grafana is reached at `grafana.jkandler.de` through
+`infra/k3s-apps`' own Traefik (`modules/ingress`); Alertmanager is
+reached by Prometheus over `monitoring_alertmanager_upstream`.
+Prometheus, the exporters, and Blocky stay on this host permanently --
+they report *this physical host's* own hardware/Docker daemon, or are
+LAN-facing, so moving them into the k3s VM would monitor the wrong
+thing entirely. `files/dashboards/*.json` stay here as the canonical
+source `infra/k3s-apps`' own `modules/grafana` vendors a synced copy
+from, even though nothing here installs them any more. See
+`docs/home-infra-ai-context`'s current-state.md ("k3s learning
+cluster") for the full cutover history.
 
 Two listeners exist purely so the k3s-native pieces can reach what
 stays on this host: `monitoring_prometheus_k3s_bind_address` and
 `monitoring_ntfy_relay_k3s_bind_address` (both this role) -- additive
 (loopback keeps working; each only ever adds a second bind), both
-locked to `192.168.101.1` (this homeserver's own address on the k3s
-VM's isolated network) by their own validation, never `0.0.0.0`. A
-third, `blocky_postgres_k3s_bind_address` (the `blocky` role), existed
-here too until Blocky itself moved fully into k3s and that role was
-deleted entirely (2026-09-01) -- `monitoring_blocky_upstream`
-(defaults/main.yml) is its replacement, but as a clean switch, not an
-addition, since Blocky no longer runs on this host at all. The other
-exception is
-`monitoring_alertmanager_upstream` itself: a clean **switch**, not an
-addition -- Prometheus's own `alerting.alertmanagers`
-target list notifies every address in it for the same firing alert
-(unlike a scrape target list), so listing both Alertmanagers at once
-would double-fire every real notification.
+locked to `192.168.101.1` by their own validation, never `0.0.0.0`.
+`monitoring_alertmanager_upstream` and `monitoring_blocky_upstream`
+are the other direction: a clean **switch**, not an addition -- see
+each variable's own comment in `defaults/main.yml`.
 
 `monitoring_k3s_node_health_enabled` (default `false`) is the reverse
 direction of the two listeners above: this Prometheus reaching *into*
@@ -73,10 +58,5 @@ specifically, since that job's metrics share names with this host's own
 Needs `monitoring_ntfy_topic` and the SES SMTP credentials set in the
 `home-infra/monitoring` AWS Secrets Manager group before first
 enabling. Grafana's own admin password is no longer a shared secret at
-all: its k3s copy (`infra/k3s-apps`, `modules/grafana`) generates a
-throwaway `random_password` for `GF_SECURITY_ADMIN_PASSWORD` because
-native login is disabled at the protocol level (Authelia OIDC only), so
-it can't be typed into anything. `monitoring_grafana_admin_password`
-was removed from the `home-infra/grafana` secret and from the `pass`
-sync 2026-09-10; the `home-infra/grafana` group now holds only the
-Authelia OIDC client secret.
+all -- its k3s copy generates a throwaway `random_password` since
+native login is disabled at the protocol level (Authelia OIDC only).
