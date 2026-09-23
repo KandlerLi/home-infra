@@ -29,18 +29,9 @@ groups:
   - name: container_health
     rules:
       - alert: ContainerDown
-        # container_last_seen is keyed by cAdvisor's own "id" label too
-        # (the container's cgroup path), which changes to a brand-new
-        # value every time site.yml *recreates* a container (a config
-        # change, not just a restart) -- confirmed live. The old id's
-        # series then just stops updating and sits frozen in Prometheus
-        # while a fresh series starts under the new id, so comparing
-        # staleness per exact label set fires this alert for that dead
-        # ghost series on every ordinary recreate, even though the
-        # actual current container is healthy. Aggregating by the
-        # stable "name" label first (taking the freshest id's value)
-        # fixes that: as long as some container with this name has
-        # been seen recently, the alert doesn't fire.
+        # Aggregates by the stable "name" label, not cAdvisor's own
+        # "id" (cgroup path, which churns on every container recreate)
+        # -- see ADR 0019 for the false alerts this avoided.
         expr: >-
           absent(container_last_seen{name!=""})
           or (time() - max by (name) (container_last_seen{name!=""})) > 120
@@ -84,19 +75,12 @@ groups:
   - name: blocky_health
     rules:
       - alert: BlockyQueryLogStale
-        # Closes a real, confirmed-live gap: Blocky's own query-log
-        # Postgres writer has no reconnect logic at all (upstream
-        # behavior, not fixable here) -- an ~18h silent gap after
-        # Postgres restarted mid-Pod-lifetime was found once, only by
-        # chance. Blocky's own `up` metric (the `blocky` scrape job)
-        # stays green the whole time this happens, so nothing else in
-        # this file would ever catch a repeat -- DNS resolution itself
-        # keeps working fine even during the gap, only the log write
-        # path is affected. pg_stat_user_tables_n_tup_ins is a
-        # monotonic counter of rows inserted into a table (the
-        # blocky_postgres_exporter job's own default collector, no
-        # custom query needed) -- zero increase over the window means
-        # zero new queries got logged.
+        # Blocky's own query-log Postgres writer has no reconnect logic
+        # and its `up` metric stays green through the gap -- see
+        # docs/home-infra-ai-context's current-state.md ("k3s learning
+        # cluster", Blocky entry). pg_stat_user_tables_n_tup_ins is a
+        # monotonic row-insert counter; zero increase means zero new
+        # queries got logged.
         expr: >-
           absent(pg_stat_user_tables_n_tup_ins{relname="log_entries"})
           or (increase(pg_stat_user_tables_n_tup_ins{relname="log_entries"}[10m]) == 0)

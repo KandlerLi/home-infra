@@ -91,9 +91,9 @@ scrape_configs:
       - target_label: __address__
         replacement: 127.0.0.1:{{ monitoring_blackbox_exporter_port }}
 
-  # Same pattern, but for targets behind Basic Auth this role has no
-  # plaintext credential for -- see monitoring_probe_targets_authenticated
-  # in defaults/main.yml and blackbox.yml.j2's http_2xx_or_401 module.
+  # Same pattern, but for targets behind Authelia forward-auth -- see
+  # monitoring_probe_targets_authenticated in defaults/main.yml and
+  # blackbox.yml.j2's http_2xx_or_401 module.
   - job_name: blackbox_http_authenticated
     metrics_path: /probe
     params:

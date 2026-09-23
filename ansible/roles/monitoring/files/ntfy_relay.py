@@ -22,14 +22,11 @@ LOGGER = logging.getLogger(__name__)
 NTFY_URL = os.environ.get("NTFY_URL", "https://ntfy.sh")
 NTFY_TOPIC_FILE = os.environ.get("NTFY_TOPIC_FILE", "")
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "9096"))
-# Off by default (loopback only, via main()'s own hardcoded first
-# server below). When set, a second listener binds this address
-# additionally -- the existing loopback one keeps serving the
-# still-Docker-based Alertmanager on this same host, so the k3s-native
-# Alertmanager (infra/k3s-apps, once it exists) can reach this too
-# without breaking the one that's already working. 192.168.101.1 (this
-# homeserver's own address on the k3s VM's isolated network) is the
-# only value ansible/roles/monitoring's own validation allows.
+# Off by default (loopback only). When set, a second listener binds
+# this address additionally, so the k3s-native Alertmanager can reach
+# this too without breaking the loopback listener every other consumer
+# on this host still uses. 192.168.101.1 is the only value
+# ansible/roles/monitoring's own validation allows.
 LISTEN_HOST_K3S = os.environ.get("LISTEN_HOST_K3S", "")
 MAX_REQUEST_BYTES = 262144
 
