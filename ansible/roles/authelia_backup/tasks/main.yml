@@ -23,13 +23,10 @@
     # whatever uid/gid this account was actually assigned (see this
     # role's own README) rather than looking them up dynamically --
     # same "confirmed live, then hardcoded, then drift-checked here"
-    # pattern open_webui's own role already established for exactly
-    # this NFS-plus-non-root-uid problem. Confirmed live 2026-09-16
-    # these two are NOT the same number here (uid 984, gid 979) --
-    # unlike open_webui's own single uid=gid coincidence, this
-    # account's primary group happened to land on a different free
-    # slot than its own uid -- so both need their own hardcoded
-    # expectation and their own drift check, not one shared value.
+    # pattern open_webui's own role already established. Unlike
+    # open_webui's own single uid=gid coincidence, this account's
+    # uid/gid are NOT the same number (984/979), so both need their
+    # own hardcoded expectation and their own drift check.
     - name: Validate the Authelia backup service account matches what k3s-apps hardcodes
       ansible.builtin.assert:
         that:

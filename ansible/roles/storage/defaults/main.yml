@@ -8,9 +8,9 @@ black_hdd_owner: "www-data"
 black_hdd_group: "www-data"
 black_hdd_mode: "02770"
 
-# Installed 2026-09-15 specifically for Nextcloud AIO's own Borg backup
-# feature (see docs/runbooks/nextcloud-aio.md's "Enable the Borg backup"
-# section) -- AIO configures the backup path entirely through its own web
+# For Nextcloud AIO's own Borg backup feature (see
+# docs/runbooks/nextcloud-aio.md's "Enable the Borg backup" section) --
+# AIO configures the backup path entirely through its own web
 # interface, not an env var like NEXTCLOUD_DATADIR, so this role only
 # owns the host-side mount; pointing AIO at it is a manual step.
 # root:root/0755 rather than black_hdd's www-data:www-data/02770 -- this
