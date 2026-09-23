@@ -180,24 +180,13 @@
     cmd: systemctl daemon-reexec
   when: base_watchdog_config.changed
 
-# BACKLOG.md, "Homeserver has no stable IPv6 address": the interface
-# identifier (the back half of the address) has changed shape at least
-# once already -- from an EUI-64/MAC-derived form to what looks like
-# RFC7217 stable-privacy -- around the 2026-09-13 dhcpcd-base security
-# patch, unconfirmed. The /64 prefix itself was the same both times, so
-# this only needs to pin the interface identifier, not solve any
-# ISP/prefix-delegation problem. Force EUI-64 (MAC-derived) at both
-# layers that could plausibly generate the address, since it was never
-# confirmed which one actually owns it on this host:
+# BACKLOG.md, "Homeserver has no stable IPv6 address" -- pins IPv6
+# address generation on enp0s25 to EUI-64, at both layers that could
+# own it (see that entry for why both, and why this trio of tasks).
 - name: Gather installed package facts
   ansible.builtin.package_facts:
     manager: apt
 
-# dhcpcd computes its own SLAAC address when `slaac private` (its
-# default) is set, using a persistent secret in /var/lib/dhcpcd/duid
-# independent of the kernel's own addr_gen_mode/use_tempaddr sysctls
-# below -- if dhcpcd owns this interface's IPv6 configuration, its own
-# setting has to change too, not just the kernel's.
 - name: Force deterministic EUI-64 IPv6 address generation in dhcpcd
   ansible.builtin.lineinfile:
     path: /etc/dhcpcd.conf
@@ -207,12 +196,6 @@
   notify: Restart dhcpcd
   register: base_ipv6_dhcpcd_config
 
-# Belt-and-braces alongside the dhcpcd task above: if dhcpcd isn't
-# actually involved (or defers to the kernel for RA-based SLAAC), the
-# kernel's own privacy-extensions/addr_gen_mode settings are what
-# generate the address instead. addr_gen_mode=0 is EUI-64 (MAC-derived,
-# matching this host's original, working address); use_tempaddr=0
-# disables RFC4941 temporary addresses layered on top of it.
 - name: Persist deterministic IPv6 address generation via sysctl
   ansible.posix.sysctl:
     name: "{{ item.name }}"
@@ -226,14 +209,9 @@
       value: "0"
   register: base_ipv6_sysctl
 
-# The kernel/dhcpcd only regenerate a SLAAC address when the interface
-# actually re-processes a Router Advertisement (on bring-up, a DHCPv6
-# renew, or dhcpcd's own restart above) -- a live config change alone
-# doesn't retroactively change the address already assigned. Not
-# bouncing enp0s25 automatically here: it's the same interface this
-# Ansible run is SSHing over, and a routine playbook apply is the wrong
-# place to risk that connection. Flagging it instead, the same pattern
-# as the GRUB cmdline change above.
+# Deliberately doesn't bounce enp0s25 itself -- this Ansible run is
+# SSHing over it. See BACKLOG.md for why a config change alone doesn't
+# move the address.
 - name: Flag that the IPv6 address won't update until the interface is recycled
   ansible.builtin.debug:
     msg: >-
