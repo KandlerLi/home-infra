@@ -30,17 +30,12 @@ fi
 echo "Backing up {{ source.name }} ({{ source.path }})..."
 {% if source.sqlite_files is defined and source.sqlite_files | length > 0 %}
 # {{ source.name }} has a live SQLite database in WAL mode
-# ({{ source.sqlite_files | join(', ') }}) -- confirmed live 2026-09-16
-# that a plain tar of the raw file fails outright ("Cannot open:
-# Resource temporarily unavailable" on the -shm file, held locked by
-# the process that actually has the database open) and even if it
-# hadn't failed, a raw copy of a live WAL-mode database is not
-# guaranteed to be a consistent point-in-time snapshot. SQLite's own
-# online backup API (Connection.backup(), used here via Python's
-# stdlib sqlite3 binding rather than the separate sqlite3 CLI package,
-# which isn't installed on this host) is specifically designed to
-# produce a consistent snapshot of a database that's actively open
-# elsewhere, without needing exclusive access.
+# ({{ source.sqlite_files | join(', ') }}) -- a plain tar of the raw
+# file isn't a guaranteed consistent snapshot. SQLite's own online
+# backup API (Connection.backup(), via Python's stdlib sqlite3
+# binding, not the separate CLI package) produces one without needing
+# exclusive access -- same approach infra/k3s-apps' modules/authelia
+# uses for its own db.sqlite3.
 STAGING_DIR="$(mktemp -d)"
 STAGING_DIRS+=("$STAGING_DIR")
 STAGING_TARGET="$STAGING_DIR/$(basename "{{ source.path }}")"

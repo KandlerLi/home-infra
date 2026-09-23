@@ -35,21 +35,12 @@
     update_cache: true
     cache_valid_time: 86400
 
-# The homeserver's onboard NIC (Intel 82579LM, driver e1000e) hit a
-# well-documented PCIe ASPM (Active State Power Management) bug that
-# causes it to periodically hang and reset -- "NETDEV WATCHDOG ...
-# transmit queue timed out" in a loop, network fully dead during each
-# cycle -- root-caused after a real ~14min production outage on
-# 2026-09-01 (see PARKED.md's own writeup for the full kernel log).
-# Disabling ASPM globally via this kernel boot parameter is the
-# standard, most broadly effective fix for this exact chipset/bug
-# combination. Only `base` (applied to the `home_servers` group, i.e.
-# only the physical homeserver, never the k3s VMs) needs this -- no
-# other host in this repo has this NIC.
-#
+# The homeserver's onboard NIC (Intel 82579LM, driver e1000e) hits a
+# well-documented PCIe ASPM bug -- see
+# docs/home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
+# Only `base` needs this -- no other host in this repo has this NIC.
 # Takes effect only after a reboot -- this task and the `update-grub`
-# regeneration below just get the new parameter written and staged;
-# rebooting to actually load it is a separate, deliberate step.
+# regeneration below just get the new parameter written and staged.
 - name: Disable PCIe ASPM in the kernel command line (e1000e watchdog-hang fix)
   ansible.builtin.lineinfile:
     path: /etc/default/grub
@@ -72,17 +63,10 @@
       that separately.
   when: grub_cmdline.changed
 
-# 2026-09-06: pcie_aspm=off alone was not enough -- the exact same
-# NETDEV WATCHDOG/"Detected Hardware Unit Hang" bug recurred with
-# pcie_aspm=off confirmed active in /proc/cmdline the whole time, this
-# time with the driver's own internal reset stuck retrying and failing
-# continuously for almost 8 hours before a manual reboot, rather than
-# self-recovering within minutes the way the first incident did (see
-# PARKED.md for the full writeup). TSO/GSO/GRO offloading and Energy
-# Efficient Ethernet are the other two contributors most commonly cited
-# alongside ASPM for this exact 82579LM/e1000e watchdog-hang bug --
-# takes effect immediately on the live interface, no reboot needed,
-# unlike the kernel parameter above.
+# pcie_aspm=off alone wasn't enough -- see the e1000e runbook for the
+# recurrence. TSO/GSO/GRO offloading and Energy Efficient Ethernet are
+# the other two commonly-cited contributors for this chipset's bug --
+# takes effect immediately, no reboot needed.
 - name: Install ethtool
   ansible.builtin.apt:
     name: ethtool
@@ -133,11 +117,9 @@
       post-up /sbin/ethtool --set-eee {{ base_e1000e_interface }} eee off || true
 
 # A safety net on top of the two fixes above, not a replacement for
-# them: forces a full PCI-level unbind/rebind of the NIC the moment the
-# kernel logs a NETDEV WATCHDOG event, rather than trusting the
-# driver's own internal reset to actually recover -- 2026-09-06 showed
-# live that it can get stuck failing that reset for hours. See the
-# script's own comment for the full reasoning.
+# them -- forces a full PCI-level unbind/rebind of the NIC the moment
+# the kernel logs a NETDEV WATCHDOG event, rather than trusting the
+# driver's own internal reset to recover. See the e1000e runbook.
 - name: Create e1000e watchdog recovery install directory
   ansible.builtin.file:
     path: "{{ base_e1000e_watchdog_recovery_install_dir }}"
@@ -177,31 +159,15 @@
       {{ 'restarted' if (base_e1000e_watchdog_recovery_script.changed
          or base_e1000e_watchdog_recovery_unit.changed) else 'started' }}
 
-# Real production outage 2026-09-11/12 (~22:58-07:51 CEST, ~8h53m):
-# the homeserver stayed powered on (fans running, lights on) but was
-# fully unresponsive -- no SSH, no services -- and needed a manual
-# physical reboot. Unlike the two e1000e watchdog-hang incidents above,
-# root-caused via `journalctl -k -b -1`: zero kernel-level log entries
-# of any kind (no NETDEV WATCHDOG, no panic, no OOM, no hardware
-# error) in the entire window the box was actually dead, and no
-# graceful-shutdown sequence logged either -- a harder, more total
-# freeze than the e1000e bug's own signature, where the kernel stayed
-# alive enough to log "Detected Hardware Unit Hang" continuously.
-# e1000e-watchdog-recovery.service (above) is powerless against this:
-# it only reacts to that one specific kernel message, which never
-# appeared. Root cause of *this* freeze is still unknown.
-#
-# Confirmed live this hardware has a working watchdog timer device
-# (/dev/watchdog, /dev/watchdog0/1) that systemd wasn't using at all
-# (RuntimeWatchdogUSec=0). Enabling it is a root-cause-agnostic safety
-# net, not a fix for a specific bug: if the kernel ever stops
-# scheduling entirely (exactly what this outage looks like) and can't
-# pet the watchdog, the hardware forces a real reset on its own, no
-# software involved -- turns an undetected multi-hour outage requiring
-# physical intervention into an automatic reboot within seconds.
-# daemon-reexec (not daemon-reload, which only reloads unit files) is
-# what actually gets PID1 to pick up a changed system.conf immediately
-# rather than waiting for the next boot.
+# A total, silent freeze (no kernel log entries at all, unlike the
+# e1000e bug's own signature) needed a manual physical reboot -- see
+# docs/home-infra-docs/docs/runbooks/homeserver-silent-freeze.md. This
+# hardware has a working watchdog timer device systemd wasn't using at
+# all; enabling it is a root-cause-agnostic safety net: if the kernel
+# ever stops scheduling entirely and can't pet the watchdog, the
+# hardware forces a real reset on its own. daemon-reexec (not
+# daemon-reload) is what gets PID1 to pick up the changed system.conf
+# immediately.
 - name: Enable the hardware watchdog via systemd
   ansible.builtin.lineinfile:
     path: /etc/systemd/system.conf

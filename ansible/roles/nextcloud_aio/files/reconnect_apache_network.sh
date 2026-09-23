@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
 #
 # Reconnects nextcloud-aio-apache to the nextcloud-aio Docker network if
-# it's missing -- confirmed live on two independent host reboots
-# (2026-09-01, 2026-09-04, see PARKED.md's "Homeserver: make a reboot a
-# complete non-event") that Apache silently drops off that network,
-# deadlocking with nextcloud-aio-nextcloud (each waiting on the other's
-# own name resolution). Root cause still unknown (most likely a
-# startup-ordering race when every AIO container restarts simultaneously)
-# -- this only automates the manual recovery
-# (`docker network connect nextcloud-aio nextcloud-aio-apache`) already
-# proven to work both times, it doesn't fix the underlying race.
+# it's missing -- see
+# docs/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known issues")
+# for the reboot bug this automates recovery from. Root cause is still
+# unknown (most likely a startup-ordering race), owned by AIO's own
+# mastercontainer -- this only automates the manual recovery.
 #
 # Run at boot (via the accompanying systemd unit) and safe to run any
 # other time too -- idempotent, exits cleanly if Apache is already
@@ -59,7 +55,7 @@ if [[ " $connected_containers " == *" $TARGET_CONTAINER "* ]]; then
   exit 0
 fi
 
-printf '%s is missing from %s -- reconnecting (known AIO startup race, see PARKED.md).\n' \
+printf '%s is missing from %s -- reconnecting (known AIO startup race).\n' \
   "$TARGET_CONTAINER" "$NETWORK_NAME"
 docker network connect "$NETWORK_NAME" "$TARGET_CONTAINER"
 printf 'Reconnected %s to %s.\n' "$TARGET_CONTAINER" "$NETWORK_NAME"

@@ -18,20 +18,12 @@ k3s_ingress_forward_enabled: false
 # silent typo here would relay it to the wrong place entirely.
 k3s_ingress_forward_target_ip: 192.168.101.10
 
-# k3s_node's own libvirt bridge for the k3s network (k3s_node's own
-# k3s_node_network_bridge default) -- a literal here rather than a
-# cross-role lookup, same reasoning as k3s_ingress_forward_target_ip
-# above. Excluded from the DNAT rule's own in_interface match below:
-# PREROUTING/nat sees every packet entering any interface, including
-# the k3s VM's own outbound connections as they transit this bridge
-# on their way out to the internet. Without this exclusion, an
-# outbound packet from the VM itself using source port 80/443 -- e.g.
-# any HTTPS image pull -- matches the DNAT rule's own destination_port
-# match just as well as real inbound traffic does, and gets hairpinned
-# straight back to the VM's own address instead of ever leaving.
-# Confirmed live (2026-09-01): this exact bug silently broke every
-# outbound HTTPS/HTTP connection from k3s-node-1, surfacing as
-# ImagePullBackOff with no other visible cause.
+# k3s_node's own libvirt bridge for the k3s network. Excluded from the
+# DNAT rule's own in_interface match below -- PREROUTING/nat sees every
+# packet entering any interface, including the k3s VM's own outbound
+# connections transiting this bridge on their way out to the internet.
+# See docs/home-infra-ai-context's current-state.md ("k3s learning
+# cluster") for the ImagePullBackOff hairpin bug this exclusion fixes.
 k3s_ingress_forward_target_bridge: virbr11
 
 # public_port: what the homeserver itself listens on (the FRITZ!Box's

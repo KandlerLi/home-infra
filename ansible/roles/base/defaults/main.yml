@@ -1,21 +1,16 @@
 ---
 admin_user: julian
 
-# The onboard NIC's own interface name and PCI address -- see the
-# pcie_aspm=off task's own comment below for the 2026-09-01 e1000e
-# watchdog-hang bug this exists for, and PARKED.md for 2026-09-06's
-# recurrence despite that fix. Literals, not discovered dynamically:
-# this role only ever targets this one known physical host's one known
-# NIC.
+# The onboard NIC's own interface name and PCI address -- see
+# docs/home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
+# Literals, not discovered dynamically: this role only ever targets
+# this one known physical host's one known NIC.
 base_e1000e_interface: enp0s25
 base_e1000e_pci_address: "0000:00:19.0"
 base_e1000e_watchdog_recovery_install_dir: /usr/local/lib/e1000e-watchdog-recovery
 
-# Hardware watchdog timeout -- see the "Enable the hardware watchdog"
-# task's own comment for why (2026-09-11/12's total-freeze outage,
-# unrelated to the e1000e-specific fixes above). 30s balances real
-# recovery speed against false positives from ordinary load spikes
-# (confirmed live: load average briefly hits ~10 in the first minute
-# after a normal boot, well under systemd's own watchdog kicking being
-# effectively independent of general system load).
+# Hardware watchdog timeout -- see
+# docs/home-infra-docs/docs/runbooks/homeserver-silent-freeze.md. 30s
+# balances real recovery speed against false positives from ordinary
+# load spikes.
 base_watchdog_sec: 30s

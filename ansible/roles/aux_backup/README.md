@@ -26,18 +26,12 @@ disproportionate.
   loudly.
 - **Live SQLite databases get SQLite's own online backup, not a raw
   copy** (`aux_backup_sources[].sqlite_files`, currently just Open
-  WebUI's `webui.db`). Confirmed live 2026-09-16: a plain `tar` of a
-  live WAL-mode database fails outright ("Cannot open: Resource
-  temporarily unavailable" on the `-shm` file, held locked by whatever
-  actually has the database open -- Open WebUI's real k3s Pod, over
-  this same NFS export), and even if it hadn't failed, a raw copy
-  isn't guaranteed to be a consistent point-in-time snapshot. Any
-  configured `sqlite_files` entry gets excluded from the plain
-  `rsync -a` copy and snapshotted separately via Python's stdlib
-  `sqlite3` module's `Connection.backup()` (the same SQLite Online
-  Backup API the separate `sqlite3` CLI would use -- not installed on
-  this host, so this avoids a new package dependency for something
-  the standard library already does).
+  WebUI's `webui.db`) -- a raw copy of a live WAL-mode database isn't
+  guaranteed to be a consistent point-in-time snapshot. Any configured
+  `sqlite_files` entry gets excluded from the plain `rsync -a` copy
+  and snapshotted separately via Python's stdlib `sqlite3` module's
+  `Connection.backup()`, the same approach `infra/k3s-apps`' own
+  `modules/authelia` uses.
 - **A real toggle**: disabling this role stops the timer, not just
   skips creating it on a host that never had it. The service/timer
   units are always installed regardless of `aux_backup_enabled`, so
