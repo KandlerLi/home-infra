@@ -89,20 +89,11 @@
       automatically.
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
-# vcpu placement="static" (below) has no live hotplug path -- changing
-# it needs the domain actually stopped, redefined, and started again,
-# which the "Define" task below deliberately never does for a VM that
-# already exists (it only ever defines a brand-new one). Without this
-# block, bumping k3s_node_vm_vcpus for an already-running node would
-# silently do nothing at all on re-apply.
+# vcpu placement="static" has no live hotplug path -- see
+# docs/home-infra-ai-context's current-state.md ("k3s learning
+# cluster") for the resize-support design and the regex_search bug
+# this task's own shape works around.
 - name: Extract the current vCPU count from the existing domain definition
-  # Confirmed live (locally, against the real filter): regex_search's
-  # backreference argument ('\1') gets mangled by Jinja's own
-  # string-literal parsing before it ever reaches the filter --
-  # AnsibleFilterError: Unknown argument, every time, regardless of
-  # backslash-escaping attempts. Sidesteps it entirely: match the whole
-  # <vcpu ...>N</vcpu> element first (no group reference needed), then
-  # strip the surrounding tags with two plain regex_replace calls.
   ansible.builtin.set_fact:
     k3s_node_existing_vm_vcpus: >-
       {{ (k3s_node_existing_vm_xml.get_xml
@@ -111,12 +102,7 @@
       | regex_replace('</vcpu>$', '') }}
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
-# Memory has no live path here either (the domain template pins both
-# <memory> and <currentMemory>, no ballooning/hotplug), so it needs the
-# same stop/redefine/start as vCPUs. Missed on the first memory bump
-# (2026-09-19, #46: node-1 4096->6144, node-2 4096->8192): only vCPU was
-# compared, so a memory-only change was a silent no-op on the existing VMs
-# and the k3s nodes kept reporting 4 GiB. libvirt's get_xml always
+# Memory has no live path here either. libvirt's get_xml always
 # reports <memory unit='KiB'>; the assert below fails the run loudly if
 # that ever stops being true, because a wrongly-parsed value here would
 # make every single run shut both nodes down again.
@@ -139,13 +125,9 @@
       | regex_replace('</memory>$', '') | int) // 1024 }}
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
-# The system disk is the third thing with no online path here: k3s_node_vm_disk_size_gb
-# was only ever applied when the qcow2 was first created (the "creates:" guard on
-# the convert task), so raising it for an existing node silently did nothing --
-# the same class of gap as the vCPU and memory bumps above. Found 2026-09-19:
-# k3s-node-2's 40 GiB disk filled (runner Docker/Terraform caches) and the role
-# had no way to grow it. -U (--force-share) because the image is normally held
-# open by the running VM, and a plain "qemu-img info" refuses a locked image.
+# The system disk is the third thing with no online path here. -U
+# (--force-share) because the image is normally held open by the
+# running VM.
 - name: Read the existing k3s node disk's virtual size
   ansible.builtin.command:
     argv:
@@ -204,16 +186,8 @@
 # Only polled outside check mode -- under --check the shutdown above is
 # simulated, not real, so the domain never actually reaches "shutdown"
 # and this would otherwise burn its full retries/delay budget on every
-# syntax-check/dry-run while a resize is pending.
-#
-# Confirmed live 2026-09-08 (the first real vCPU resize against
-# k3s-node-1): a 5-minute budget (30 x 10s) wasn't enough -- this task
-# exhausted all 30 retries with the domain still reporting "running",
-# failing the whole play before Redefine/Start ever ran (a real,
-# several-minute outage on everything node-1 hosts, only recovered by
-# rerunning the play a second time, by which point the VM had finished
-# shutting down on its own). Widened to a 15-minute budget so a single
-# run covers a real graceful ACPI shutdown under normal load.
+# syntax-check/dry-run. 15-minute budget -- see current-state.md for
+# the outage a shorter one caused.
 - name: Wait for the k3s node VM to actually stop
   community.libvirt.virt:
     command: status
@@ -345,18 +319,10 @@
   register: k3s_node_network_info
   changed_when: false
 
-# The autostart: true above is a known, long-standing upstream bug in
-# community.libvirt.virt_net -- confirmed live 2026-09-04: Autostart
-# still showed "no" (sudo virsh net-list --all) immediately after this
-# exact task ran successfully, which is what left both k3s VMs shut
-# off after a real host reboot despite this task supposedly already
-# fixing that on 2026-09-01. Matches two documented upstream issues:
-# ansible-collections/community.libvirt#107 (changes to an
-# already-active network only ever affect the live state, not the
-# persistent config, depending on internal libvirt update flags) and
-# ansible/ansible#27064 (autostart can be silently ignored depending
-# on the code path taken). Falling back to plain virsh directly, which
-# isn't affected by either.
+# The autostart: true above is a known upstream bug in
+# community.libvirt.virt_net -- see current-state.md ("k3s learning
+# cluster") for the two upstream issues this matches and the outage it
+# caused. Falling back to plain virsh directly, unaffected by either.
 - name: Work around community.libvirt.virt_net's autostart bug
   ansible.builtin.command:
     argv:

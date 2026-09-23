@@ -58,10 +58,9 @@ Two modes, run as two separate plays in `ansible/playbooks/k3s.yml`:
   out-of-the-box behavior, not a customized one. Bundled Traefik is
   the one deliberate exception (`config.yaml`'s `disable: [traefik]`):
   `infra/k3s-apps`' own `modules/ingress/` Deployment replaces it
-  entirely, since real production ACME/Basic-Auth/rate-limit config
-  has no business living in a role that's meant to stay at defaults,
-  and two Traefik instances can't both hold the LoadBalancer ports or
-  usefully watch the same Ingress resources at once; `agent` renders
+  entirely, since real production ACME/auth/rate-limit config has no
+  business living in a role that's meant to stay at defaults; `agent`
+  renders
   `k3s agent --node-taint ... --node-label ...` instead, joining over
   `K3S_URL`/`K3S_TOKEN` in a mode-`0600` env file. An agent has no
   kubeconfig of its own (only a server generates one), so its own
@@ -72,10 +71,10 @@ Two modes, run as two separate plays in `ansible/playbooks/k3s.yml`:
 **Resizing an existing node** (`k3s_node_vm_vcpus`, `_memory_mb`,
 `_disk_size_gb`): none has a live path here, so raising any of them for an
 already-running node gracefully shuts the VM down, applies the change, and
-starts it again -- expect a few minutes of downtime for that node. The disk
-is the third case, added 2026-09-19: `qemu-img resize` runs only after the
-domain is confirmed stopped, and `configure_guest.yml` then grows the root
-partition (`growpart`) and ext4 filesystem (`resize2fs`) so the space is
-actually usable. A disk is only ever grown: a smaller
-`k3s_node_vm_disk_size_gb` than the existing image makes the play fail
-before anything is shut down. Run `scripts/roll-out-k3s.sh dry-run` first.
+starts it again -- expect a few minutes of downtime for that node.
+`qemu-img resize` runs only after the domain is confirmed stopped, and
+`configure_guest.yml` then grows the root partition (`growpart`) and
+ext4 filesystem (`resize2fs`) so the space is actually usable. A disk
+is only ever grown: a smaller `k3s_node_vm_disk_size_gb` than the
+existing image makes the play fail before anything is shut down. Run
+`scripts/roll-out-k3s.sh dry-run` first.

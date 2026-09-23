@@ -4,7 +4,7 @@
 # things learned via kubectl are k3s's real out-of-the-box behavior,
 # not a customized one. Bundled Traefik is the one deliberate
 # departure: k3s-apps' own modules/ingress/ Deployment replaces it
-# entirely (real production ACME/Basic-Auth/rate-limit config has no
+# entirely (real production ACME/auth/rate-limit config has no
 # business living in a role that's meant to stay at defaults), and two
 # Traefik instances can't both hold the LoadBalancer ports or usefully
 # watch the same Ingress resources at once.
