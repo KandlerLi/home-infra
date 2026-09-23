@@ -67,13 +67,10 @@
   when: "'default' in libvirt_host_defined_networks.stdout_lines"
 
 # libvirt's own "default" NAT network is created by the package install
-# itself, not by any Ansible task in this repo -- it ships with
-# autostart off, and nothing here had ever turned it on. Found alongside
-# k3s_node's own equivalent gap (see that role's own
-# provision_vm.yml -- community.libvirt.virt_net's autostart parameter
-# is a known, long-standing upstream bug, confirmed live 2026-09-04)
-# during the same real reboot recovery. Set directly via virsh rather
-# than the buggy module, same as that role's own workaround.
+# itself -- it ships with autostart off. Set directly via virsh, not
+# community.libvirt.virt_net -- see k3s_node's own provision_vm.yml
+# and docs/home-infra-ai-context's current-state.md for the upstream
+# bug this works around.
 - name: Ensure the default libvirt network autostarts
   ansible.builtin.command:
     argv:
