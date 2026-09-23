@@ -181,21 +181,10 @@
   when: base_watchdog_config.changed
 
 # BACKLOG.md, "Homeserver has no stable IPv6 address" -- pins IPv6
-# address generation on enp0s25 to EUI-64, at both layers that could
-# own it (see that entry for why both, and why this trio of tasks).
-- name: Gather installed package facts
-  ansible.builtin.package_facts:
-    manager: apt
-
-- name: Force deterministic EUI-64 IPv6 address generation in dhcpcd
-  ansible.builtin.lineinfile:
-    path: /etc/dhcpcd.conf
-    regexp: '^#?slaac\s'
-    line: "slaac hwaddr"
-  when: "'dhcpcd5' in ansible_facts.packages or 'dhcpcd-base' in ansible_facts.packages"
-  notify: Restart dhcpcd
-  register: base_ipv6_dhcpcd_config
-
+# address generation on enp0s25 to EUI-64. Confirmed live this host has
+# no dhcpcd.service unit at all (dhcpcd-base is installed only as a
+# dependency of something else, never actually running) -- IPv6 here
+# is kernel-native SLAAC via these sysctls alone, not dhcpcd.
 - name: Persist deterministic IPv6 address generation via sysctl
   ansible.posix.sysctl:
     name: "{{ item.name }}"
@@ -217,12 +206,11 @@
     msg: >-
       IPv6 address generation is now pinned to EUI-64, but enp0s25's
       current address won't change until it re-processes a Router
-      Advertisement -- restart dhcpcd again by hand (if not already
-      restarted above), bounce the interface, or reboot. Then confirm
+      Advertisement -- bounce the interface or reboot. Then confirm
       with `ip -6 addr show {{ base_e1000e_interface }}` and re-point
       the FRITZ!Box's DNSv6-Server at the new address (see
       BACKLOG.md's "Homeserver has no stable IPv6 address").
-  when: base_ipv6_dhcpcd_config.changed or base_ipv6_sysctl.changed
+  when: base_ipv6_sysctl.changed
 
 - name: Ensure www-data group exists
   ansible.builtin.group:

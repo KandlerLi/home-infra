@@ -25,12 +25,12 @@ flag) -- first role in `site.yml`.
   bump here, not a surprise on the next apply.
 - Adds `admin_user` to the `www-data` group and sets zsh as its login
   shell.
-- Pins IPv6 address generation on `enp0s25` to EUI-64 (MAC-derived),
-  both in dhcpcd (`slaac hwaddr`, if installed) and via kernel sysctl
-  (`addr_gen_mode`/`use_tempaddr`) -- see `BACKLOG.md`'s "Homeserver
-  has no stable IPv6 address" for why. Doesn't bounce the interface
-  itself (this Ansible run is SSHing over it); flags that a manual
-  recycle is still needed for the change to actually take effect.
+- Pins IPv6 address generation on `enp0s25` to EUI-64 (MAC-derived)
+  via kernel sysctl (`addr_gen_mode`/`use_tempaddr`) -- see
+  `BACKLOG.md`'s "Homeserver has no stable IPv6 address" for why.
+  Doesn't bounce the interface itself (this Ansible run is SSHing over
+  it); flags that a manual recycle is still needed for the change to
+  actually take effect.
 
 Requires running as root (`become: true`); asserts this explicitly rather
 than failing with a confusing permission error partway through.
