@@ -17,9 +17,9 @@ repo builds around.
   to one named Nextcloud account -- off by default, since a wrong
   `nextcloud_aio_mount_applicable_user` would grant unintended
   visibility.
-- `nextcloud_aio_reverse_proxy_enabled` switches its published ports for
-  the cutover to `shared_ingress` fronting it instead of talking to AIO's
-  own built-in proxy directly.
+- `nextcloud_aio_reverse_proxy_enabled` switches its published ports so
+  a reverse proxy can front it instead of talking to AIO's own
+  built-in proxy directly.
 - `nextcloud_aio_oidc_enabled` (off by default, same "opt-in" shape as
   `nextcloud_aio_mount_dir` above) registers Authelia as a "Sign in
   with Authelia" option on Nextcloud's own login page, via the
@@ -30,10 +30,8 @@ repo builds around.
   for its `nextcloud` client). Also sets user_oidc's own
   `allow_multiple_user_backends` app config to force SSO: Nextcloud's
   login page redirects straight to Authelia instead of showing its own
-  username/password form (2026-09-09, once the personal account's own
-  real data was fully migrated onto the OIDC-provisioned account --
-  see that commit's own message for the account-merge story). This is
-  a browser `/login` redirect only, not a protocol-level block -- it
+  username/password form. This is a browser `/login` redirect only,
+  not a protocol-level block -- it
   doesn't touch Basic Auth/app-password API or WebDAV access, so
   `home_agent`'s own `nextcloud_tools` sidecar and the `sankey_export`
   CronJob (both authenticate directly against the API, never through
@@ -49,10 +47,7 @@ CronJob -- see `infra/k3s-apps`' `modules/home_agent/`/`modules/sankey_export/`.
 - A systemd oneshot (`nextcloud-aio-apache-network-fix.service`, runs at
   boot and on every apply) automatically reconnects
   `nextcloud-aio-apache` to the `nextcloud-aio` Docker network if it's
-  missing -- confirmed live on two independent reboots (2026-09-01,
-  2026-09-04) that Apache silently drops off that network, deadlocking
-  with `nextcloud-aio-nextcloud`. See
-  `files/reconnect_apache_network.sh`'s own header comment and
-  `PARKED.md`'s "Homeserver: make a reboot a complete non-event" -- this
-  automates the known recovery, it doesn't fix the still-unknown root
-  cause (owned by AIO's own mastercontainer, not this repo).
+  missing. See `docs/home-infra-docs/docs/runbooks/nextcloud-aio.md`
+  ("Known issues") for the reboot bug this automates recovery from --
+  the root cause is still unknown, owned by AIO's own mastercontainer,
+  not this repo.

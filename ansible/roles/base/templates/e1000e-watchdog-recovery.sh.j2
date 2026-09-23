@@ -2,15 +2,9 @@
 # Watches the kernel log for the e1000e NIC's own watchdog-detected
 # hardware hang ("NETDEV WATCHDOG ... transmit queue N timed out") and
 # forces a full PCI-level unbind/rebind of the device -- a stronger,
-# independent reinitialization than the driver's own internal reset.
-# Confirmed live 2026-09-06: that internal reset can get stuck retrying
-# and failing ("Detected Hardware Unit Hang") every ~2s for almost 8
-# hours straight without ever clearing the hang on its own, despite
-# pcie_aspm=off already being active the whole time (see PARKED.md for
-# the full writeup, and this role's own pcie_aspm=off task for the
-# original 2026-09-01 incident). A safety net regardless of whether
-# that fix and the TSO/GSO/EEE workarounds above ever fully eliminate
-# the trigger -- this just makes a recurrence take seconds, not hours.
+# independent reinitialization than the driver's own internal reset,
+# which can get stuck retrying and failing for hours on its own. See
+# docs/home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
 #
 # "-n 0" skips the existing journal backlog on start -- only react to
 # NEW hangs from this point on, never replay history on every restart.
@@ -31,12 +25,9 @@ journalctl -k -f -o cat -n 0 | while IFS= read -r line; do
       fi
       rm -f "${err_file}"
       # Debounce: the driver keeps re-logging "Detected Hardware Unit
-      # Hang" every ~2s for as long as it stays wedged (confirmed live
-      # 2026-09-06) -- without this, a rebind that doesn't immediately
-      # clear the hang could otherwise be re-triggered every couple of
-      # seconds. NETDEV WATCHDOG itself only fires once per hang
-      # episode in every incident seen so far, but this stays cautious
-      # regardless.
+      # Hang" every ~2s for as long as it stays wedged -- without this,
+      # a rebind that doesn't immediately clear the hang could
+      # otherwise be re-triggered every couple of seconds.
       sleep 10
       ;;
   esac

@@ -242,18 +242,10 @@
           - "{{ nextcloud_aio_mount_applicable_user }}"
       when: nextcloud_aio_mount_applicable_user | length > 0
 
-    # Nextcloud caches per-file permissions (including whether the delete
-    # button shows up at all) in its own database from the last scan of
-    # this mount -- it does not re-check the real filesystem live on every
-    # page load. Files here are written and deleted by Deluge entirely
-    # outside Nextcloud's awareness, and host-side permission changes to
-    # this directory (like the deluge role's own ACL grant) don't trigger
-    # a rescan on their own either. Confirmed live: after fixing the host
-    # ACL so www-data could actually delete, Nextcloud's UI still showed
-    # no delete option -- even from a fresh, uncached browser profile --
-    # until this mount was explicitly rescanned. Run every apply, not just
-    # once: it's cheap, and it's the only thing keeping this mount's cache
-    # from drifting from what Deluge does to the files underneath it.
+    # Nextcloud's own permission cache for this mount goes stale relative
+    # to what Deluge does to the files underneath it -- see
+    # docs/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known
+    # issues"). Run every apply, not just once: it's cheap.
     - name: Rescan the downloads mount so Nextcloud's permission cache is current
       community.docker.docker_container_exec:
         container: "{{ nextcloud_aio_nextcloud_container }}"
@@ -266,13 +258,8 @@
       when: nextcloud_aio_mount_applicable_user | length > 0
       changed_when: false
 
-# Automates the manual `docker network connect nextcloud-aio
-# nextcloud-aio-apache` recovery step confirmed necessary on two
-# independent reboots (2026-09-01, 2026-09-04) -- see the script's own
-# header comment and PARKED.md's "Homeserver: make a reboot a complete
-# non-event" for the full story. Doesn't fix the underlying startup
-# race (still unknown, owned by AIO's own mastercontainer), just stops
-# it from needing a human every time it happens.
+# Automates the manual docker-network-connect recovery step -- see
+# docs/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known issues").
 - name: Create Nextcloud AIO Apache network-reconnect install directory
   ansible.builtin.file:
     path: "{{ nextcloud_aio_apache_network_fix_install_dir }}"
@@ -303,15 +290,10 @@
     daemon_reload: true
   when: nextcloud_aio_apache_network_fix_unit.changed
 
-# Enabled so it runs on every future boot; state: restarted (not
-# started) so it also actually re-executes on every apply, not just
-# the first one -- a plain "started" is a no-op against a oneshot
-# systemd already considers "active (exited)" from a prior run, which
-# would silently stop this from ever self-healing again after its
-# first success. The script itself is cheap and idempotent (exits
-# immediately if Apache's already connected), so re-running it on
-# every apply costs nothing and self-heals a currently-dropped Apache
-# the same way a boot would, without waiting for the next reboot.
+# state: restarted, not started -- a plain "started" is a no-op
+# against a oneshot systemd already considers "active (exited)",
+# which would stop this from ever self-healing again after its first
+# success. See the nextcloud-aio runbook.
 - name: Run the Apache network-reconnect check
   ansible.builtin.systemd_service:
     name: nextcloud-aio-apache-network-fix.service

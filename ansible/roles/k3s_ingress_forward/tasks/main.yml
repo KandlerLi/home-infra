@@ -27,22 +27,12 @@
     state: present
     update_cache: true
 
-# Confirmed live on the homeserver (2026-08-31): FORWARD's own default
-# policy is ACCEPT, but libvirt's own LIBVIRT_FWI chain (its
-# auto-managed "forward into this NAT network" chain) only accepts
-# RELATED,ESTABLISHED traffic into a NAT-mode network by default --
-# the standard libvirt firewall pattern, REJECTing a fresh externally-
-# initiated connection otherwise. Inserted at rule_num 1 of the base
-# FORWARD chain -- ahead of Docker's own DOCKER-USER/DOCKER-FORWARD
-# chains and libvirt's own LIBVIRT_FWX/FWI/FWO chains alike -- so this
-# terminates before ever reaching either vendor's chains, and doesn't
-# depend on their internal contents at all. Scoped tightly to exactly
-# k3s_ingress_forward_target_ip and each rule's own target_port, never
-# a blanket FORWARD ACCEPT, so nothing else forwarded through this
-# host is affected. Return traffic (the VM responding back out) isn't
-# covered here deliberately -- libvirt's own LIBVIRT_FWO chain already
-# permits the NAT network's own subnet to send established/outbound
-# traffic freely, that being the entire point of a NAT-mode network.
+# Inserted at rule_num 1 of the base FORWARD chain -- ahead of Docker's
+# and libvirt's own chains, so this terminates before ever reaching
+# either. See docs/home-infra-ai-context's current-state.md ("k3s
+# learning cluster") for why libvirt's own LIBVIRT_FWI chain needs
+# this. Scoped tightly to k3s_ingress_forward_target_ip and each
+# rule's own target_port, never a blanket FORWARD ACCEPT.
 - name: Allow forwarded ingress traffic to reach k3s
   ansible.builtin.iptables:
     state: "{{ 'present' if (k3s_ingress_forward_enabled | bool) else 'absent' }}"
@@ -67,15 +57,11 @@
       {{ item.public_port }} -> {{ item.target_port }}
   register: k3s_ingress_forward_accept_result
 
-# One-time reconciliation, the same class of fix as the DNAT rule's
-# own reconciliation below: this rule's own comment format (and its
-# always-tcp protocol) predates per-rule protocol support (commit
-# 84662f5) -- confirmed live (2026-09-01), inspecting the actual
-# persisted /etc/iptables/rules.v4: the pre-fix shape was never
-# cleaned up here the way it was for the DNAT rule, so duplicate
-# FORWARD ACCEPT rules for 80/443 have been sitting there ever since
-# (harmless -- both just ACCEPT the same traffic -- but exactly the
-# kind of silent config drift this repo tries not to accumulate).
+# One-time reconciliation: this rule's own comment format (and its
+# always-tcp protocol) predates per-rule protocol support, and the
+# pre-fix shape was never cleaned up the way the DNAT rule's own was --
+# harmless duplicate ACCEPT rules, but the kind of drift this repo
+# tries not to accumulate.
 - name: Remove the pre-fix FORWARD accept rule shape (always tcp, no protocol in comment)
   ansible.builtin.iptables:
     state: absent
@@ -99,17 +85,11 @@
   when: k3s_ingress_forward_enabled | bool
   register: k3s_ingress_forward_accept_reconcile_result
 
-# One-time reconciliation: every DNAT rule this role ever applied
-# before 2026-09-01 was created without an in_interface restriction,
-# so it also hairpinned the k3s VM's own outbound traffic back to
-# itself (see k3s_ingress_forward_target_bridge's own comment in
-# defaults/main.yml). Ansible's iptables module matches rules by
-# their exact parameter set, so simply re-applying the corrected rule
-# below would add it alongside the old one rather than replacing it --
-# and since DNAT terminates further PREROUTING processing, the old,
-# broken rule (evaluated first) would keep winning. This explicitly
-# removes that old rule shape; a no-op forever after the first apply
-# that includes it, safe to delete once every real host has picked up
+# One-time reconciliation for the hairpin bug this role's DNAT rule
+# used to have -- see current-state.md. Ansible's iptables module
+# matches rules by exact parameter set, so re-applying the corrected
+# rule alone would add it alongside the old, still-winning one instead
+# of replacing it. Safe to delete once every real host has picked up
 # this fix.
 - name: Remove the pre-fix DNAT rule shape (no interface restriction)
   ansible.builtin.iptables:
@@ -138,23 +118,10 @@
   register: k3s_ingress_forward_reconcile_result
 
 # One-time reconciliation, same class of bug as the interface-
-# restriction fix above: every DNAT rule this role ever applied before
-# 2026-09-05 had
-# no destination filter at all, matching *any* packet with a matching
-# destination_port regardless of where it was actually addressed --
-# including this host's own locally-originated outbound traffic (any
-# Docker container, or a process on the host itself) making a real
-# connection to the real internet on port 80/443/53. That traffic
-# enters PREROUTING too, just like real inbound traffic does, and
-# nothing here distinguished the two. Confirmed live (2026-09-05):
-# Nextcloud AIO's own mastercontainer, trying to reach the real
-# ghcr.io on port 443 to validate connectivity, got silently
-# hairpinned into this cluster's own Traefik instead -- a real TLS
-# handshake completed, with a real but wrong certificate, surfacing as
-# "SSL: no alternative certificate subject name matches target
-# hostname 'ghcr.io'" and an indefinite crash-restart loop, for hours.
-# Removes that old, destination-unrestricted rule shape; a no-op
-# forever after the first apply that includes it.
+# restriction fix above -- see current-state.md for the real Nextcloud
+# AIO/ghcr.io crash loop this caused. Removes the old,
+# destination-unrestricted rule shape; a no-op after the first apply
+# that includes it.
 - name: Remove the destination-unrestricted DNAT rule shape (2026-09-05 fix)
   ansible.builtin.iptables:
     state: absent
@@ -207,13 +174,10 @@
       {{ item.public_port }} -> {{ item.target_port }}
   register: k3s_ingress_forward_dnat_result
 
-# One-time catch-up for the same 2026-09-01 bug: the reconciliation
-# task's own result went unregistered for one real apply (fixed
-# above), so a run that genuinely removed the old rule live still
-# skipped persisting -- the saved iptables-persistent state on disk
-# is stale relative to the live table until this runs once. Safe to
-# delete once every real host has picked up this fix (matches the
-# reconciliation task's own note on its own eventual removal).
+# One-time catch-up: an earlier apply removed the old rule live but
+# skipped persisting, so the saved iptables-persistent state on disk
+# is stale until this runs once. Safe to delete once every real host
+# has picked up this fix.
 - name: Force-persist once to catch the saved state up to 2026-09-01's live fix
   ansible.builtin.command:
     argv:
