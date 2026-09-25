@@ -164,6 +164,50 @@ class UdpHandlerTests(unittest.TestCase):
             relay.build_servfail(query), ("fd00::1", 54321)
         )
 
+    def test_replies_servfail_without_forwarding_once_the_concurrency_limit_is_hit(
+        self,
+    ) -> None:
+        query = make_query()
+        client_socket = mock.Mock()
+        handler = object.__new__(relay.UdpHandler)
+        handler.request = (query, client_socket)
+        handler.client_address = ("fd00::1", 54321)
+
+        held = [
+            relay.FORWARD_SLOTS.acquire(blocking=False)
+            for _ in range(relay.MAX_CONCURRENT_FORWARDS)
+        ]
+        try:
+            with mock.patch.object(relay, "forward_udp") as forward_udp:
+                handler.handle()
+            forward_udp.assert_not_called()
+        finally:
+            for acquired in held:
+                if acquired:
+                    relay.FORWARD_SLOTS.release()
+
+        client_socket.sendto.assert_called_once_with(
+            relay.build_servfail(query), ("fd00::1", 54321)
+        )
+
+    def test_the_slot_is_released_after_every_forward_so_it_never_leaks(self) -> None:
+        query = make_query()
+        reply = make_query(qr=1)
+        client_socket = mock.Mock()
+
+        with mock.patch.object(relay, "forward_udp", return_value=reply):
+            for _ in range(relay.MAX_CONCURRENT_FORWARDS + 1):
+                handler = object.__new__(relay.UdpHandler)
+                handler.request = (query, client_socket)
+                handler.client_address = ("fd00::1", 54321)
+                handler.handle()
+
+        self.assertEqual(
+            client_socket.sendto.call_count, relay.MAX_CONCURRENT_FORWARDS + 1
+        )
+        for call in client_socket.sendto.call_args_list:
+            self.assertEqual(call.args[0], reply)
+
 
 class TcpHandlerTests(unittest.TestCase):
     def test_relays_a_successful_backend_reply_framed(self) -> None:
@@ -190,6 +234,33 @@ class TcpHandlerTests(unittest.TestCase):
 
         with mock.patch.object(relay, "forward_tcp", side_effect=OSError("refused")):
             handler.handle()
+
+        expected = relay.build_servfail(query)
+        client_conn.sendall.assert_called_once_with(
+            struct.pack("!H", len(expected)) + expected
+        )
+
+    def test_replies_servfail_without_forwarding_once_the_concurrency_limit_is_hit(
+        self,
+    ) -> None:
+        query = make_query()
+        client_conn = mock.Mock()
+        client_conn.recv.side_effect = [struct.pack("!H", len(query)), query]
+        handler = object.__new__(relay.TcpHandler)
+        handler.request = client_conn
+
+        held = [
+            relay.FORWARD_SLOTS.acquire(blocking=False)
+            for _ in range(relay.MAX_CONCURRENT_FORWARDS)
+        ]
+        try:
+            with mock.patch.object(relay, "forward_tcp") as forward_tcp:
+                handler.handle()
+            forward_tcp.assert_not_called()
+        finally:
+            for acquired in held:
+                if acquired:
+                    relay.FORWARD_SLOTS.release()
 
         expected = relay.build_servfail(query)
         client_conn.sendall.assert_called_once_with(
