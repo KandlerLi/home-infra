@@ -1,0 +1,17 @@
+---
+# Opt-in, matching every other role's own convention. Host side only
+# (service account, directories) for infra/k3s-apps' modules/paperless;
+# see this role's README and ADR 0023.
+paperless_storage_enabled: false
+
+# Live documents on the black HDD, the nightly document_exporter
+# output on the red HDD (black = live data, red = backups).
+paperless_storage_media_dir: /mnt/black-hdd/paperless-media
+paperless_storage_export_dir: /mnt/red-hdd/paperless-export
+
+# Pinned rather than left to the system allocator, so k3s-apps can
+# hardcode the same numbers (USERMAP_UID/USERMAP_GID, run_as_user)
+# before this role has ever run.
+paperless_storage_user: paperless
+paperless_storage_uid: 983
+paperless_storage_gid: 978

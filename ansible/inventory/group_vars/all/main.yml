@@ -139,6 +139,14 @@ nfs_server_exports:
   - path: /mnt/red-hdd/authelia-backup
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
+  # Paperless-ngx (ADR 0023): live documents, and the nightly
+  # document_exporter target. See the paperless_storage role.
+  - path: /mnt/black-hdd/paperless-media
+    client: 192.168.101.10
+    options: rw,sync,no_subtree_check,root_squash
+  - path: /mnt/red-hdd/paperless-export
+    client: 192.168.101.10
+    options: rw,sync,no_subtree_check,root_squash
 
 # Nextcloud external storage for Deluge's downloads folder, visible only to
 # the personal account below (not a service account) -- confirmed working
@@ -290,3 +298,6 @@ aux_backup_enabled: true
 # Authelia's data needs this different shape from aux_backup's own
 # homeserver-local sources above.
 authelia_backup_enabled: true
+
+# Host side of Paperless-ngx (ADR 0023) -- see the paperless_storage role.
+paperless_storage_enabled: true
