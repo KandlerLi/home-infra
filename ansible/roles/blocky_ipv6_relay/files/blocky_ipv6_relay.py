@@ -27,6 +27,17 @@ BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "53"))
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "53"))
 FORWARD_TIMEOUT_SECONDS = float(os.environ.get("FORWARD_TIMEOUT_SECONDS", "5"))
 
+# ThreadingMixIn spawns one OS thread per query with no cap of its own --
+# confirmed live (2026-09-24) that a real query burst can pile up threads
+# each blocking for up to FORWARD_TIMEOUT_SECONDS, hitting this service's
+# own systemd TasksMax before anything here notices. Bounding how many
+# forwards can be in flight at once means an over-limit query fails fast
+# (immediate SERVFAIL, no forward attempted) instead of spawning a thread
+# that sits blocked for seconds -- see BACKLOG.md's own entry for the
+# full incident this responds to.
+MAX_CONCURRENT_FORWARDS = int(os.environ.get("MAX_CONCURRENT_FORWARDS", "16"))
+FORWARD_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_FORWARDS)
+
 
 def build_servfail(query: bytes) -> bytes:
     """Flip a DNS query's own header into a minimal SERVFAIL reply.
@@ -81,6 +92,14 @@ def forward_tcp(query: bytes) -> bytes:
 class UdpHandler(socketserver.BaseRequestHandler):
     def handle(self) -> None:
         query, client_socket = self.request
+        if not FORWARD_SLOTS.acquire(blocking=False):
+            LOGGER.warning(
+                "Too many in-flight forwards (limit %d), replying SERVFAIL "
+                "without forwarding",
+                MAX_CONCURRENT_FORWARDS,
+            )
+            client_socket.sendto(build_servfail(query), self.client_address)
+            return
         try:
             reply = forward_udp(query)
         except Exception:
@@ -88,6 +107,8 @@ class UdpHandler(socketserver.BaseRequestHandler):
                 "UDP forward to backend failed, replying SERVFAIL", exc_info=True
             )
             reply = build_servfail(query)
+        finally:
+            FORWARD_SLOTS.release()
         client_socket.sendto(reply, self.client_address)
 
 
@@ -100,6 +121,16 @@ class TcpHandler(socketserver.BaseRequestHandler):
             LOGGER.warning("Malformed DNS-over-TCP request, dropping", exc_info=True)
             return
 
+        if not FORWARD_SLOTS.acquire(blocking=False):
+            LOGGER.warning(
+                "Too many in-flight forwards (limit %d), replying SERVFAIL "
+                "without forwarding",
+                MAX_CONCURRENT_FORWARDS,
+            )
+            reply = build_servfail(query)
+            self.request.sendall(struct.pack("!H", len(reply)) + reply)
+            return
+
         try:
             reply = forward_tcp(query)
         except Exception:
@@ -107,6 +138,8 @@ class TcpHandler(socketserver.BaseRequestHandler):
                 "TCP forward to backend failed, replying SERVFAIL", exc_info=True
             )
             reply = build_servfail(query)
+        finally:
+            FORWARD_SLOTS.release()
 
         self.request.sendall(struct.pack("!H", len(reply)) + reply)
 
