@@ -63,6 +63,8 @@ monitoring_probe_targets:
   - https://nextcloud.jkandler.de/
   - https://www.jkandler.de/
   - http://jkandler.de/
+  # Paperless-ngx (ADR 0023): public login page, no forward-auth.
+  - https://docs.jkandler.de/accounts/login/
 
 # ai.jkandler.de and torrent.jkandler.de sit behind Authelia forward-auth
 # -- blackbox has no session to send, so it's probed with
