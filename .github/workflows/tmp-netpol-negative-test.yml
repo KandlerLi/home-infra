@@ -1,0 +1,39 @@
+# Temporary: negative test for k3s-bootstrap's runner NetworkPolicy. Do not merge.
+name: Temporary NetworkPolicy negative test
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, home, debian]
+    timeout-minutes: 10
+    steps:
+      - name: Probe targets
+        run: |
+          probe() {
+            if timeout 5 bash -c "</dev/tcp/$2/$3" 2>/dev/null; then r=OPEN; else r=blocked; fi
+            printf '%-8s expect=%-8s %-45s %s\n' "$r" "$1" "$2:$3" "$4"
+          }
+          echo "--- should be OPEN (control)"
+          probe OPEN github.com 443 "public internet"
+          echo "--- should be blocked"
+          probe blocked authelia-svc.default.svc.cluster.local 9091 "in-cluster Service (Authelia)"
+          probe blocked stalwart-internal.default.svc.cluster.local 8080 "Stalwart mgmt API (only k3s-apps runners)"
+          probe blocked 10.43.0.1 443 "Kubernetes API ClusterIP"
+          probe blocked 192.168.101.10 6443 "Kubernetes API on node"
+          probe blocked 192.168.101.1 11000 "homeserver (Nextcloud AIO Apache)"
+          probe blocked 192.168.101.1 22 "homeserver SSH"
+          probe blocked 192.168.178.1 80 "FRITZ!Box (LAN)"
+          echo "--- DNS resolution (should work)"
+          getent hosts authelia-svc.default.svc.cluster.local || echo "DNS failed"
+      - name: Probe from a container inside dind
+        run: |
+          docker run --rm busybox:1.37 sh -c '
+            for t in github.com:443 192.168.101.1:11000 192.168.178.1:80; do
+              h=${t%:*}; p=${t#*:}
+              if nc -w 5 -z $h $p 2>/dev/null; then echo "OPEN    $t"; else echo "blocked $t"; fi
+            done'
