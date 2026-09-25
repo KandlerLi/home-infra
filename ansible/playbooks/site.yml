@@ -69,6 +69,7 @@
     # from before those exports were ever added -- a genuinely new
     # export's owning role has to run first.
     - authelia_backup
+    - paperless_storage
     - nfs_server
     - docker
     - deluge

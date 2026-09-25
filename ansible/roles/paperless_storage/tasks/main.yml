@@ -1,0 +1,34 @@
+---
+- name: Configure Paperless-ngx storage
+  when: paperless_storage_enabled | bool
+  block:
+    - name: Create Paperless service group
+      ansible.builtin.group:
+        name: "{{ paperless_storage_user }}"
+        gid: "{{ paperless_storage_gid }}"
+        system: true
+
+    - name: Create Paperless service account
+      ansible.builtin.user:
+        name: "{{ paperless_storage_user }}"
+        uid: "{{ paperless_storage_uid }}"
+        group: "{{ paperless_storage_user }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Create Paperless media directory
+      ansible.builtin.file:
+        path: "{{ paperless_storage_media_dir }}"
+        state: directory
+        owner: "{{ paperless_storage_user }}"
+        group: "{{ paperless_storage_user }}"
+        mode: "0750"
+
+    - name: Create Paperless export directory
+      ansible.builtin.file:
+        path: "{{ paperless_storage_export_dir }}"
+        state: directory
+        owner: "{{ paperless_storage_user }}"
+        group: "{{ paperless_storage_user }}"
+        mode: "0700"
