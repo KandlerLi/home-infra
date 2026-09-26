@@ -23,8 +23,10 @@
       # Pods actually runs.
       k3s_node_vm_vcpus: 3
       # Bumped 4096 -> 6144 2026-09-19 alongside the host's own RAM
-      # upgrade (16 -> 32 GiB).
-      k3s_node_vm_memory_mb: 6144
+      # upgrade (16 -> 32 GiB), and 6144 -> 10240 2026-09-26 for
+      # Paperless-ngx's OCR peaks (ADR 0023; ~2.1 GiB for a 6-page
+      # phone scan). Host had ~14.6 GiB available before this.
+      k3s_node_vm_memory_mb: 10240
 
 # Second node: dedicated to infra/k3s-apps' own modules/github_runner/
 # workload, tainted so nothing else in the cluster schedules there.
