@@ -19,6 +19,7 @@ services.
 - Opt-in Prometheus monitoring stack (host health, container health,
   service reachability, certificate expiry), with Grafana itself now a
   k3s-native copy (`infra/k3s-apps`) instead of a Docker container here
+- Opt-in WireGuard VPN for admin access from outside the LAN
 - Opt-in network-wide DNS ad-blocking (Blocky), with a Pi-hole-style
   query-log dashboard in Grafana
 - KVM/QEMU and libvirt (needed for the k3s learning cluster below;

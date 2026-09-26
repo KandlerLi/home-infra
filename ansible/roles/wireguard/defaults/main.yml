@@ -1,0 +1,24 @@
+# Opt-in, matching every other role's own convention. Admin-only VPN
+# into the LAN and the k3s network (SSH, AIO's :8080, kubectl,
+# Prometheus) -- the public web services stay on Traefik + Authelia.
+# See ADR 0024 in docs/home-infra-docs for why WireGuard on the
+# homeserver, not the FRITZ!Box's own VPN or Tailscale.
+wireguard_enabled: false
+
+wireguard_interface: wg0
+# The FRITZ!Box's own UDP port-forward (manual, out-of-band, like
+# 80/443/25) must target the homeserver's LAN IP on this same port.
+wireguard_port: 51820
+
+# Chosen not to overlap the LAN (192.168.178.0/24), the k3s network
+# (192.168.101.0/24), libvirt's default (192.168.100.0/24) or k3s's
+# own Pod/Service CIDRs (10.42.0.0/16, 10.43.0.0/16).
+wireguard_subnet: 10.13.13.0/24
+wireguard_address: 10.13.13.1/24
+
+# One entry per client device. Keys are generated on the device itself
+# (the WireGuard app does this), so only the public key ever lives here:
+#   - name: iphone
+#     public_key: <base64 public key from the app>
+#     address: 10.13.13.2/32
+wireguard_peers: []

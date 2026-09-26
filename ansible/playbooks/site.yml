@@ -78,4 +78,5 @@
     - open_webui
     - monitoring
     - blocky_ipv6_relay
+    - wireguard
     - aux_backup
