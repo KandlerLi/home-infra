@@ -263,6 +263,9 @@
     KUBECONFIG: "{{ k3s_node_kubeconfig_path }}"
   register: k3s_node_status
   changed_when: false
+  # Read-only, so it runs for real under --check too; skipped, its
+  # stdout stays empty and the until loop burns all 60 retries.
+  check_mode: false
   until: "'Ready' in k3s_node_status.stdout"
   retries: 60
   delay: 10
@@ -276,6 +279,7 @@
       - "{{ k3s_node_systemd_unit_name }}"
   register: k3s_node_agent_active
   changed_when: false
+  check_mode: false
   failed_when: false
   until: k3s_node_agent_active.stdout == "active"
   retries: 60

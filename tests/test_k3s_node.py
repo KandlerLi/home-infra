@@ -10,6 +10,20 @@ ROLE_ROOT = PROJECT_ROOT / "ansible/roles/k3s_node"
 
 
 class K3sNodeTests(unittest.TestCase):
+
+    def test_ready_waits_run_in_check_mode(self) -> None:
+        # Found live 2026-09-26: a roll-out-k3s.sh dry-run failed after
+        # 60 retries because the skipped kubectl call left stdout empty.
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        for name in (
+            "Wait for the k3s node to report Ready",
+            "Wait for the k3s agent service to become active",
+        ):
+            task = tasks.split(name, 1)[1].split("- name:", 1)[0]
+            self.assertIn("check_mode: false", task, name)
     def test_disk_path_is_pinned_to_dedicated_directory(self) -> None:
         # Same convention every other stateful service here follows:
         # persistent state goes on /mnt/black-hdd, never root. The check
