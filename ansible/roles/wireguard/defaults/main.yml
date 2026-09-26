@@ -1,6 +1,0 @@
-# Teardown only: the admin VPN moved to the FRITZ!Box's built-in
-# WireGuard (ADR 0025 in docs/home-infra-docs, superseding ADR 0024).
-# This role removes what its first version installed; delete it once
-# that has been applied.
-wireguard_interface: wg0
-wireguard_subnet: 10.13.13.0/24
