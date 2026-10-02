@@ -1,0 +1,23 @@
+#!/bin/bash
+# Managed by Ansible (monitoring role) -- do not edit by hand, changes
+# will be overwritten on the next apply.
+set -euo pipefail
+
+OUT="{{ monitoring_backup_textfile_dir }}/backups.prom"
+TMP="$(mktemp "${OUT}.XXXXXX")"
+trap 'rm -f "$TMP"' EXIT
+
+{
+  echo "# HELP backup_last_success_timestamp_seconds mtime of the file a backup only writes on success."
+  echo "# TYPE backup_last_success_timestamp_seconds gauge"
+{% for marker in monitoring_backup_markers %}
+  # A missing marker emits no series, which BackupMissing catches.
+  ts="$(stat -c %Y {{ marker.path }} 2>/dev/null | sort -n | tail -n 1 || true)"
+  [ -n "$ts" ] && echo "backup_last_success_timestamp_seconds{backup=\"{{ marker.name }}\"} $ts"
+{% endfor %}
+  true
+} > "$TMP"
+
+# node_exporter must never read a half-written file.
+chmod 0644 "$TMP"
+mv "$TMP" "$OUT"

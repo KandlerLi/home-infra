@@ -1,0 +1,32 @@
+[Unit]
+Description=Export backup last-success times for node_exporter
+After=local-fs.target
+Requires=local-fs.target
+
+[Service]
+Type=oneshot
+# Root: the markers sit in root-only (0700) backup directories. Only
+# stat()s them, never reads their contents.
+ExecStart={{ monitoring_backup_freshness_script }}
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ReadWritePaths={{ monitoring_backup_textfile_dir }}
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native

@@ -97,6 +97,51 @@ groups:
             own postgres/postgres-exporter container logs; restarting
             the blocky Pod forces Blocky to reconnect its writer.
 
+{# kube-state-metrics is only scraped alongside k3s node health. #}
+{% set backup_cronjobs = monitoring_backup_k3s_cronjobs if monitoring_k3s_node_health_enabled | bool else [] %}
+{% set backup_names = (monitoring_backup_markers | map(attribute='name') | list) + backup_cronjobs %}
+  - name: backups
+    rules:
+      # One series per backup, whatever produced it, for the Backups
+      # dashboard and both alerts below.
+      - record: backup:last_success_timestamp_seconds
+        expr: >-
+          max by (backup) (backup_last_success_timestamp_seconds)
+{% if backup_cronjobs %}
+          or max by (backup) (label_replace(
+            kube_cronjob_status_last_successful_time{cronjob=~"{{ backup_cronjobs | join('|') }}"},
+            "backup", "$1", "cronjob", "(.+)"))
+{% endif %}
+
+      - alert: BackupStale
+        expr: >-
+          time() - backup:last_success_timestamp_seconds
+          > {{ monitoring_backup_max_age_hours }} * 3600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup {{ '{{' }} $labels.backup {{ '}}' }} last succeeded {{ '{{' }} $value | humanizeDuration {{ '}}' }} ago"
+          description: >-
+            No successful run in over {{ monitoring_backup_max_age_hours }}
+            hours -- the nightly job is failing or not running.
+
+      # A backup that has never succeeded has no timestamp at all, so
+      # BackupStale alone would stay silent about it.
+      - alert: BackupMissing
+        expr: >-
+{% for name in backup_names %}
+          {{ 'or ' if not loop.first }}absent(backup:last_success_timestamp_seconds{backup="{{ name }}"})
+{% endfor %}
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup {{ '{{' }} $labels.backup {{ '}}' }} has no recorded successful run"
+          description: >-
+            Its marker file or CronJob success time doesn't exist -- it
+            has never succeeded, or its metric source is down.
+
 {% if monitoring_k3s_node_health_enabled | bool %}
   - name: k3s_node_health
     rules:

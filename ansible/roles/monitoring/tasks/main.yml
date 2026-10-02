@@ -190,6 +190,45 @@
       until: monitoring_ntfy_relay_health.status == 200
       when: not ansible_check_mode
 
+    - name: Create node_exporter textfile directory
+      ansible.builtin.file:
+        path: "{{ monitoring_backup_textfile_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install backup-freshness script
+      ansible.builtin.template:
+        src: backup-freshness.sh.j2
+        dest: "{{ monitoring_backup_freshness_script }}"
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install backup-freshness systemd units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - backup-freshness.service
+        - backup-freshness.timer
+      register: monitoring_backup_freshness_units
+
+    - name: Reload systemd for the backup-freshness units
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: monitoring_backup_freshness_units.changed
+
+    - name: Ensure backup-freshness timer is enabled and running
+      ansible.builtin.systemd_service:
+        name: backup-freshness.timer
+        enabled: true
+        state: started
+
     - name: Install Prometheus scrape configuration
       ansible.builtin.template:
         src: prometheus.yml.j2
@@ -262,6 +301,7 @@
           - --path.sysfs=/host/sys
           - --web.listen-address={{ monitoring_bind_address }}:{{ monitoring_node_exporter_port }}
           - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)
+          - --collector.textfile.directory=/host{{ monitoring_backup_textfile_dir }}
         log_driver: json-file
         log_options: "{{ monitoring_docker_log_options }}"
 

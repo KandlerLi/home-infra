@@ -314,6 +314,7 @@ class MonitoringRoleTests(unittest.TestCase):
                 "service_reachability",
                 "certificate_expiry",
                 "blocky_health",
+                "backups",
             },
         )
 
@@ -373,6 +374,53 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertEqual(stale_alert["for"], "10m")
         self.assertEqual(stale_alert["labels"]["severity"], "warning")
 
+    def test_backup_rules_cover_every_backup_and_cronjobs_only_with_k3s(
+        self,
+    ) -> None:
+        def backup_rules(**overrides: object) -> dict[str, dict]:
+            parsed = yaml.safe_load(render("alert_rules.yml.j2", **overrides))
+            group = next(g for g in parsed["groups"] if g["name"] == "backups")
+            return {r.get("alert") or r["record"]: r for r in group["rules"]}
+
+        rules = backup_rules(monitoring_k3s_node_health_enabled=True)
+        recorded = rules["backup:last_success_timestamp_seconds"]["expr"]
+        self.assertIn('cronjob=~"authelia-backup|paperless-export"', recorded)
+        self.assertIn("> 26 * 3600", rules["BackupStale"]["expr"])
+        for name in ("nextcloud-borg", "aux-backup", "authelia-backup", "paperless-export"):
+            with self.subTest(backup=name):
+                self.assertIn(f'{{backup="{name}"}}', rules["BackupMissing"]["expr"])
+
+        # kube-state-metrics isn't scraped without k3s node health, so
+        # the CronJobs must not be expected either.
+        rules = backup_rules(monitoring_k3s_node_health_enabled=False)
+        self.assertNotIn("kube_cronjob", rules["backup:last_success_timestamp_seconds"]["expr"])
+        self.assertNotIn("authelia-backup", rules["BackupMissing"]["expr"])
+
+    def test_backup_freshness_writes_atomically_into_the_textfile_dir(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "--collector.textfile.directory=/host{{ monitoring_backup_textfile_dir }}",
+            tasks,
+        )
+
+        script = render(
+            "backup-freshness.sh.j2",
+            monitoring_backup_textfile_dir="/var/lib/monitoring/node-exporter-textfile",
+        )
+        self.assertIn("set -euo pipefail", script)
+        self.assertIn('mv "$TMP" "$OUT"', script)
+        self.assertIn('backup=\\"nextcloud-borg\\"', script)
+        self.assertIn("stat -c %Y /mnt/red-hdd/borg/index.*", script)
+
+        unit = render(
+            "backup-freshness.service.j2",
+            monitoring_backup_textfile_dir="/var/lib/monitoring/node-exporter-textfile",
+            monitoring_backup_freshness_script="/usr/local/lib/monitoring/backup-freshness.sh",
+        )
+        self.assertIn("ProtectSystem=strict", unit)
+        self.assertIn("ReadWritePaths=/var/lib/monitoring/node-exporter-textfile", unit)
+        self.assertIn("PrivateNetwork=true", unit)
+
     def test_dashboards_are_valid_json_and_reference_the_prometheus_datasource(
         self,
     ) -> None:
@@ -388,6 +436,7 @@ class MonitoringRoleTests(unittest.TestCase):
             "container-health.json",
             "service-reachability.json",
             "service-status.json",
+            "backups.json",
         }
 
         for name in expected:

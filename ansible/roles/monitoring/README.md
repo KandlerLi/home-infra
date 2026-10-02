@@ -55,6 +55,17 @@ group (`alert_rules.yml.j2`) both filter on `job="k3s_node_exporter"`
 specifically, since that job's metrics share names with this host's own
 `node_exporter` job above but must never be aggregated together.
 
+**Backup freshness** (`backups` alert group, `backups.json`): every
+backup becomes one `backup:last_success_timestamp_seconds{backup=...}`
+series. Host-side backups (`monitoring_backup_markers`) are the mtime of
+a file each run only writes on success, exported by the
+`backup-freshness` timer through node_exporter's textfile collector;
+k3s CronJob backups (`monitoring_backup_k3s_cronjobs`) come from
+kube-state-metrics. `BackupStale` fires past
+`monitoring_backup_max_age_hours`, `BackupMissing` for a listed backup
+with no success at all. A new backup needs adding to one of the two
+lists.
+
 Needs `monitoring_ntfy_topic` and the SES SMTP credentials set in the
 `home-infra/monitoring` AWS Secrets Manager group before first
 enabling. Grafana's own admin password is no longer a shared secret at

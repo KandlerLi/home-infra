@@ -69,4 +69,8 @@ tar -czf "${DEST_DIR}/{{ source.name }}-${DATE}.tar.gz" -C "$(dirname "{{ source
 echo "Pruning archives older than ${RETENTION_DAYS} days..."
 find "${DEST_DIR}" -maxdepth 1 -name '*.tar.gz' -mtime "+${RETENTION_DAYS}" -delete
 
+# Last step, so only a fully successful run updates it -- the monitoring
+# role's backup-freshness check reads its mtime.
+touch "${DEST_DIR}/.last-success"
+
 echo "aux_backup finished successfully."
