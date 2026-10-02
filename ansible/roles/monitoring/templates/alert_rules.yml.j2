@@ -28,13 +28,28 @@ groups:
 
   - name: container_health
     rules:
+      # 1 while Nextcloud AIO's Borg backup runs and for 15 minutes after:
+      # AIO stops its containers for the backup and starts them again
+      # once the borgbackup container exits.
+      - record: nextcloud_aio:backup_window
+        expr: >-
+          count(max_over_time(container_last_seen{name="nextcloud-aio-borgbackup"}[15m])) > 0
+
       - alert: ContainerDown
         # Aggregates by the stable "name" label, not cAdvisor's own
         # "id" (cgroup path, which churns on every container recreate)
         # -- see ADR 0019 for the false alerts this avoided.
+        # borgbackup and watchtower are one-shot AIO containers that
+        # always exit when done.
         expr: >-
           absent(container_last_seen{name!=""})
-          or (time() - max by (name) (container_last_seen{name!=""})) > 120
+          or (
+            (time() - max by (name) (container_last_seen{name!="", name!~"nextcloud-aio-(borgbackup|watchtower)"})) > 120
+            unless on (name) (
+              max by (name) (container_last_seen{name=~"nextcloud-aio-.+"})
+              and on () nextcloud_aio:backup_window
+            )
+          )
         for: 2m
         labels:
           severity: critical
@@ -47,7 +62,14 @@ groups:
   - name: service_reachability
     rules:
       - alert: ServiceUnreachable
-        expr: probe_success == 0
+        # Nextcloud is down by design during its Borg backup; still down
+        # after nextcloud_aio:backup_window ends, this fires as usual.
+        expr: >-
+          probe_success == 0
+          unless on (instance) (
+            probe_success{instance=~"https://nextcloud[.].+"}
+            and on () nextcloud_aio:backup_window
+          )
         for: 5m
         labels:
           severity: critical
