@@ -336,10 +336,29 @@ class MonitoringRoleTests(unittest.TestCase):
             group for group in parsed["groups"] if group["name"] == "container_health"
         )
         container_down = next(
-            rule for rule in container_health["rules"] if rule["alert"] == "ContainerDown"
+            rule for rule in container_health["rules"] if rule.get("alert") == "ContainerDown"
         )
 
         self.assertIn("max by (name) (container_last_seen", container_down["expr"])
+
+    def test_nextcloud_backup_downtime_does_not_alert(self) -> None:
+        parsed = yaml.safe_load(render("alert_rules.yml.j2"))
+        rules = {
+            rule.get("alert") or rule["record"]: rule
+            for group in parsed["groups"]
+            for rule in group["rules"]
+        }
+
+        self.assertIn(
+            'container_last_seen{name="nextcloud-aio-borgbackup"}[15m]',
+            rules["nextcloud_aio:backup_window"]["expr"],
+        )
+        container_down = rules["ContainerDown"]["expr"]
+        self.assertIn('name!~"nextcloud-aio-(borgbackup|watchtower)"', container_down)
+        self.assertIn("and on () nextcloud_aio:backup_window", container_down)
+        self.assertIn(
+            "and on () nextcloud_aio:backup_window", rules["ServiceUnreachable"]["expr"]
+        )
 
     def test_blocky_query_log_stale_alert_covers_both_missing_and_flat_metric(
         self,
