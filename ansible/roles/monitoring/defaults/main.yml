@@ -193,6 +193,26 @@ monitoring_k3s_node_exporter_targets:
     node: k3s-node-2
 monitoring_k3s_kube_state_metrics_upstream: 192.168.101.10:8080
 
+# Backup freshness: the "Backups" dashboard plus BackupStale/
+# BackupMissing. Host-side backups are tracked by the mtime of a file
+# each run only writes on success (backup-freshness.sh.j2 exports it
+# through node_exporter's textfile collector); k3s CronJob backups by
+# kube-state-metrics' last-successful-run time.
+monitoring_backup_markers:
+  # Borg rewrites the repository's index.N on every committed
+  # transaction, so a failed backup leaves it untouched.
+  - name: nextcloud-borg
+    path: /mnt/red-hdd/borg/index.*
+  # Touched by aux-backup.sh as its very last step.
+  - name: aux-backup
+    path: /mnt/red-hdd/aux-backups/.last-success
+monitoring_backup_k3s_cronjobs:
+  - authelia-backup
+  - paperless-export
+monitoring_backup_max_age_hours: 26
+monitoring_backup_textfile_dir: "{{ monitoring_data_dir }}/node-exporter-textfile"
+monitoring_backup_freshness_script: /usr/local/lib/monitoring/backup-freshness.sh
+
 # Shared Docker logging bounds for every container this role manages.
 monitoring_docker_log_options:
   max-size: 10m

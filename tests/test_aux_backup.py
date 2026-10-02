@@ -161,6 +161,13 @@ class ScriptRenderingTests(unittest.TestCase):
         self.assertIn("-mtime \"+${RETENTION_DAYS}\"", rendered)
         self.assertIn("-delete", rendered)
 
+    def test_success_marker_is_the_last_thing_written(self) -> None:
+        rendered = render("aux-backup.sh.j2")
+
+        marker = rendered.index('touch "${DEST_DIR}/.last-success"')
+        self.assertGreater(marker, rendered.index("-delete"))
+        self.assertGreater(marker, rendered.rindex("tar -czf"))
+
     def test_has_strict_error_handling(self) -> None:
         rendered = render("aux-backup.sh.j2")
 
