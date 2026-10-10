@@ -45,7 +45,7 @@ has an IPv4 address inside the k3s VM's isolated network.
 - **`blocky_ipv6_relay_lan_prefix` is not optional hardening, it's the
   actual access boundary.** This service listens on `::` -- reachable
   from wherever the homeserver's own firewall lets it be reached from.
-  `docs/home-infra-ai-context` carries a standing, explicitly-stated
+  `docs/home-infra-docs` carries a standing, explicitly-stated
   rule against exposing IPv6 services without end-to-end proof (a past
   incident: an accidental AAAA record exposed the FRITZ!Box's own
   self-signed cert to the public internet). An open DNS relay reachable

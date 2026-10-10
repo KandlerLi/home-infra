@@ -90,7 +90,7 @@
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
 # vcpu placement="static" has no live hotplug path -- see
-# docs/home-infra-ai-context's current-state.md ("k3s learning
+# docs/home-infra-docs' current-state.md ("k3s learning
 # cluster") for the resize-support design and the regex_search bug
 # this task's own shape works around.
 - name: Extract the current vCPU count from the existing domain definition
