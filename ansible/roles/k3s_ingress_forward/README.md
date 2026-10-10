@@ -35,7 +35,7 @@ Service), so it lives in that role instead of here.
   DNAT rule.** libvirt's own `LIBVIRT_FWI` chain only accepts
   `RELATED,ESTABLISHED` traffic into a NAT-mode network by default,
   rejecting a fresh externally-initiated connection otherwise -- see
-  `docs/home-infra-ai-context`'s current-state.md ("k3s learning
+  `docs/home-infra-docs`' current-state.md ("k3s learning
   cluster") for the full reasoning. This role inserts its own
   narrowly-scoped `ACCEPT` at the very top of the base `FORWARD`
   chain, ahead of Docker's and libvirt's own chains alike.

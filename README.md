@@ -101,7 +101,7 @@ Nextcloud file/shopping-list access), and `open_webui` (the chat
 frontend) all used to run as Docker containers managed by this repo.
 As of 2026-08-30 they run as a personal, single-node k3s cluster
 instead (`infra/k3s-apps`, a sibling repository, Terraform-managed) --
-see `docs/home-infra-ai-context/context/current-state.md`'s "k3s
+see `docs/home-infra-docs/docs/current-state.md`'s "k3s
 learning cluster" section for the full cutover history. This repo now
 only owns the host-level prerequisites those k3s Pods still depend on:
 
@@ -145,7 +145,7 @@ replacement was confirmed live -- `infra/k3s-apps`' own
 `k3s_ingress_forward` role (opt-in iptables DNAT on the homeserver;
 `192.168.101.0/24` is otherwise unreachable from the LAN). ACME now
 uses DNS-01 against Route53 rather than the original role's own
-TLS-ALPN-01. See `home-infra-ai-context`'s `current-state.md`, "k3s
+TLS-ALPN-01. See `home-infra-docs`' `current-state.md`, "k3s
 learning cluster" section, for the full migration writeup and the real
 bugs found along the way.
 
