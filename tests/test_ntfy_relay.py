@@ -125,10 +125,7 @@ class NtfyRelayK3sListenerTests(unittest.TestCase):
     def test_second_listener_starts_additionally_when_k3s_bind_address_is_set(
         self,
     ) -> None:
-        # Additive, not a switch -- the loopback server still has to
-        # start too, so the still-Docker-based Alertmanager on this same
-        # host keeps working throughout the migration (see this
-        # constant's own comment).
+        # Additive: the loopback server still starts.
         with (
             mock.patch.object(ntfy_relay, "LISTEN_HOST_K3S", "192.168.101.1"),
             mock.patch.object(ntfy_relay, "ThreadingHTTPServer") as server_cls,
@@ -139,26 +136,14 @@ class NtfyRelayK3sListenerTests(unittest.TestCase):
         addresses = [call.args[0] for call in server_cls.call_args_list]
         self.assertIn(("127.0.0.1", ntfy_relay.LISTEN_PORT), addresses)
         self.assertIn(("192.168.101.1", ntfy_relay.LISTEN_PORT), addresses)
-        # The k3s listener runs in a background thread so the loopback
-        # server can still own the main thread the same way it always
-        # has -- daemon=True so it doesn't block process shutdown.
+        # Background thread, daemon=True, so the loopback server keeps the main thread.
         thread_cls.assert_called_once()
         self.assertTrue(thread_cls.call_args.kwargs.get("daemon"))
 
 
 class MonitoringDataRootPermissionTests(unittest.TestCase):
     def test_data_root_is_created_world_traversable_before_service_subdirs(self) -> None:
-        # ansible.builtin.file stamps an implicitly-created parent
-        # directory with whatever owner/mode the *first* task needing it
-        # specifies. Without an explicit, world-traversable
-        # monitoring_data_dir task ahead of the per-service directory
-        # loop, /var/lib/monitoring would end up owned by whichever
-        # service happened to be first in that loop (0750) -- silently
-        # blocking every other account from traversing into it. Never
-        # surfaced for the Docker-based services (a bind mount doesn't
-        # walk the host's real parent-directory chain), only for
-        # ntfy_relay.service's native, non-container file read --
-        # confirmed live via a real EACCES.
+        # An implicitly created parent takes the first task's owner and mode, so the data root is created explicitly.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         root_task_index = tasks.index("Create monitoring data root directory")

@@ -17,12 +17,6 @@ class OpenWebUITests(unittest.TestCase):
         self.assertIn("open_webui_data_dir: /var/lib/open-webui", defaults)
 
     def test_tasks_run_unconditionally_now_container_is_retired(self) -> None:
-        # This role used to gate everything behind open_webui_enabled
-        # (opt-in Docker container). Open WebUI itself now runs as a
-        # k3s-native copy (KandlerLi/k3s-apps) -- this role only keeps the
-        # host prerequisites (service account, data directory) that
-        # copy still depends on, so those need to always run, not be
-        # conditional on a flag that no longer exists.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
@@ -34,11 +28,7 @@ class OpenWebUITests(unittest.TestCase):
         self.assertNotIn("home-agent-frontend", tasks)
 
     def test_service_account_uid_is_validated_against_k3s_apps(self) -> None:
-        # KandlerLi/k3s-apps' Deployment hardcodes run_as_user=995 rather
-        # than looking it up dynamically -- a homeserver rebuild that
-        # ever assigned this account a different uid would otherwise
-        # let the k3s copy silently mount the NFS export as the wrong
-        # uid instead of failing loudly.
+        # k3s-apps hardcodes run_as_user=995, so a different uid must fail here.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn("Create Open WebUI container account", tasks)
@@ -47,11 +37,7 @@ class OpenWebUITests(unittest.TestCase):
     def test_data_directories_are_owned_by_the_service_account_and_root_group(
         self,
     ) -> None:
-        # Deliberately group: root, not this account's own default
-        # group -- matches how this role has always started the
-        # container ("995:0"), which is what KandlerLi/k3s-apps' Deployment
-        # also hardcodes as run_as_group. Getting this wrong would
-        # break the shared NFS export's permissions for the k3s Pod.
+        # group root, matching k3s-apps' run_as_group.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn("Create Open WebUI state directories", tasks)

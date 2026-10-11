@@ -20,8 +20,7 @@ class PaperlessStorageRoleTests(unittest.TestCase):
         self.assertIn("paperless_storage_export_dir: /mnt/red-hdd/", defaults)
 
     def test_uid_and_gid_are_pinned(self) -> None:
-        # KandlerLi/k3s-apps hardcodes these, so the account must never be
-        # left to the system allocator.
+        # k3s-apps hardcodes these, so the system allocator must not pick them.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn('uid: "{{ paperless_storage_uid }}"', tasks)

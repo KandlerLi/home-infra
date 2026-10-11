@@ -20,11 +20,7 @@ def _result(role_name: str | None, **result_fields) -> SimpleNamespace:
 
 
 class RoleRecapCallbackTests(unittest.TestCase):
-    # The built-in PLAY RECAP only ever aggregates by host, which doesn't
-    # say *which* role changed something out of ~11 applied in one run --
-    # these exercise the per-role grouping directly, without spinning up
-    # a real ansible-playbook run (see the scratchpad smoke test from
-    # 2026-09-06 for that end-to-end check).
+    # PLAY RECAP aggregates by host only; these exercise the per-role grouping.
     def setUp(self) -> None:
         self.callback = role_recap.CallbackModule()
 
@@ -78,7 +74,7 @@ class RoleRecapCallbackTests(unittest.TestCase):
         self.assertEqual(printed[0], ("banner", "ROLE RECAP"))
         role_lines = [line for kind, line in printed[1:]]
         self.assertEqual(len(role_lines), 2)
-        # Sorted alphabetically, so "base" prints before "sankey_export".
+        # Sorted alphabetically.
         self.assertTrue(role_lines[0].startswith("base"))
         self.assertIn("changed=0", role_lines[0])
         self.assertTrue(role_lines[1].startswith("sankey_export"))

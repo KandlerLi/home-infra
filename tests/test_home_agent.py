@@ -33,12 +33,6 @@ _home_tools_service_spec.loader.exec_module(home_tools_service)
 
 
 class HomeAgentRoleReshapeTests(unittest.TestCase):
-    # This role used to also build and run home_agent's own Docker
-    # container. home_agent itself now runs as KandlerLi/k3s-apps'
-    # modules/home_agent Pod (cut over to ai.jkandler.de 2026-08-30) --
-    # this role only keeps home_tools_service, the one dependency that
-    # couldn't move into that Pod as a sidecar (it reports this
-    # homeserver's own hardware).
 
     def test_no_longer_builds_or_runs_a_container(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
@@ -188,8 +182,7 @@ class HomeAgentTests(unittest.TestCase):
         self.assertIn("search_nextcloud_files", offered_names)
 
     def test_write_nextcloud_file_dispatches_immediately(self) -> None:
-        # No confirmation round-trip: the model requests a write and it
-        # happens in the same turn, same as any other Nextcloud tool call.
+        # No confirmation round-trip: the write happens in the same turn.
         messages_api = FakeMessages()
         messages_api.responses[0].content[0].name = "write_nextcloud_file"
         messages_api.responses[0].content[0].input = {
@@ -227,8 +220,7 @@ class HomeAgentTests(unittest.TestCase):
     def test_update_shopping_list_dispatches_through_the_generic_nextcloud_path(
         self,
     ) -> None:
-        # No shopping-list-specific wiring in agent.py -- any name in
-        # NEXTCLOUD_TOOL_PATHS already routes through nextcloud_tools.call().
+        # Any name in NEXTCLOUD_TOOL_PATHS already routes through nextcloud_tools.call().
         messages_api = FakeMessages()
         messages_api.responses[0].content[0].name = "update_shopping_list"
         messages_api.responses[0].content[0].input = {
@@ -378,8 +370,7 @@ class ToolLimitTests(unittest.TestCase):
         self.assertEqual(final["tool_choice"], {"type": "none"})
         self.assertTrue(final["tools"])
         turn = final["messages"][-1]["content"]
-        # The unanswered tool_use gets a result (the API requires one),
-        # followed by the wrap-up instruction.
+        # The API requires a result for the unanswered tool_use, then the wrap-up follows.
         self.assertEqual(turn[0]["type"], "tool_result")
         self.assertEqual(turn[0]["tool_use_id"], "c2")
         self.assertIn("tool_limit_reached", turn[0]["content"])
@@ -567,11 +558,7 @@ class HomeAgentAPITests(unittest.TestCase):
         self.assertEqual(len(self.server.transcriber.calls), 1)
 
     def test_audio_transcriptions_relays_chunked_bodies(self) -> None:
-        # Open WebUI's aiohttp client streams the recorded file from an
-        # async generator, so it can't know the total size upfront and
-        # sends Transfer-Encoding: chunked with no Content-Length at all
-        # (confirmed against aiohttp's actual FormData behavior) -- this
-        # must not be treated as a zero-length request and rejected.
+        # aiohttp streams the upload chunked, with no Content-Length.
         body = (
             b"--X\r\n"
             b'Content-Disposition: form-data; name="file"; filename="a.webm"\r\n'
@@ -612,17 +599,7 @@ class HomeAgentAPITests(unittest.TestCase):
         connection = http.client.HTTPConnection(
             "127.0.0.1", self.server.server_address[1], timeout=5
         )
-        # The server rejects and closes as soon as it's read enough to know
-        # the body exceeds the cap -- it doesn't wait to drain the rest of
-        # what we're still sending. Depending on TCP buffering/scheduling
-        # (confirmed to differ between bare-metal and containerized CI
-        # runs), our in-flight send can hit the now-closed socket and raise
-        # BrokenPipeError before request() ever returns -- reproduced
-        # deterministically by shrinking SO_SNDBUF, which also confirmed
-        # getresponse() still reads the already-sent 413 correctly
-        # afterward. That's the server behaving correctly, not a test
-        # failure, so tolerate it here instead of asserting on the exact
-        # send path.
+        # The server may close before the client finishes sending, depending on TCP timing.
         try:
             connection.request(
                 "POST",
@@ -640,8 +617,7 @@ class HomeAgentAPITests(unittest.TestCase):
         self.assertEqual(self.server.transcriber.calls, [])
 
     def test_audio_transcriptions_rejects_uploads_over_the_size_limit(self) -> None:
-        # The claimed Content-Length alone must be enough to reject before
-        # ever reading the body -- the connection sends only one byte.
+        # The claimed Content-Length alone must trigger the rejection.
         connection = http.client.HTTPConnection(
             "127.0.0.1", self.server.server_address[1], timeout=2
         )
@@ -662,12 +638,7 @@ class HomeAgentAPITests(unittest.TestCase):
 
 
 class HomeToolsServiceTcpListenerTests(unittest.TestCase):
-    # home_tools_service can't move into the k3s cluster the way
-    # nextcloud_tools does -- it reports the homeserver's own hardware
-    # (uptime, memory, disk usage, its own Docker socket), so it has to
-    # keep running here. This second, optional TCP listener is what lets
-    # a k3s-hosted home_agent still reach it, alongside the Unix socket
-    # every other consumer keeps using unchanged.
+    # home_tools_service reports this host's hardware, so k3s reaches it over TCP.
 
     def setUp(self) -> None:
         self.server = home_tools_service.ThreadingTCPServer(
@@ -677,10 +648,7 @@ class HomeToolsServiceTcpListenerTests(unittest.TestCase):
         self.thread.start()
 
         def stop_server() -> None:
-            # addCleanup runs in LIFO order -- a naive separate
-            # addCleanup per call would join() the still-serving thread
-            # before shutdown() ever unblocks it, deadlocking. shutdown()
-            # must run first, then join(), then server_close().
+            # shutdown(), then join(), then server_close(); separate LIFO cleanups would deadlock.
             self.server.shutdown()
             self.thread.join()
             self.server.server_close()
@@ -698,8 +666,7 @@ class HomeToolsServiceTcpListenerTests(unittest.TestCase):
         return response
 
     def test_tcp_listener_serves_the_same_fixed_read_only_endpoints(self) -> None:
-        # Same handler class as the Unix socket -- no separate, possibly
-        # divergent, API surface for the network-reachable listener.
+        # The same handler as the Unix socket, no divergent API.
         self.assertEqual(self._get("/v1/health").status, 200)
         self.assertEqual(self._get("/v1/system").status, 200)
 
@@ -718,10 +685,7 @@ class HomeToolsServiceTcpListenerTests(unittest.TestCase):
         self.assertEqual(self._get("/v1/does-not-exist").status, 404)
 
     def test_home_tools_client_reaches_the_tcp_listener_directly(self) -> None:
-        # The actual integration point this migration depends on: with
-        # socket_path=None, HomeToolsClient must go over plain TCP to
-        # base_url instead of trying (and failing) a Unix socket -- proven
-        # here against a real running server, not mocked.
+        # With socket_path=None the client must use TCP, proven against a real server.
         port = self.server.server_address[1]
         client = HomeToolsClient(
             socket_path=None, base_url=f"http://127.0.0.1:{port}"
@@ -740,12 +704,7 @@ class HomeToolsServiceTcpBindingConfigTests(unittest.TestCase):
         self.assertIn('home_agent_tools_tcp_bind_address: ""', defaults)
 
     def test_validation_allows_only_empty_or_the_k3s_vm_address(self) -> None:
-        # 192.168.101.1 is this homeserver's own address on the k3s VM's
-        # isolated network -- the same trust boundary
-        # nextcloud_aio_apache_ip_binding and shared_ingress's own
-        # home/deluge upstream exceptions already rely on. A closed
-        # allowlist, not an open door: widening it to accept anything
-        # would defeat the point.
+        # Only empty or the homeserver's k3s-network address are allowed.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn(
@@ -757,11 +716,7 @@ class HomeToolsServiceTcpBindingConfigTests(unittest.TestCase):
     def test_systemd_unit_only_widens_address_families_when_tcp_is_enabled(
         self,
     ) -> None:
-        # RestrictAddressFamilies=AF_UNIX is a real kernel-level guard
-        # (confirmed live: it blocks the process from creating any
-        # AF_INET socket at all) -- must only widen to admit AF_INET when
-        # the operator has actually opted into the TCP listener, not
-        # unconditionally.
+        # AF_INET is only admitted when the TCP listener is enabled.
         unit = (ROLE_ROOT / "templates/home-tools.service.j2").read_text(
             encoding="utf-8"
         )

@@ -14,10 +14,7 @@ class BaseRoleTests(unittest.TestCase):
         self.assertIn('effective_user.stdout == "root"', tasks)
 
     def test_disables_pcie_aspm_for_the_e1000e_watchdog_hang_bug(self) -> None:
-        # Fixes a real production outage (2026-09-01) caused by a
-        # well-documented Intel e1000e/82579LM PCIe ASPM bug -- see
-        # the private task list for the full writeup. Only takes effect after a
-        # reboot, which this role deliberately does not trigger itself.
+        # The Intel e1000e PCIe ASPM bug took the host down; effective after a reboot.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         grub_task = tasks.split("Disable PCIe ASPM", 1)[1].split(
@@ -38,17 +35,10 @@ class BaseRoleTests(unittest.TestCase):
     def test_disables_nic_offloading_and_eee_for_the_e1000e_watchdog_hang_bug(
         self,
     ) -> None:
-        # 2026-09-06: pcie_aspm=off alone was not enough -- the same
-        # bug recurred with it confirmed active the whole time (see
-        # the private task list). TSO/GSO/GRO and EEE are the other two
-        # contributors most commonly cited alongside ASPM for this
-        # exact chipset's watchdog-hang bug.
+        # ASPM off alone wasn't enough; offloading and EEE are the other usual contributors.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        # Confirmed live: this host had no ethtool installed at all --
-        # a bare `ethtool -K ...` command task failed outright
-        # ("[Errno 2] No such file or directory: b'ethtool'") the first
-        # time this role was applied.
+        # ethtool wasn't installed on this host.
         install_task = tasks.split("Install ethtool", 1)[1].split(
             "- name:", 1
         )[0]
@@ -66,19 +56,14 @@ class BaseRoleTests(unittest.TestCase):
         )[1].split("- name:", 1)[0]
         self.assertIn("--set-eee", eee_task)
         self.assertIn("eee off", eee_task)
-        # Tolerates hardware/driver combinations that don't support EEE
-        # at all, without swallowing every other kind of failure.
+        # Tolerates NICs without EEE support, without swallowing other failures.
         self.assertIn("Operation not supported", eee_task)
         self.assertIn("base_eee_result.rc != 0", eee_task)
 
     def test_nic_offload_and_eee_settings_persist_via_ifupdown_post_up(
         self,
     ) -> None:
-        # ethtool only ever changes live, in-kernel state -- these have
-        # to be reapplied every time the interface comes up (boot or a
-        # real cable reconnect), which is exactly what an ifupdown
-        # post-up hook covers on this host (/etc/network/interfaces,
-        # not systemd-networkd).
+        # ethtool settings are live only, so a post-up hook reapplies them.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         persist_task = tasks.split(
@@ -92,16 +77,10 @@ class BaseRoleTests(unittest.TestCase):
     def test_installs_and_enables_the_e1000e_watchdog_recovery_service(
         self,
     ) -> None:
-        # A safety net on top of the fixes above, not a replacement for
-        # them -- confirmed live 2026-09-06 that the driver's own
-        # internal reset can get stuck retrying and failing for hours
-        # rather than actually clearing a hang on its own.
+        # A safety net: the driver's own reset can get stuck for hours.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        # Confirmed live: ansible.builtin.template does not create
-        # missing parent directories on its own -- the very first real
-        # apply failed outright ("Destination directory ... does not
-        # exist") without this.
+        # template doesn't create missing parent directories.
         mkdir_task = tasks.split(
             "Create e1000e watchdog recovery install directory", 1
         )[1].split("- name:", 1)[0]
@@ -144,22 +123,14 @@ class BaseRoleTests(unittest.TestCase):
             ROLE_ROOT / "templates/e1000e-watchdog-recovery.service.j2"
         ).read_text(encoding="utf-8")
         self.assertIn("Restart=always", unit)
-        # Deliberately not sandboxed the way every other unit this repo
-        # installs is (see monitoring's own ntfy-relay.service.j2) --
-        # this service's job needs real access to /sys/bus/pci and the
-        # kernel's own journal, both of which sandboxing would block.
-        # (Checking for the actual directive assignment, not just the
-        # bare word -- this unit's own comment explaining why it has
-        # neither directive mentions both by name.)
+        # Not sandboxed: it needs /sys/bus/pci and the kernel journal.
         self.assertNotIn("ProtectKernelLogs=", unit)
         self.assertNotIn("PrivateDevices=", unit)
 
     def test_interactive_shell_packages_come_from_apt_not_homebrew(
         self,
     ) -> None:
-        # Was Homebrew-installed by hand before, entirely outside this
-        # repo -- migrated to apt + pinned git clones so the interactive
-        # shell setup isn't an untracked install any more.
+        # Moved from a hand-made Homebrew install to apt and pinned clones.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         install_task = tasks.split(
@@ -183,8 +154,7 @@ class BaseRoleTests(unittest.TestCase):
     def test_powerlevel10k_is_pinned_to_the_version_already_in_use(
         self,
     ) -> None:
-        # Pinned to v1.20.0 -- the exact version previously installed via
-        # Homebrew, so migrating off it doesn't change the prompt's look.
+        # The version Homebrew had installed, so the prompt looks the same.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         clone_task = tasks.split("Install Powerlevel10k theme", 1)[1].split(

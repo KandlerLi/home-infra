@@ -87,9 +87,7 @@ class ExtractPartsTests(unittest.TestCase):
 
 class OpenAIAudioTranscriberTests(unittest.TestCase):
     def test_pins_its_own_model_regardless_of_the_incoming_model_field(self) -> None:
-        # Open WebUI's own AUDIO_STT_MODEL config already constrains this in
-        # practice, but home-agent must not trust a client-supplied model
-        # any more than the chat path trusts a client-supplied one.
+        # home-agent must not trust a client-supplied model.
         body, content_type = _build_multipart(model="attacker-chosen-model")
         captured: dict = {}
 
@@ -106,11 +104,7 @@ class OpenAIAudioTranscriberTests(unittest.TestCase):
         self.assertEqual(result, b'{"text":"hello"}')
 
     def test_relays_the_language_hint_unchanged(self) -> None:
-        # Unlike "model", "language" is just an accuracy hint from the
-        # user's own per-chat Settings -> Audio -> Language field -- it's
-        # relayed as-is, not overridden. Without it, Whisper's
-        # auto-detection can misfire on short clips (confirmed live: German
-        # speech was sometimes transcribed as English before this existed).
+        # language is the user's own accuracy hint, relayed as-is.
         body, content_type = _build_multipart(language="de")
         captured: dict = {}
 

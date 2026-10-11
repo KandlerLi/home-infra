@@ -182,9 +182,7 @@ class NextcloudToolsClientTests(unittest.TestCase):
         self.assertEqual(result["operation"], "create")
 
     def test_write_content_bypasses_the_small_argument_cap(self) -> None:
-        # 5000 bytes exceeds the 4096-byte cap other tools use, but must
-        # not be rejected locally for write_nextcloud_file -- it should
-        # get far enough to attempt a (failing) connection instead.
+        # Over the 4096-byte cap other tools use, but valid for write_nextcloud_file.
         with self.assertRaises(NextcloudToolsError) as raised:
             NextcloudToolsClient("/nonexistent/socket").call(
                 "write_nextcloud_file",
