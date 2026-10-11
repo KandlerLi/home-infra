@@ -10,7 +10,7 @@ directory, so nothing there needs to reference it explicitly).
 
 Used to also generate an Ansible variable file too, back when
 github_runner ran as a VM-based Ansible role here -- that role is gone
-now (moved to infra/k3s-apps entirely, see that migration's own plan),
+now (moved to KandlerLi/k3s-apps entirely, see that migration's own plan),
 so this script's only remaining consumer is the Terraform side.
 """
 
@@ -26,7 +26,7 @@ import yaml
 DEFAULT_CONFIG = Path(__file__).resolve().parents[3] / "github" / "repo-infra" / "config.yml"
 # A sibling repo, not a subdirectory of this one. In the standalone
 # k3s-bootstrap repo (extracted 2026-09-03 from what was originally a
-# bootstrap/ subdirectory inside infra/k3s-apps itself -- see that
+# bootstrap/ subdirectory inside KandlerLi/k3s-apps itself -- see that
 # migration's own plan) since this file feeds a variable
 # modules/github_runner/variables.tf declares, and that module now
 # lives there, in bootstrap/ alongside terraform-state -- repo-infra
@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.k3s_bootstrap_output.parent.is_dir():
         print(
             f"error: k3s-bootstrap output directory not found: {args.k3s_bootstrap_output.parent} "
-            "(check out bootstrap/k3s-bootstrap as a sibling of bootstrap/terraform-state, "
+            "(check out KandlerLi/k3s-bootstrap as a sibling of KandlerLi/terraform-state, "
             "or pass --k3s-bootstrap-output)",
             file=sys.stderr,
         )

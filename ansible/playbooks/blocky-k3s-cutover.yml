@@ -1,6 +1,6 @@
 ---
 # One-time cutover playbook for blocky's own move to k3s (see
-# infra/k3s-apps' own modules/blocky/ and this repo's own
+# KandlerLi/k3s-apps' own modules/blocky/ and this repo's own
 # k3s_ingress_forward role, whose k3s_ingress_forward_rules default now
 # forwards real LAN DNS traffic to it). Stops blocky's own two
 # containers -- blocky and blocky-postgres -- never deletes them, so

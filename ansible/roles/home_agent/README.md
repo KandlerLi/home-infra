@@ -2,7 +2,7 @@
 
 Host prerequisites for `home_agent`: just `home_tools_service` now.
 `home_agent` itself -- the OpenAI-backed HTTP API, the Docker container
-that used to run here -- is retired, superseded by `infra/k3s-apps`'
+that used to run here -- is retired, superseded by [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)'
 `modules/home_agent/` (cut over, together with `open_webui`, to
 `ai.jkandler.de` on 2026-08-30). Always applied (no enable flag), same
 as before.

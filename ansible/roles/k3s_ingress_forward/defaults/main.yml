@@ -1,10 +1,10 @@
 # Opt-in, matching every other role's own convention -- forwards the
 # homeserver's own public/LAN-facing ports straight through to a k3s
 # Service, a plain L4 DNAT relay. Originally built for k3s's own
-# Traefik (infra/k3s-apps' own modules/ingress/), so ACME's
+# Traefik (KandlerLi/k3s-apps' own modules/ingress/), so ACME's
 # TLS-ALPN-01 challenge could still reach the real cert-issuing
 # instance directly, below the TLS layer -- the same relay now also
-# carries LAN-facing DNS traffic to infra/k3s-apps' own modules/
+# carries LAN-facing DNS traffic to KandlerLi/k3s-apps' own modules/
 # blocky/. See this role's own README for the full "why DNAT, not
 # bridging the k3s VM onto the LAN" reasoning.
 k3s_ingress_forward_enabled: false
@@ -22,7 +22,7 @@ k3s_ingress_forward_target_ip: 192.168.101.10
 # DNAT rule's own in_interface match below -- PREROUTING/nat sees every
 # packet entering any interface, including the k3s VM's own outbound
 # connections transiting this bridge on their way out to the internet.
-# See docs/home-infra-docs' history.md ("k3s learning
+# See KandlerLi/home-infra-docs' history.md ("k3s learning
 # cluster") for the ImagePullBackOff hairpin bug this exclusion fixes.
 k3s_ingress_forward_target_bridge: virbr11
 
@@ -42,7 +42,7 @@ k3s_ingress_forward_rules:
     target_port: 80
   - public_port: 443
     target_port: 443
-  # The real cutover: infra/k3s-apps' own modules/blocky verified
+  # The real cutover: KandlerLi/k3s-apps' own modules/blocky verified
   # healthy internally first (2026-09-01) -- both containers running,
   # a real in-cluster nslookup resolving correctly via both the
   # Service name and this exact 192.168.101.10 target -- before ever
@@ -55,7 +55,7 @@ k3s_ingress_forward_rules:
   - public_port: 53
     target_port: 53
     protocol: udp
-  # Inbound SMTP for the k3s-native Stalwart mail server (infra/k3s-apps'
+  # Inbound SMTP for the k3s-native Stalwart mail server (KandlerLi/k3s-apps'
   # own modules/stalwart/). The FRITZ!Box's own port-forward for 25
   # (manual, out-of-band) targets the homeserver's LAN IP, same as
   # 80/443; this rule is what carries it the rest of the way into the
@@ -70,7 +70,7 @@ k3s_ingress_forward_rules:
   # above. Both are TLS-only listeners (Stalwart's own "imaps" and
   # "submissions"); nothing plaintext (143/587) is forwarded. Needs a
   # trusted certificate on Stalwart before a real client will connect
-  # -- see infra/k3s-apps' modules/stalwart and PARKED.md.
+  # -- see KandlerLi/k3s-apps' modules/stalwart and the private task list.
   - public_port: 993
     target_port: 993
     protocol: tcp

@@ -28,7 +28,7 @@
       # phone scan). Host had ~14.6 GiB available before this.
       k3s_node_vm_memory_mb: 10240
 
-# Second node: dedicated to infra/k3s-apps' own modules/github_runner/
+# Second node: dedicated to KandlerLi/k3s-apps' own modules/github_runner/
 # workload, tainted so nothing else in the cluster schedules there.
 # Provisioned into its own inventory group (k3s_agent_nodes, not
 # k3s_nodes) so the "Install k3s on the learning node" play below --

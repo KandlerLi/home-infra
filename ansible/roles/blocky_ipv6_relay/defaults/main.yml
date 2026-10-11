@@ -6,7 +6,7 @@
 # so this relay does it directly).
 blocky_ipv6_relay_enabled: false
 
-# Blocky's own fixed target inside k3s (infra/k3s-apps, modules/blocky/
+# Blocky's own fixed target inside k3s (KandlerLi/k3s-apps, modules/blocky/
 # own blocky-svc LoadBalancer address) -- a literal here rather than a
 # cross-role lookup, same reasoning k3s_ingress_forward_target_ip's own
 # comment already documents (role defaults aren't reliably exposed

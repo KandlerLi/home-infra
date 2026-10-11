@@ -29,7 +29,7 @@
 
 # Inserted at rule_num 1 of the base FORWARD chain -- ahead of Docker's
 # and libvirt's own chains, so this terminates before ever reaching
-# either. See docs/home-infra-docs' history.md ("k3s
+# either. See KandlerLi/home-infra-docs' history.md ("k3s
 # learning cluster") for why libvirt's own LIBVIRT_FWI chain needs
 # this. Scoped tightly to k3s_ingress_forward_target_ip and each
 # rule's own target_port, never a blanket FORWARD ACCEPT.

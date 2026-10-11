@@ -32,7 +32,7 @@ ENDPOINT_HOST = os.environ.get("NEXTCLOUD_ENDPOINT_HOST", "127.0.0.1")
 # AI-agent-facing tool), not against it running off the homeserver.
 # 192.168.101.1 is this homeserver's own address on the k3s VM's
 # isolated libvirt NAT network, the address the k3s-native copy of this
-# service (infra/k3s-apps) reaches Nextcloud AIO's Apache at -- same
+# service (KandlerLi/k3s-apps) reaches Nextcloud AIO's Apache at -- same
 # trust boundary as nextcloud_aio_apache_ip_binding and
 # shared_ingress_nextcloud_upstream's own widened allowlists.
 ALLOWED_ENDPOINT_HOSTS = frozenset({"127.0.0.1", "192.168.101.1"})

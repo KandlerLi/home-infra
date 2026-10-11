@@ -4,7 +4,7 @@
 # forces a full PCI-level unbind/rebind of the device -- a stronger,
 # independent reinitialization than the driver's own internal reset,
 # which can get stuck retrying and failing for hours on its own. See
-# docs/home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
+# KandlerLi/home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
 #
 # "-n 0" skips the existing journal backlog on start -- only react to
 # NEW hangs from this point on, never replay history on every restart.

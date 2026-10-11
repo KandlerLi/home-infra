@@ -8,14 +8,14 @@
     # Replaces the 4 secrets community.sops.sops's own vars plugin used
     # to expose directly to Ansible -- that plugin, secrets.sops.yml,
     # and .sops.yaml are all gone now (the SOPS-to-Secrets-Manager
-    # cutover, PARKED.md's own item, fully done as of 2026-09-09).
+    # cutover, a private task list item, fully done as of 2026-09-09).
     # Explicit per-key facts, not a generic "spread every key" trick --
     # confirmed live there's no documented set_fact mechanism for
     # unpacking a whole dict into separate facts (a single fact holding
     # the dict is all "set_fact: {{ dict }}" actually does), and only 4
     # keys are genuinely consumed by Ansible directly (everything else
-    # flows through infra/k3s-apps' own Terraform instead -- see
-    # PARKED.md's own secrets inventory). One lookup per Secrets
+    # flows through KandlerLi/k3s-apps' own Terraform instead -- see
+    # the private task list's secrets inventory). One lookup per Secrets
     # Manager group, not per key, to avoid redundant API calls for the
     # 3 keys that share "home-infra/monitoring".
     #
@@ -30,7 +30,7 @@
     # region is explicit, not left to AWS_DEFAULT_REGION/~/.aws/config --
     # found live 2026-09-09 that the operator's own local AWS CLI config
     # defaults to a different region (eu-west-1) than where these
-    # secrets actually live (eu-central-1, bootstrap/terraform-state's
+    # secrets actually live (eu-central-1, KandlerLi/terraform-state's
     # own var.aws_region), which 404s instead of erroring clearly.
     - name: Load Ansible-consumed secrets from AWS Secrets Manager
       when: monitoring_enabled | bool or nextcloud_aio_oidc_enabled | bool

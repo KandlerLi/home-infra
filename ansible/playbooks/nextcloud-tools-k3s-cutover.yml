@@ -1,6 +1,6 @@
 ---
 # One-time cutover playbook for the ansible/roles/nextcloud_tools role's
-# own move to k3s (see BACKLOG.md's "Unclear whether
+# own move to k3s (see the private task list's "Unclear whether
 # nextcloud-tools.service is still a live dependency or an orphaned
 # leftover"). That role was retired outright, not reshaped, on
 # 2026-08-30 (commit 018c5ff) once its only real consumer (home_agent's
@@ -8,7 +8,7 @@
 # the already-running systemd service on the live host to stop, so it
 # just kept running (and surviving reboots, since it stayed `enabled`)
 # purely on inertia. Confirmed live 2026-09-17 that nothing can
-# legitimately still depend on it: infra/k3s-apps' own home_agent
+# legitimately still depend on it: KandlerLi/k3s-apps' own home_agent
 # module runs its own copy of nextcloud_tools_service.py as an in-Pod
 # sidecar, sharing a Unix socket through that Pod's own emptyDir --
 # architecturally unreachable from this homeserver's own separate

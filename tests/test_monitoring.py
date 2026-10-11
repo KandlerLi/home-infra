@@ -446,7 +446,7 @@ class MonitoringRoleTests(unittest.TestCase):
         # These files are no longer installed by this role -- Grafana
         # itself runs as a k3s-native copy now (see
         # GrafanaK3sMigrationTests) -- but files/dashboards/ stays as
-        # the canonical source infra/k3s-apps' own modules/grafana
+        # the canonical source KandlerLi/k3s-apps' own modules/grafana
         # vendors a synced copy from, same pattern as
         # nextcloud_tools_service.py's own role.
         dashboards_dir = ROLE_ROOT / "files/dashboards"
@@ -477,7 +477,7 @@ class BlockyIntegrationTests(unittest.TestCase):
         # The Blocky datasource half of this used to be checked here too
         # (including the "database belongs in jsonData, not as a
         # top-level field" fix confirmed live 2026-08-28), but that
-        # datasource is now provisioned by infra/k3s-apps' own
+        # datasource is now provisioned by KandlerLi/k3s-apps' own
         # modules/grafana (templates/datasources.yaml.tftpl) instead of
         # a template in this role -- see that file for the equivalent
         # fixed structure, confirmed live 2026-08-30 via Grafana's own
@@ -541,7 +541,7 @@ class BlockyIntegrationTests(unittest.TestCase):
 
     def test_blocky_postgres_exporter_is_gated_on_blocky_enabled(self) -> None:
         # Unlike monitoring_blocky_upstream, this scrape target only
-        # ever has one possible value (infra/k3s-apps' own modules/
+        # ever has one possible value (KandlerLi/k3s-apps' own modules/
         # blocky) -- there's no homeserver-side Postgres to point at
         # instead, so it's gated on the same flag rather than getting
         # its own.
@@ -614,7 +614,7 @@ class BlockyIntegrationTests(unittest.TestCase):
 
 class GrafanaK3sMigrationTests(unittest.TestCase):
     def test_no_container_image_or_verify_tasks_remain(self) -> None:
-        # Grafana itself now runs as a k3s-native copy (infra/k3s-apps,
+        # Grafana itself now runs as a k3s-native copy (KandlerLi/k3s-apps,
         # modules/grafana), reached through
         # shared_ingress_grafana_upstream -- confirmed live 2026-08-30
         # (real admin login, both datasources healthy, a real PromQL
@@ -738,7 +738,7 @@ class BlockyK3sMigrationTests(unittest.TestCase):
     def test_blocky_role_is_gone_entirely(self) -> None:
         # Unlike Alertmanager/Grafana, Blocky's own Docker deployment
         # never lived inside this role -- it was a fully separate role
-        # (ansible/roles/blocky), deleted entirely once infra/k3s-apps'
+        # (ansible/roles/blocky), deleted entirely once KandlerLi/k3s-apps'
         # own modules/blocky was confirmed serving real production LAN
         # DNS traffic (2026-09-01), the same bar shared_ingress's own
         # deletion was held to.
@@ -771,7 +771,7 @@ class BlockyK3sMigrationTests(unittest.TestCase):
         # monitoring_blocky_postgres_port/_database/_user/_password
         # were already unused anywhere in this role even before the
         # blocky role's own deletion -- Grafana's own blocky-postgresql
-        # datasource is provisioned by infra/k3s-apps' own
+        # datasource is provisioned by KandlerLi/k3s-apps' own
         # modules/grafana (templates/datasources.yaml.tftpl), not by
         # anything reading these.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
@@ -829,7 +829,7 @@ class NtfyRelayServiceTests(unittest.TestCase):
         # deployed by this role at all any more (see
         # AlertmanagerK3sMigrationTests). The relay's own real config
         # (webhook target, dual-channel routing) now lives in
-        # infra/k3s-apps' own modules/alertmanager templates/
+        # KandlerLi/k3s-apps' own modules/alertmanager templates/
         # alertmanager.yml.tftpl instead of a template here.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 

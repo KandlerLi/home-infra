@@ -99,7 +99,7 @@ groups:
       - alert: BlockyQueryLogStale
         # Blocky's own query-log Postgres writer has no reconnect logic
         # and its `up` metric stays green through the gap -- see
-        # docs/home-infra-docs' history.md ("k3s learning
+        # KandlerLi/home-infra-docs' history.md ("k3s learning
         # cluster", Blocky entry). pg_stat_user_tables_n_tup_ins is a
         # monotonic row-insert counter; zero increase means zero new
         # queries got logged.

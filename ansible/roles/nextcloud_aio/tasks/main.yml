@@ -244,7 +244,7 @@
 
     # Nextcloud's own permission cache for this mount goes stale relative
     # to what Deluge does to the files underneath it -- see
-    # docs/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known
+    # KandlerLi/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known
     # issues"). Run every apply, not just once: it's cheap.
     - name: Rescan the downloads mount so Nextcloud's permission cache is current
       community.docker.docker_container_exec:
@@ -259,7 +259,7 @@
       changed_when: false
 
 # Automates the manual docker-network-connect recovery step -- see
-# docs/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known issues").
+# KandlerLi/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known issues").
 - name: Create Nextcloud AIO Apache network-reconnect install directory
   ansible.builtin.file:
     path: "{{ nextcloud_aio_apache_network_fix_install_dir }}"

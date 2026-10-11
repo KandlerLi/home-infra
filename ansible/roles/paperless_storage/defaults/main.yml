@@ -1,6 +1,6 @@
 ---
 # Opt-in, matching every other role's own convention. Host side only
-# (service account, directories) for infra/k3s-apps' modules/paperless;
+# (service account, directories) for KandlerLi/k3s-apps' modules/paperless;
 # see this role's README and ADR 0023.
 paperless_storage_enabled: false
 

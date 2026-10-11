@@ -14,7 +14,7 @@ to this host directly, unlike Deluge's config or Open WebUI's data
 disk). The actual backup logic -- SQLite's own online backup API for a
 consistent snapshot of a live database, matching how `aux_backup`
 already handles Open WebUI's own `webui.db` -- runs inside a k3s
-CronJob instead, `infra/k3s-apps`' own
+CronJob instead, [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own
 `modules/authelia/cronjob.tf`, which mounts this directory over NFS
 (see `nfs_server_exports` in `group_vars/all/main.yml`) as its write
 target.
@@ -26,7 +26,7 @@ that CronJob's
 loudly if either ever drifts from that, the same safety net
 `open_webui`'s role already relies on.
 
-- Repo: `infra/home-infra` (this role, `nfs_server_exports`),
-  `infra/k3s-apps` (`modules/authelia/cronjob.tf`),
-  `bootstrap/k3s-bootstrap` (the cluster-scoped NFS-backed
+- Repo: [`home-infra`](https://github.com/KandlerLi/home-infra) (this role, `nfs_server_exports`),
+  [`k3s-apps`](https://github.com/KandlerLi/k3s-apps) (`modules/authelia/cronjob.tf`),
+  [`k3s-bootstrap`](https://github.com/KandlerLi/k3s-bootstrap) (the cluster-scoped NFS-backed
   PersistentVolume this directory is exported through)

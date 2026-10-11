@@ -2,7 +2,7 @@
 
 Not deployed on the homeserver any more -- home_agent's own Docker
 container (the only thing that ever talked to this over a Unix socket)
-is retired, superseded by `infra/k3s-apps`' `modules/home_agent/`,
+is retired, superseded by [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' `modules/home_agent/`,
 which runs its own copy of `nextcloud_tools` as a sidecar in the same
 Pod, authenticating to Nextcloud with its own independently-revocable
 app password instead.
@@ -16,7 +16,7 @@ that nesting only ever existed for Ansible's own role-relative file
 lookup, which nothing here uses any more.
 
 `nextcloud_tools_service.py` stays here as the **canonical source**
-`infra/k3s-apps` vendors its own copy from (`modules/
+[`k3s-apps`](https://github.com/KandlerLi/k3s-apps) vendors its own copy from (`modules/
 home_agent/files/nextcloud_tools_service.py`) -- the same reason
 `home_agent`'s own `files/agent/` Python package stays under that
 role in this repo even though its Docker deployment is retired too
@@ -32,7 +32,7 @@ the endpoint-host allowlist, request/response validation) --
 independent of whichever role or Kubernetes Pod actually runs it.
 
 Bootstrapping a fresh app password, rotating one, or disabling the
-service are all `infra/k3s-apps`-side concerns now (see that repo's
+service are all [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)-side concerns now (see that repo's
 own `modules/home_agent/secret.tf` and its comment on how the current
 token was generated) -- this repo no longer has dedicated playbooks
 for any of that.

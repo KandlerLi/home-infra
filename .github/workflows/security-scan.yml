@@ -1,11 +1,11 @@
 name: Security scan
 
 # trivy image CVE scan -- second step of the workspace-level security
-# audit (PARKED.md), after trivy config. This repo was deliberately
+# audit, after trivy config. This repo was deliberately
 # excluded from the trivy-config wave (Trivy's Ansible IaC scanner only
 # covers AWS S3 cloud-resource modules, and this repo's Ansible manages
 # Docker containers/systemd on the physical homeserver, not AWS
-# resources -- see PARKED.md's "Security audit" entry), but that
+# resources -- see the private task list's "Security audit" entry), but that
 # limitation is specific to config scanning and has no bearing on
 # scanning the actual pinned container images this repo deploys, so
 # this is this repo's first entry into the audit.
@@ -15,9 +15,9 @@ name: Security scan
 # One matrix entry per image this repo's Ansible roles deploy directly
 # via Docker (ansible/roles/monitoring, ansible/roles/nextcloud_aio;
 # every other role that used to run a container here has been migrated
-# to infra/k3s-apps and no longer does) -- kept in sync by hand with
+# to KandlerLi/k3s-apps and no longer does) -- kept in sync by hand with
 # each role's own defaults/main.yml, same convention as
-# infra/k3s-apps' own matrix.
+# KandlerLi/k3s-apps' own matrix.
 
 on:
   pull_request:
@@ -46,7 +46,7 @@ jobs:
           - name: nextcloud-aio
             ref: ghcr.io/nextcloud-releases/all-in-one:latest
           # Built here (ansible/roles/home_agent/files/agent,
-          # build-home-agent.yml), consumed by infra/k3s-apps'
+          # build-home-agent.yml), consumed by KandlerLi/k3s-apps'
           # terraform.tfvars -- scanned from this repo, not that one,
           # since a repo-scoped GITHUB_TOKEN only gets implicit read
           # access to packages *that same repo* published. Tried it from
@@ -65,7 +65,7 @@ jobs:
       # GitHub-hosted, not this repo's single self-hosted runner replica
       # -- the scan needs no AWS credentials or homeserver access, only
       # outbound internet, so there's no reason to contend with
-      # checks.yml's own build-image/validate jobs for it (PARKED.md's
+      # checks.yml's own build-image/validate jobs for it (the private task list's
       # "Trivy scan and terraform apply serialize on the same
       # self-hosted runner").
       runs_on: '["ubuntu-latest"]'

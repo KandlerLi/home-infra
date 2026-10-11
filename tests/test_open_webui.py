@@ -19,7 +19,7 @@ class OpenWebUITests(unittest.TestCase):
     def test_tasks_run_unconditionally_now_container_is_retired(self) -> None:
         # This role used to gate everything behind open_webui_enabled
         # (opt-in Docker container). Open WebUI itself now runs as a
-        # k3s-native copy (infra/k3s-apps) -- this role only keeps the
+        # k3s-native copy (KandlerLi/k3s-apps) -- this role only keeps the
         # host prerequisites (service account, data directory) that
         # copy still depends on, so those need to always run, not be
         # conditional on a flag that no longer exists.
@@ -34,7 +34,7 @@ class OpenWebUITests(unittest.TestCase):
         self.assertNotIn("home-agent-frontend", tasks)
 
     def test_service_account_uid_is_validated_against_k3s_apps(self) -> None:
-        # infra/k3s-apps' Deployment hardcodes run_as_user=995 rather
+        # KandlerLi/k3s-apps' Deployment hardcodes run_as_user=995 rather
         # than looking it up dynamically -- a homeserver rebuild that
         # ever assigned this account a different uid would otherwise
         # let the k3s copy silently mount the NFS export as the wrong
@@ -49,7 +49,7 @@ class OpenWebUITests(unittest.TestCase):
     ) -> None:
         # Deliberately group: root, not this account's own default
         # group -- matches how this role has always started the
-        # container ("995:0"), which is what infra/k3s-apps' Deployment
+        # container ("995:0"), which is what KandlerLi/k3s-apps' Deployment
         # also hardcodes as run_as_group. Getting this wrong would
         # break the shared NFS export's permissions for the k3s Pod.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")

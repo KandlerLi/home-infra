@@ -16,7 +16,7 @@ class BaseRoleTests(unittest.TestCase):
     def test_disables_pcie_aspm_for_the_e1000e_watchdog_hang_bug(self) -> None:
         # Fixes a real production outage (2026-09-01) caused by a
         # well-documented Intel e1000e/82579LM PCIe ASPM bug -- see
-        # PARKED.md for the full writeup. Only takes effect after a
+        # the private task list for the full writeup. Only takes effect after a
         # reboot, which this role deliberately does not trigger itself.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
@@ -40,7 +40,7 @@ class BaseRoleTests(unittest.TestCase):
     ) -> None:
         # 2026-09-06: pcie_aspm=off alone was not enough -- the same
         # bug recurred with it confirmed active the whole time (see
-        # PARKED.md). TSO/GSO/GRO and EEE are the other two
+        # the private task list). TSO/GSO/GRO and EEE are the other two
         # contributors most commonly cited alongside ASPM for this
         # exact chipset's watchdog-hang bug.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")

@@ -37,7 +37,7 @@
 
 # The homeserver's onboard NIC (Intel 82579LM, driver e1000e) hits a
 # well-documented PCIe ASPM bug -- see
-# docs/home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
+# KandlerLi/home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
 # Only `base` needs this -- no other host in this repo has this NIC.
 # Takes effect only after a reboot -- this task and the `update-grub`
 # regeneration below just get the new parameter written and staged.
@@ -161,7 +161,7 @@
 
 # A total, silent freeze (no kernel log entries at all, unlike the
 # e1000e bug's own signature) needed a manual physical reboot -- see
-# docs/home-infra-docs/docs/runbooks/homeserver-silent-freeze.md. This
+# KandlerLi/home-infra-docs/docs/runbooks/homeserver-silent-freeze.md. This
 # hardware has a working watchdog timer device systemd wasn't using at
 # all; enabling it is a root-cause-agnostic safety net: if the kernel
 # ever stops scheduling entirely and can't pet the watchdog, the
@@ -180,7 +180,7 @@
     cmd: systemctl daemon-reexec
   when: base_watchdog_config.changed
 
-# BACKLOG.md, "Homeserver has no stable IPv6 address" -- pins IPv6
+# the private task list, "Homeserver has no stable IPv6 address" -- pins IPv6
 # address generation on enp0s25 to EUI-64. Confirmed live this host has
 # no dhcpcd.service unit at all (dhcpcd-base is installed only as a
 # dependency of something else, never actually running) -- IPv6 here
@@ -199,7 +199,7 @@
   register: base_ipv6_sysctl
 
 # Deliberately doesn't bounce enp0s25 itself -- this Ansible run is
-# SSHing over it. See BACKLOG.md for why a config change alone doesn't
+# SSHing over it. See the private task list for why a config change alone doesn't
 # move the address.
 - name: Flag that the IPv6 address won't update until the interface is recycled
   ansible.builtin.debug:
@@ -209,7 +209,7 @@
       Advertisement -- bounce the interface or reboot. Then confirm
       with `ip -6 addr show {{ base_e1000e_interface }}` and re-point
       the FRITZ!Box's DNSv6-Server at the new address (see
-      BACKLOG.md's "Homeserver has no stable IPv6 address").
+      the private task list's "Homeserver has no stable IPv6 address").
   when: base_ipv6_sysctl.changed
 
 - name: Ensure www-data group exists

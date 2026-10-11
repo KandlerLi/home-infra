@@ -18,7 +18,7 @@ services.
 - Opt-in shared Traefik ingress fronting the services above
 - Opt-in Prometheus monitoring stack (host health, container health,
   service reachability, certificate expiry), with Grafana itself now a
-  k3s-native copy (`infra/k3s-apps`) instead of a Docker container here
+  k3s-native copy ([`k3s-apps`](https://github.com/KandlerLi/k3s-apps)) instead of a Docker container here
 - Opt-in network-wide DNS ad-blocking (Blocky), with a Pi-hole-style
   query-log dashboard in Grafana
 - KVM/QEMU and libvirt (needed for the k3s learning cluster below;
@@ -59,7 +59,7 @@ scripts/roll-out.sh apply
 ```
 
 (sources AWS credentials for the `home-infra-local` identity from
-`pass` first -- see `bootstrap/terraform-state/README.md`'s
+`pass` first -- see [`terraform-state/README.md`](https://github.com/KandlerLi/terraform-state/blob/main/README.md)'s
 "home-infra-local Identity" section. Running the raw
 `ansible-playbook` command below works too, but only if
 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` are already exported in
@@ -83,7 +83,7 @@ purpose rather than a mode on `roll-out.sh` -- so a routine
 `roll-out.sh` run can never accidentally reach a k3s VM.
 
 Secrets live in AWS Secrets Manager now, not a SOPS-encrypted file in
-this repo (the SOPS-to-Secrets-Manager cutover, `PARKED.md`) -- edit
+this repo (the SOPS-to-Secrets-Manager cutover) -- edit
 one with the AWS CLI, merging into the existing JSON blob rather than
 overwriting it (each secret holds several related keys):
 
@@ -100,8 +100,8 @@ rm /tmp/secret.json
 Nextcloud file/shopping-list access), and `open_webui` (the chat
 frontend) all used to run as Docker containers managed by this repo.
 As of 2026-08-30 they run as a personal, single-node k3s cluster
-instead (`infra/k3s-apps`, a sibling repository, Terraform-managed) --
-see `docs/home-infra-docs/docs/history.md`'s "k3s
+instead ([`k3s-apps`](https://github.com/KandlerLi/k3s-apps), a sibling repository, Terraform-managed) --
+see [`home-infra-docs/docs/history.md`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/history.md)'s "k3s
 learning cluster" section for the full cutover history. This repo now
 only owns the host-level prerequisites those k3s Pods still depend on:
 
@@ -119,7 +119,7 @@ only owns the host-level prerequisites those k3s Pods still depend on:
 - **`nextcloud_tools`**: the Ansible role was retired outright, not
   reshaped -- its only consumer (home_agent's own Docker container) is
   gone. Its Python service source (`nextcloud_tools_service.py`) stays
-  on as the canonical original `infra/k3s-apps` vendors its own Pod
+  on as the canonical original [`k3s-apps`](https://github.com/KandlerLi/k3s-apps) vendors its own Pod
   sidecar's copy from; moved out of `ansible/roles/` to the top-level
   `nextcloud_tools/` directory (2026-09-01) since nothing here is
   Ansible content any more -- see that directory's own README.
@@ -127,11 +127,11 @@ only owns the host-level prerequisites those k3s Pods still depend on:
   and `open_webui_data_dir` (`/var/lib/open-webui`), holding the real
   accounts and chat history the k3s Pod reads over a new NFS export
   rather than starting fresh. The service account's uid is validated
-  against what `infra/k3s-apps`' Deployment hardcodes.
+  against what [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' Deployment hardcodes.
 
 `ai.jkandler.de` is split by path between the two (`home_agent`
 answers `/healthz` and `/v1/chat`, `open_webui` gets everything else)
--- see `infra/k3s-apps`' own `ai_ingress.tf` for how that split is
+-- see [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own `ai_ingress.tf` for how that split is
 implemented.
 
 ## Shared HTTPS ingress
@@ -140,7 +140,7 @@ implemented.
 a pinned Traefik container directly on the homeserver (file-based
 routing, automatic TLS, Basic Auth, rate limiting, security headers for
 every public hostname) was deleted outright once its k3s-native
-replacement was confirmed live -- `infra/k3s-apps`' own
+replacement was confirmed live -- [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own
 `modules/ingress/`, reached from the internet through this repo's own
 `k3s_ingress_forward` role (opt-in iptables DNAT on the homeserver;
 `192.168.101.0/24` is otherwise unreachable from the LAN). ACME now
@@ -212,14 +212,14 @@ while the homeserver itself is down.
 That self-hosted runner itself used to be a standalone libvirt VM
 managed by this repo's own (now-deleted) `github_runner` role. As of
 2026-08-31 it's a k3s-native replacement instead
-(`infra/k3s-apps`' own `modules/github_runner/`), confirmed live across
+([`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own `modules/github_runner/`), confirmed live across
 every repository with a real successful `Checks` run, `home-infra`
 itself included, before the old VM was deregistered and torn down.
-`github/repo-infra/config.yml`'s `runner: true` flag on a repository
+[`repo-infra/config.yml`](https://github.com/KandlerLi/repo-infra/blob/main/config.yml)'s `runner: true` flag on a repository
 entry is still the source of truth for which repositories get one; only
 where that list now gets synced to changed (see
 `scripts/sync_github_runner_repositories.py`, which now emits only
-`infra/k3s-apps`' own Terraform variable, not an Ansible one).
+[`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own Terraform variable, not an Ansible one).
 
 ## Hardware maintenance shutdown
 

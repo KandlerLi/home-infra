@@ -7,7 +7,7 @@
 # exported to that VM) that a k3s CronJob writes into -- the actual
 # backup logic (SQLite's own online backup API, matching aux_backup's
 # own Open WebUI handling) runs inside that CronJob, in
-# infra/k3s-apps' own modules/authelia/cronjob.tf.
+# KandlerLi/k3s-apps' own modules/authelia/cronjob.tf.
 authelia_backup_enabled: false
 
 # Same disk aux_backup's own archives already live on

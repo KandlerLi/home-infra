@@ -36,7 +36,7 @@ shared_ingress_nextcloud_upstream: http://192.168.101.1:11000
 home_agent_tools_tcp_bind_address: 192.168.101.1
 
 # false as of 2026-09-01: shared_ingress itself moved to k3s
-# (infra/k3s-apps' own modules/ingress/), reached via the new
+# (KandlerLi/k3s-apps' own modules/ingress/), reached via the new
 # k3s_ingress_forward DNAT relay instead of this role's own container.
 # shared_ingress_enabled gates the whole role behind a `when:` -- a
 # pure skip-guard, not a real toggle -- so this is the only thing
@@ -70,13 +70,13 @@ shared_ingress_start: true
 shared_ingress_apex_redirect_enabled: true
 shared_ingress_agent_enabled: true
 # ai.jkandler.de -- served by the k3s-native home_agent + open_webui
-# pairing (infra/k3s-apps' modules/home_agent and modules/open_webui),
+# pairing (KandlerLi/k3s-apps' modules/home_agent and modules/open_webui),
 # not the Docker containers here any more. Both upstreams move in
 # lockstep (see shared_ingress' own comment on
 # shared_ingress_agent_upstream) since this file's own /healthz +
 # /v1/chat vs. everything-else path split forwards both branches to
 # the same k3s Traefik entrypoint, which then does the equivalent
-# split on its own side via infra/k3s-apps' combined Ingress.
+# split on its own side via KandlerLi/k3s-apps' combined Ingress.
 # Confirmed live before this cutover: the Docker open-webui container
 # stopped cleanly, the k3s copy read the existing accounts/chat
 # history correctly over the new NFS export (persisted database
@@ -88,13 +88,13 @@ shared_ingress_agent_enabled: true
 # enable flags of their own. nextcloud_tools' role is gone outright
 # (not reshaped) -- nothing on this host consumed it once home_agent's
 # own Docker container, its only client, was retired; its Python
-# source stays on as infra/k3s-apps' own vendored copy's canonical
+# source stays on as KandlerLi/k3s-apps' own vendored copy's canonical
 # original, see that role's own README.
 shared_ingress_agent_upstream: http://192.168.101.10:80
 shared_ingress_open_webui_enabled: true
 shared_ingress_open_webui_upstream: http://192.168.101.10:80
 
-# Deluge itself runs as a k3s-native copy (infra/k3s-apps,
+# Deluge itself runs as a k3s-native copy (KandlerLi/k3s-apps,
 # Terraform-managed), not by anything in this repo -- confirmed live in
 # production (real domain, real auth, real session state read cleanly
 # over NFS) before the old Docker container was stopped. The deluge
@@ -105,7 +105,7 @@ shared_ingress_deluge_enabled: true
 shared_ingress_deluge_upstream: http://192.168.101.10:80
 
 # Shares exactly Deluge's own two directories with the k3s learning VM
-# (infra/k3s-apps) -- nothing else under /mnt/black-hdd -- so a
+# (KandlerLi/k3s-apps) -- nothing else under /mnt/black-hdd -- so a
 # Kubernetes-native copy of Deluge can be a real drop-in replacement,
 # Nextcloud integration included, rather than a disconnected sandbox
 # with its own separate downloads directory. 192.168.101.10 is that
@@ -123,7 +123,7 @@ nfs_server_exports:
   # don't start it fresh" choice already made for Deluge's config, and
   # the same live concurrent-write risk that surfaced during Deluge's
   # own migration applies here too: home-infra's own open-webui
-  # container must be stopped before infra/k3s-apps' Pod is ever
+  # container must be stopped before KandlerLi/k3s-apps' Pod is ever
   # started against this export, not just before the routing cutover --
   # two writers touching the same SQLite file (one local, one over NFS)
   # risks corrupting real chat history, unlike Deluge's crash-safe
@@ -131,7 +131,7 @@ nfs_server_exports:
   - path: /var/lib/open-webui
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
-  # Write target for infra/k3s-apps' own Authelia backup CronJob --
+  # Write target for KandlerLi/k3s-apps' own Authelia backup CronJob --
   # see the authelia_backup role for the account/directory this
   # exports, and that CronJob's own comments for why Authelia's real
   # data can't just be read off this host's disk directly the way
@@ -164,7 +164,7 @@ nextcloud_aio_mount_dir: /mnt/black-hdd/downloads
 # moment that account is deleted.
 nextcloud_aio_mount_applicable_user: c3d555d14a9e6f55acce409da0bf8fa03e31deff7b9d20c951aecfcf15832cd1
 
-# "Sign in with Authelia" on Nextcloud's own login page (infra/k3s-apps'
+# "Sign in with Authelia" on Nextcloud's own login page (KandlerLi/k3s-apps'
 # modules/authelia registers the matching "nextcloud" OIDC client) --
 # see nextcloud_aio's own README for the full reasoning. Needs
 # authelia_oidc_nextcloud_client_secret set in the home-infra/nextcloud
@@ -183,7 +183,7 @@ nextcloud_aio_oidc_enabled: true
 monitoring_enabled: true
 shared_ingress_grafana_enabled: true
 # Phase 1 of moving the monitoring stack into the k3s cluster
-# (infra/k3s-apps, modules/grafana): Grafana only -- Prometheus and
+# (KandlerLi/k3s-apps, modules/grafana): Grafana only -- Prometheus and
 # Postgres stay on this host (node_exporter/cAdvisor/blackbox_exporter/
 # Blocky itself all have to, see monitoring's and blocky's own
 # comments), reached by the k3s-native Grafana over the two additive
@@ -205,11 +205,11 @@ shared_ingress_grafana_upstream: http://192.168.101.10:80
 
 # Phase 2 of moving the monitoring stack into k3s: Alertmanager.
 # Additive, same shape as monitoring_prometheus_k3s_bind_address above
-# -- lets the k3s-native Alertmanager (infra/k3s-apps' modules/
+# -- lets the k3s-native Alertmanager (KandlerLi/k3s-apps' modules/
 # alertmanager) reach the ntfy relay, which stays on this host.
 monitoring_ntfy_relay_k3s_bind_address: 192.168.101.1
 # The actual cutover: confirmed independently first (2026-08-31) that
-# infra/k3s-apps' own Alertmanager delivers real notifications on its
+# KandlerLi/k3s-apps' own Alertmanager delivers real notifications on its
 # own -- a synthetic test alert posted straight to its API reached both
 # ntfy and the real SES inbox -- before ever pointing Prometheus at it.
 # A clean switch, not an addition (see this variable's own comment in
@@ -217,8 +217,8 @@ monitoring_ntfy_relay_k3s_bind_address: 192.168.101.1
 # Alertmanagers at once would double-fire every real notification).
 monitoring_alertmanager_upstream: 192.168.101.10:9093
 
-# Phase 3: per-k3s-node CPU/mem/disk visibility (BACKLOG.md's
-# "Per-k3s-node Grafana dashboard + alerting", infra/k3s-apps' own
+# Phase 3: per-k3s-node CPU/mem/disk visibility (the private task list's
+# "Per-k3s-node Grafana dashboard + alerting", KandlerLi/k3s-apps' own
 # modules/node_exporter). Confirmed live before flipping this on, the
 # same bar monitoring_alertmanager_upstream's own cutover was held to:
 # both node-exporter Pods (kubectl get daemonset node-exporter: 2/2
@@ -229,7 +229,7 @@ monitoring_alertmanager_upstream: 192.168.101.10:9093
 monitoring_k3s_node_health_enabled: true
 
 # home.jkandler.de -- served by the k3s-native copy of this service
-# (infra/k3s-apps, Terraform-managed), not by anything in this repo.
+# (KandlerLi/k3s-apps, Terraform-managed), not by anything in this repo.
 # The landing_page role that used to run this as a Docker container is
 # gone entirely (not just disabled) -- its cutover was confirmed live
 # in production first (real domain, real TLS, real auth, checked in the
@@ -239,18 +239,18 @@ shared_ingress_home_enabled: true
 shared_ingress_home_upstream: http://192.168.101.10:80
 
 # Network-wide DNS ad-blocking (ADR 0020) -- now fully k3s-native
-# (infra/k3s-apps, modules/blocky/), reached over k3s_ingress_forward's
+# (KandlerLi/k3s-apps, modules/blocky/), reached over k3s_ingress_forward's
 # own DNAT relay. blocky_enabled and blocky_postgres_k3s_bind_address
 # (this repo's own Docker deployment and its additive Grafana-reach
 # listener) are both gone -- the blocky role itself was deleted once
 # the cutover was confirmed live, matching shared_ingress's own
-# precedent. blocky_postgres_password is still real: infra/k3s-apps'
+# precedent. blocky_postgres_password is still real: KandlerLi/k3s-apps'
 # own modules/blocky consumes it directly from the home-infra/blocky
 # AWS Secrets Manager group (secrets.tf), independent of this repo's
 # own roles entirely.
 #
 # The actual cutover: confirmed independently first (2026-09-01) that
-# infra/k3s-apps' own modules/blocky is serving real production LAN
+# KandlerLi/k3s-apps' own modules/blocky is serving real production LAN
 # DNS traffic correctly (k3s_ingress_forward's own DNAT relay, a real
 # dig against the homeserver's own LAN IP resolving correctly, and
 # Blocky's own query log showing the real requesting client's address
@@ -293,7 +293,7 @@ blocky_ipv6_relay_lan_prefix: fd71:c3c8:f74d::/64
 aux_backup_enabled: true
 
 # Destination side only (service account + NFS-exported directory) --
-# infra/k3s-apps' own modules/authelia/cronjob.tf does the actual
+# KandlerLi/k3s-apps' own modules/authelia/cronjob.tf does the actual
 # backup work. See the authelia_backup role's own README for why
 # Authelia's data needs this different shape from aux_backup's own
 # homeserver-local sources above.

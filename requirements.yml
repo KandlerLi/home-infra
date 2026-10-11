@@ -10,7 +10,7 @@ collections:
     version: "2.2.2"
 
   # site.yml's own pre_tasks -- the amazon.aws.secretsmanager_secret
-  # lookup, part of the SOPS-to-Secrets-Manager cutover (PARKED.md).
+  # lookup, part of the SOPS-to-Secrets-Manager cutover.
   # Replaced community.sops entirely, 2026-09-09 -- see that item's own
   # writeup for the full history.
   - name: amazon.aws
