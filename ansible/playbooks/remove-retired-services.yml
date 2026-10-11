@@ -51,11 +51,18 @@
         name: home-agent-frontend
         state: absent
 
+    # By ID: community.docker 5.2 turns name@digest into the invalid name:sha256:... when deleting.
+    - name: Look up retired images
+      community.docker.docker_image_info:
+        name: "{{ retired_images }}"
+      register: retired_image_info
+
     - name: Remove retired images
-      community.docker.docker_image:
-        name: "{{ item }}"
-        state: absent
-      loop: "{{ retired_images }}"
+      community.docker.docker_image_remove:
+        name: "{{ item.Id }}"
+      loop: "{{ retired_image_info.images }}"
+      loop_control:
+        label: "{{ (item.RepoTags + item.RepoDigests) | first | default(item.Id) }}"
 
     - name: Check for the retired nextcloud-tools unit
       ansible.builtin.stat:
