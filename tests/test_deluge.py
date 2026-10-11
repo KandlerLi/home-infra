@@ -18,12 +18,6 @@ class DelugeRoleTests(unittest.TestCase):
         self.assertIn("deluge_config_dir: /mnt/black-hdd/deluge-config", defaults)
 
     def test_tasks_run_unconditionally_now_container_is_retired(self) -> None:
-        # This role used to gate everything behind deluge_enabled (opt-in
-        # Docker container). Deluge itself now runs as a k3s-native copy
-        # (KandlerLi/k3s-apps) -- this role only keeps the host prerequisites
-        # (service account, directories, ACL) that copy still depends on,
-        # so those need to always run, not be conditional on a flag that
-        # no longer exists.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
@@ -33,11 +27,7 @@ class DelugeRoleTests(unittest.TestCase):
         self.assertNotIn("docker_container", tasks)
 
     def test_service_account_uid_gid_is_validated_against_k3s_apps(self) -> None:
-        # KandlerLi/k3s-apps' Deployment hardcodes PUID=993/PGID=986 rather
-        # than looking them up dynamically -- a homeserver rebuild that
-        # ever assigned this account a different uid/gid would otherwise
-        # let the k3s copy silently write into these directories as the
-        # wrong uid instead of failing loudly.
+        # k3s-apps hardcodes PUID 993/PGID 986, so a different uid must fail here.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn("Create Deluge service account", tasks)
@@ -50,15 +40,7 @@ class DelugeRoleTests(unittest.TestCase):
         self.assertIn("deluge_downloads_dir != deluge_config_dir", tasks)
 
     def test_downloads_directory_is_world_readable_but_config_is_not(self) -> None:
-        # Confirmed live: Nextcloud's external storage mount reads this
-        # path as its own container's runtime uid (www-data, not a member
-        # of the deluge group), so with the downloads directory at 0750
-        # ("other" gets no permissions at all) it got EACCES and showed an
-        # empty folder even though Deluge had already written real files
-        # into 0755 per-torrent subfolders underneath -- the top-level
-        # directory itself was the only thing blocking visibility.
-        # deluge_config_dir holds session state/password hashes and must
-        # stay private, so only downloads gets the wider mode.
+        # Nextcloud reads as www-data, outside the deluge group, so others need read access.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         downloads_index = tasks.index("path: \"{{ deluge_downloads_dir }}\"")
@@ -74,14 +56,7 @@ class DelugeRoleTests(unittest.TestCase):
     def test_nextcloud_process_gets_write_access_via_acl_not_wider_mode(
         self,
     ) -> None:
-        # Confirmed live: 0755's "other" bits are read+execute only, so
-        # Nextcloud (running as www-data, uid 33, which also exists as a
-        # real host account -- Docker shares the host uid namespace here)
-        # could list and open files but got EACCES deleting/renaming them,
-        # since Unix delete/rename needs write on the *containing*
-        # directory. Fixed via ACL grants scoped to that one account, not
-        # by widening "other" to rwx (0757), which would let any process on
-        # the host write here, not just Nextcloud's.
+        # www-data gets write via an ACL, since others only have read+execute.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
@@ -130,11 +105,7 @@ class NextcloudAioMountTests(unittest.TestCase):
     def test_downloads_mount_is_rescanned_so_delete_permission_is_current(
         self,
     ) -> None:
-        # Confirmed live: fixing the host ACL alone wasn't enough --
-        # Nextcloud's UI kept showing no delete option (checked from a
-        # fresh, uncached browser profile) until this mount was explicitly
-        # rescanned, since Nextcloud caches per-file permissions from the
-        # last scan rather than checking the filesystem live.
+        # Nextcloud caches permissions until the mount is rescanned.
         tasks = (NEXTCLOUD_AIO_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         applicable_index = tasks.index("Make the downloads mount visible")

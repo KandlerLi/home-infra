@@ -28,10 +28,7 @@ class NfsServerRoleTests(unittest.TestCase):
         )
 
     def test_exports_include_directory_is_created_first(self) -> None:
-        # Found live: /etc/exports.d isn't created by the
-        # nfs-kernel-server package install on this Debian version, so
-        # templating straight into it failed with "Destination
-        # directory /etc/exports.d does not exist".
+        # The package install doesn't create /etc/exports.d.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         create_dir_index = tasks.index("Create NFS exports include directory")
@@ -94,9 +91,7 @@ class NfsServerRoleTests(unittest.TestCase):
     def test_group_vars_export_deluges_and_open_webuis_own_directories(
         self,
     ) -> None:
-        # Never the whole /mnt/black-hdd -- Nextcloud's own data and the
-        # GitHub runner VM's disk live there too -- and never the whole
-        # /var/lib either, just Open WebUI's own directory within it.
+        # Never all of /mnt/black-hdd or /var/lib, only the named directories.
         group_vars = (
             PROJECT_ROOT / "ansible/inventory/group_vars/all/main.yml"
         ).read_text(encoding="utf-8")

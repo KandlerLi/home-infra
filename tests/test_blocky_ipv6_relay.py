@@ -27,9 +27,7 @@ def render(**overrides: object) -> str:
 
 
 def make_query(*, qr: int = 0, rcode: int = 0) -> bytes:
-    # Minimal well-formed-enough DNS header (12 bytes) + a throwaway
-    # question section, matching real query shape closely enough for
-    # build_servfail's own byte-flipping logic to exercise correctly.
+    # A minimal well-formed DNS header plus a question section.
     flags = (qr << 15) | rcode
     header = struct.pack("!HHHHHH", 0x1234, flags, 1, 0, 0, 0)
     question = b"\x07example\x03com\x00" + struct.pack("!HH", 1, 1)
@@ -117,8 +115,7 @@ class ForwardTcpTests(unittest.TestCase):
         reply = make_query(qr=1)
         fake_socket = mock.MagicMock()
         fake_socket.__enter__.return_value = fake_socket
-        # First recv call in _recv_exact reads the 2-byte length
-        # prefix, subsequent call(s) read the reply body.
+        # The first recv reads the 2-byte length prefix, later ones the body.
         fake_socket.recv.side_effect = [struct.pack("!H", len(reply)), reply]
 
         with mock.patch.object(
@@ -269,8 +266,7 @@ class TcpHandlerTests(unittest.TestCase):
 
     def test_a_malformed_request_is_dropped_not_crashed_on(self) -> None:
         client_conn = mock.Mock()
-        # Early close mid-length-prefix -- _recv_exact raises
-        # ConnectionError, which TcpHandler must catch, not propagate.
+        # An early close mid-prefix raises ConnectionError, which TcpHandler must catch.
         client_conn.recv.side_effect = [b""]
         handler = object.__new__(relay.TcpHandler)
         handler.request = client_conn
@@ -281,11 +277,7 @@ class TcpHandlerTests(unittest.TestCase):
 
 
 class Ipv6OnlyBindingTests(unittest.TestCase):
-    # A real, live integration check, not a mock -- binds an actual
-    # ephemeral port on ::1 (no root needed) and confirms the socket
-    # genuinely refuses IPv4-mapped connections, the exact property
-    # blocky_ipv6_relay's own ip6tables restriction depends on (see
-    # Ipv6OnlyMixin's own docstring).
+    # A real socket on ::1, confirming IPv4-mapped connections are refused.
     def test_tcp_server_rejects_ipv4_mapped_connections(self) -> None:
         server = relay.Ipv6ThreadingTCPServer(("::1", 0), relay.TcpHandler)
         try:
@@ -318,9 +310,7 @@ class MainListenerTests(unittest.TestCase):
 
         udp_cls.assert_called_once_with(("::", relay.LISTEN_PORT), relay.UdpHandler)
         tcp_cls.assert_called_once_with(("::", relay.LISTEN_PORT), relay.TcpHandler)
-        # TCP runs in a background thread so UDP owns the main thread
-        # via its own blocking serve_forever() -- matching
-        # ntfy_relay.py's own dual-listener shape.
+        # TCP in a background thread so UDP keeps the main thread.
         thread_cls.assert_called_once()
         self.assertTrue(thread_cls.call_args.kwargs.get("daemon"))
         udp_cls.return_value.serve_forever.assert_called_once()
@@ -370,11 +360,7 @@ class DeploymentTests(unittest.TestCase):
                 self.assertIn(directive, rendered)
 
     def test_rendered_unit_has_no_address_allowlist(self) -> None:
-        # Deliberately absent as an active directive -- the ip6tables
-        # INPUT rule (tasks/main.yml) is the real access boundary for
-        # this service, not a systemd address allowlist. The template's
-        # own comment explains this by name, so check for an active
-        # directive line specifically, not just the substring anywhere.
+        # The ip6tables rule is the access boundary, not a systemd allowlist.
         rendered = render(
             blocky_ipv6_relay_backend_host="192.168.101.10",
             blocky_ipv6_relay_backend_port=53,
@@ -413,11 +399,7 @@ class DeploymentTests(unittest.TestCase):
         )
 
     def test_disabling_actually_stops_the_service_not_just_skips_creation(self) -> None:
-        # A real toggle, not a skip-guard -- the unit is always
-        # installed regardless of enabled, and this task's own state:
-        # ternary resolves to 'stopped' when disabled, so an
-        # already-running relay is genuinely stopped, not left running
-        # because a later apply merely skipped re-creating it.
+        # A real toggle: disabling stops an already-running relay.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         toggle_task = tasks.split(

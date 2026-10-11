@@ -9,11 +9,7 @@ ROLE_ROOT = PROJECT_ROOT / "ansible/roles/libvirt_host"
 
 class LibvirtHostRoleTests(unittest.TestCase):
     def test_packages_include_the_full_kvm_libvirt_toolchain(self) -> None:
-        # Missing any of these breaks a downstream consumer in a way
-        # that's easy to overlook until it's actually needed:
-        # python3-libvirt/python3-lxml for the community.libvirt Ansible
-        # modules k3s_node relies on, xorriso for cloud-init ISO
-        # building, virtinst/qemu-utils for domain/disk creation.
+        # Each package has a downstream consumer that breaks late without it.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
             encoding="utf-8"
         )
@@ -41,10 +37,7 @@ class LibvirtHostRoleTests(unittest.TestCase):
     def test_fails_fast_with_a_clear_message_when_kvm_is_unavailable(
         self,
     ) -> None:
-        # Hardware virtualization disabled in the BIOS/UEFI, or
-        # unsupported by the CPU, should stop the whole run here with a
-        # message that says so -- not surface later as an opaque
-        # "cannot create domain" failure deep inside k3s_node.
+        # Fail early with a clear message when virtualization is unavailable.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn("path: /dev/kvm", tasks)
@@ -56,10 +49,7 @@ class LibvirtHostRoleTests(unittest.TestCase):
         )
 
     def test_qemu_user_and_group_are_verified_via_getent(self) -> None:
-        # getent fails the task on its own if the key isn't found (same
-        # idiom deluge's role uses to look up its own service account)
-        # -- confirms this role relies on that fail-fast behavior rather
-        # than a raw getent shell-out plus a separate assert.
+        # getent fails on its own when the key is missing.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
             encoding="utf-8"
@@ -74,10 +64,7 @@ class LibvirtHostRoleTests(unittest.TestCase):
         self.assertIn("libvirt_host_qemu_group: kvm", defaults)
 
     def test_image_cache_directory_is_created(self) -> None:
-        # Shared by both k3s_node and (formerly) the now-deleted
-        # github_runner role, so both VMs' Debian cloud image only ever
-        # gets downloaded once -- see k3s_node's own defaults/main.yml
-        # comment on this exact path.
+        # The cloud-image cache directory, downloaded once.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
             encoding="utf-8"
@@ -91,9 +78,7 @@ class LibvirtHostRoleTests(unittest.TestCase):
         self.assertIn("state: directory", create_dir_task)
 
     def test_only_used_by_k3s_yml_not_site_yml(self) -> None:
-        # A GitHub Actions runner VM used to be this role's other
-        # consumer -- gone as of 2026-08-31 (moved to a k3s-native
-        # replacement entirely). k3s_node is the only one left.
+        # k3s_node is the only consumer left.
         site = (PROJECT_ROOT / "ansible/playbooks/site.yml").read_text(
             encoding="utf-8"
         )
@@ -106,11 +91,7 @@ class LibvirtHostRoleTests(unittest.TestCase):
 
 
 class DefaultNetworkAutostartTests(unittest.TestCase):
-    # Confirmed live 2026-09-04 (sudo virsh net-list --all, right after
-    # a real host reboot): libvirt's own "default" NAT network -- never
-    # created or otherwise managed by this repo -- had Autostart still
-    # "no". See k3s_node's own provision_vm.yml for the matching
-    # community.libvirt.virt_net bug this doesn't rely on.
+    # libvirt's default network didn't autostart after a reboot.
     def test_checks_existence_before_acting(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
@@ -123,9 +104,7 @@ class DefaultNetworkAutostartTests(unittest.TestCase):
         )
 
     def test_only_acts_when_autostart_is_currently_off(self) -> None:
-        # Idempotent -- virsh net-autostart is safe to run unconditionally
-        # too, but this keeps Ansible's own change-reporting accurate
-        # rather than always claiming "changed".
+        # Keeps Ansible's change reporting accurate.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         autostart_task = tasks.split(

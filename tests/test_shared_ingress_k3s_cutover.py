@@ -35,8 +35,7 @@ class SharedIngressK3sCutoverTests(unittest.TestCase):
         self.assertIn(
             'when: shared_ingress_k3s_cutover_action == "rollback"', start_task
         )
-        # No image/env/etc given -- only name + state, so Ansible has
-        # nothing to reconcile against and won't recreate the container.
+        # Only name and state, so Ansible won't recreate the container.
         self.assertNotIn("image:", start_task)
 
     def test_invalid_action_is_rejected(self) -> None:

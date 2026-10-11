@@ -364,8 +364,7 @@ class DocumentReadingTests(unittest.TestCase):
             nextcloud_tools.xlsx_to_text(b"not a spreadsheet")
 
     def test_extra_zip_parts_are_never_opened(self) -> None:
-        # A part outside the named spreadsheet parts (even a huge one) must
-        # not count against the budget or be read.
+        # Parts outside the named spreadsheet parts are never read or counted.
         with patch.object(nextcloud_tools, "MAX_XLSX_TOTAL_BYTES", 5_000):
             text, _ = nextcloud_tools.xlsx_to_text(
                 _xlsx_bytes(extra_parts={"junk.bin": "x" * 1_000_000})
@@ -777,9 +776,7 @@ class ShoppingListResolutionTests(unittest.TestCase):
             nextcloud_tools.resolve_shopping_list_item(client, 1, "eggs")
 
     def test_rejects_an_ambiguous_item_name(self) -> None:
-        # Neither item is an exact match for "milk", so both substring
-        # matches are genuinely ambiguous (an exact match, if one existed,
-        # would short-circuit this and win instead).
+        # No exact match, so both substring matches are ambiguous.
         client = FakeShoppingListClient()
         client.items_result = [
             {"id": 10, "name": "Oat Milk", "quantity": None, "unit": None, "checked": False},
@@ -942,10 +939,7 @@ class EndpointHostAllowlistTests(unittest.TestCase):
     def test_main_accepts_the_k3s_vm_address_and_proceeds_past_the_guard(
         self,
     ) -> None:
-        # Patched to a path that can't exist, so main() fails at the next
-        # step (reading the app password) rather than actually starting a
-        # server -- proves the endpoint guard let this host through
-        # without asserting on anything past its own responsibility.
+        # A path that can't exist makes main() fail right after the endpoint guard.
         with (
             patch.object(nextcloud_tools, "ENDPOINT_HOST", "192.168.101.1"),
             patch.object(

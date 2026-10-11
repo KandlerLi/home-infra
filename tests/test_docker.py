@@ -20,9 +20,7 @@ class DockerRoleTests(unittest.TestCase):
         self.assertIn("when: docker_daemon_config | length > 0", tasks)
 
     def test_daemon_config_override_is_removed_when_unconfigured(self) -> None:
-        # Symmetric with the install task above -- going back to {} (the
-        # default) must actually revert a previously-installed override,
-        # not just silently leave the old file in place.
+        # Going back to {} must remove a previously installed override.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         removal_task = tasks.split(

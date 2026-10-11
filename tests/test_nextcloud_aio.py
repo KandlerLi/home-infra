@@ -16,16 +16,7 @@ class NextcloudAioApacheBindingTests(unittest.TestCase):
     def test_apache_ip_binding_allows_only_loopback_or_the_k3s_vm_address(
         self,
     ) -> None:
-        # 192.168.101.1 is this homeserver's own address on the k3s VM's
-        # isolated libvirt NAT network, not a public or LAN-wide one --
-        # the same trust boundary shared_ingress's own
-        # shared_ingress_home_upstream/shared_ingress_deluge_upstream
-        # exceptions already rely on. AIO's mastercontainer only accepts
-        # one APACHE_IP_BINDING value at a time, so this is a switch
-        # between the two, not an addition -- shared_ingress's own
-        # nextcloud_upstream must move in lockstep or it loses its route
-        # to Apache entirely. Not yet switched live -- this only widens
-        # what the guard accepts.
+        # The homeserver's k3s-network address, the only allowed alternative to loopback.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn(
@@ -36,9 +27,7 @@ class NextcloudAioApacheBindingTests(unittest.TestCase):
         )
 
     def test_still_refuses_an_arbitrary_binding_address(self) -> None:
-        # The guard must still be a closed allowlist of exactly two
-        # values -- widening it to accept anything would defeat the
-        # whole point of pinning Apache to a known, narrow address.
+        # A closed allowlist of exactly two values.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertEqual(
@@ -47,22 +36,16 @@ class NextcloudAioApacheBindingTests(unittest.TestCase):
 
 
 class ApacheNetworkReconnectTests(unittest.TestCase):
-    # Confirmed live on two independent reboots (2026-09-01, 2026-09-04)
-    # that nextcloud-aio-apache silently drops off the nextcloud-aio
-    # Docker network -- see the private task list's "Homeserver: make a reboot a
-    # complete non-event".
+    # Apache drops off the AIO Docker network after reboots, so a script reconnects it.
     def test_script_is_idempotent_and_bounded(self) -> None:
         script = (ROLE_ROOT / "files/reconnect_apache_network.sh").read_text(
             encoding="utf-8"
         )
 
         self.assertIn("set -Eeuo pipefail", script)
-        # Already-connected is a clean no-op, not an error -- this runs
-        # on every apply as well as every boot.
+        # Already connected is a clean no-op.
         self.assertIn("already connected to", script)
-        # Apache never appearing at all is a different problem than a
-        # dropped network membership -- exits cleanly rather than
-        # failing the whole Ansible run.
+        # Apache never appearing is a different problem, so the script exits cleanly.
         self.assertIn("WAIT_TIMEOUT_SECONDS", script)
         self.assertIn("docker network connect", script)
 
@@ -89,10 +72,7 @@ class ApacheNetworkReconnectTests(unittest.TestCase):
         self.assertIn("WantedBy=multi-user.target", unit)
 
     def test_reruns_on_every_apply_not_just_the_first(self) -> None:
-        # A plain "started" against an oneshot systemd already considers
-        # "active (exited)" from a prior run is a no-op -- would
-        # silently stop this from ever self-healing again after its
-        # first success. Must be "restarted" to actually re-execute.
+        # restarted, not started: started is a no-op on an exited oneshot.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         reconnect_task = tasks.split(
@@ -125,12 +105,7 @@ class ApacheNetworkReconnectTests(unittest.TestCase):
     def test_install_directory_is_created_before_the_script_is_copied(
         self,
     ) -> None:
-        # Confirmed live 2026-09-04: ansible.builtin.copy does not create
-        # missing intermediate directories on its own -- the very first
-        # real apply of this role failed with "Destination directory
-        # /usr/local/lib/nextcloud-aio does not exist" until this task
-        # was added, same pattern monitoring's own "Create ntfy relay
-        # install directory" task already established.
+        # copy doesn't create missing parent directories.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertLess(

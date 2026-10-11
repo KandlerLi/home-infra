@@ -35,18 +35,14 @@ class DeploymentTests(unittest.TestCase):
         self.assertNotIn("sqlite_files", sources["deluge-config"])
 
     def test_rsync_is_installed(self) -> None:
-        # The generated script shells out to rsync for any source with
-        # sqlite_files -- confirmed live it isn't on this host by
-        # default.
+        # Not installed on this host by default.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         self.assertIn("name: rsync", tasks)
         self.assertIn("ansible.builtin.apt", tasks)
 
     def test_downloads_directory_is_deliberately_not_a_source(self) -> None:
-        # Large and re-attainable by re-downloading -- not worth
-        # backup storage/time, unlike deluge-config's small session
-        # state.
+        # Large and re-downloadable, unlike deluge-config's small state.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 
         self.assertNotIn("/mnt/black-hdd/downloads", defaults)
@@ -66,12 +62,7 @@ class DeploymentTests(unittest.TestCase):
     def test_destination_directory_is_created_before_the_service_unit_is_installed(
         self,
     ) -> None:
-        # Real regression, confirmed live: the service unit's own
-        # ReadWritePaths= needs this directory to already exist when
-        # systemd sets up the unit's mount namespace, before the
-        # script itself ever runs -- without this task, the service
-        # fails immediately with exit code 226/NAMESPACE and zero log
-        # output, not a script bug.
+        # ReadWritePaths= needs the directory before the unit's first start.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
         create_dest_index = tasks.index("Create aux_backup destination directory")
         install_unit_index = tasks.index("Install aux-backup systemd service unit")
@@ -108,24 +99,19 @@ class ScriptRenderingTests(unittest.TestCase):
     def test_renders_a_staged_sqlite_aware_backup_for_open_webui(self) -> None:
         rendered = render("aux-backup.sh.j2")
 
-        # Raw db/-shm/-wal files excluded from the plain rsync copy --
-        # the live -shm file is held locked by the real Open WebUI
-        # process and can't be safely read directly.
+        # The live -shm file is locked by Open WebUI, so raw db files are excluded.
         self.assertIn('--exclude="webui.db"', rendered)
         self.assertIn('--exclude="webui.db-shm"', rendered)
         self.assertIn('--exclude="webui.db-wal"', rendered)
         self.assertIn(
             'rsync -a', rendered
         )
-        # The database itself is snapshotted via SQLite's own online
-        # backup API (Python's stdlib sqlite3 binding), not copied
-        # raw.
+        # SQLite's online backup API, never a raw copy.
         self.assertIn("source_conn.backup(dest_conn)", rendered)
         self.assertIn(
             '"/var/lib/open-webui/webui.db" "$STAGING_TARGET/webui.db"', rendered
         )
-        # Final archive still comes from the staging dir, not the live
-        # directory directly.
+        # The archive comes from the staging dir.
         self.assertIn(
             'tar -czf "${DEST_DIR}/open-webui-${DATE}.tar.gz" '
             '-C "$STAGING_DIR" "$(basename "/var/lib/open-webui")"',
@@ -133,12 +119,7 @@ class ScriptRenderingTests(unittest.TestCase):
         )
 
     def test_staging_dirs_are_cleaned_up_via_a_single_accumulating_trap(self) -> None:
-        # Real bug class avoided: registering `trap ... EXIT` once per
-        # source (inside the Jinja loop) would silently replace the
-        # previous handler instead of accumulating, since bash only
-        # keeps the last one -- leaking every earlier source's staging
-        # dir. Check there's exactly one trap registration for the
-        # whole script, not one per source.
+        # One trap: bash keeps only the last EXIT handler.
         rendered = render("aux-backup.sh.j2")
 
         self.assertEqual(rendered.count("trap cleanup EXIT"), 1)
@@ -176,11 +157,7 @@ class ScriptRenderingTests(unittest.TestCase):
 
 class ServiceUnitTests(unittest.TestCase):
     def test_runs_as_root_with_no_dedicated_service_user(self) -> None:
-        # Deliberate -- see the role's own README/service-template
-        # comment: this job reads across several different
-        # dedicated-host-uid directories in one pass, which a single
-        # non-root user can't do without being added to every one of
-        # those groups.
+        # Root on purpose: it reads directories owned by several service accounts.
         rendered = render("aux-backup.service.j2")
 
         self.assertNotIn("User=", rendered)
