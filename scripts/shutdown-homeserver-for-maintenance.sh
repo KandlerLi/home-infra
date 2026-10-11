@@ -5,6 +5,7 @@ set -Eeuo pipefail
 readonly AIO_MASTER_CONTAINER="nextcloud-aio-mastercontainer"
 readonly DATA_MOUNT="/mnt/black-hdd"
 readonly STOP_TIMEOUT_SECONDS=600
+readonly VM_STOP_TIMEOUT_SECONDS=300
 
 services_may_be_stopped=false
 
@@ -12,8 +13,9 @@ usage() {
   cat <<'EOF'
 Usage: sudo bash shutdown-homeserver-for-maintenance.sh [--check]
 
-Safely prepare the homeserver for hardware maintenance by stopping the
-Nextcloud AIO application containers and then powering off the host.
+Safely prepare the homeserver for hardware maintenance by shutting down
+the running libvirt VMs, stopping the Nextcloud AIO application containers
+and then powering off the host.
 
 Options:
   --check  Run read-only preflight checks without stopping or powering off.
@@ -32,9 +34,9 @@ on_exit() {
 
   if ((status != 0)) && [[ "$services_may_be_stopped" == true ]]; then
     printf '%s\n' \
-      'Poweroff was not completed. Some Nextcloud containers may be stopped.' \
-      'Resolve the reported error, then either rerun this script or start the' \
-      'containers through the Nextcloud AIO interface.' >&2
+      'Poweroff was not completed. Some VMs or Nextcloud containers may be stopped.' \
+      'Resolve the reported error, then either rerun this script or start them' \
+      'again (sudo virsh start <vm>, the Nextcloud AIO interface).' >&2
   fi
 }
 
@@ -60,6 +62,40 @@ container_is_running() {
   return 1
 }
 
+read_running_vms() {
+  local virsh_output
+  local vm_name
+  running_vms=()
+
+  command -v virsh >/dev/null || return 0
+  virsh_output=$(virsh list --name) || die "Could not read libvirt VM state."
+  while IFS= read -r vm_name; do
+    [[ -n "$vm_name" ]] && running_vms+=("$vm_name")
+  done <<<"$virsh_output"
+}
+
+# Reverse name order, so k3s-node-2 (runners) goes down before k3s-node-1 (server).
+shutdown_running_vms() {
+  local vm_name
+  local deadline
+  local -a vms_in_order=()
+
+  read_running_vms
+  ((${#running_vms[@]} > 0)) || return 0
+  mapfile -t vms_in_order < <(printf '%s\n' "${running_vms[@]}" | sort -r)
+
+  for vm_name in "${vms_in_order[@]}"; do
+    printf 'Shutting down VM %s...\n' "$vm_name"
+    virsh shutdown "$vm_name" >/dev/null || die "Could not request shutdown of VM $vm_name."
+    deadline=$((SECONDS + VM_STOP_TIMEOUT_SECONDS))
+    while [[ "$(virsh domstate "$vm_name" 2>/dev/null)" != "shut off" ]]; do
+      ((SECONDS < deadline)) \
+        || die "VM $vm_name still running after $VM_STOP_TIMEOUT_SECONDS seconds; refusing to power off."
+      sleep 5
+    done
+  done
+}
+
 read_running_aio_children() {
   local name
   local docker_output
@@ -78,9 +114,6 @@ read_running_aio_children() {
 check_prerequisites() {
   local command_name
   local failed_units
-  local virsh_output
-  local vm_name
-  local -a running_vms=()
 
   ((EUID == 0)) || die "Run this script with sudo."
 
@@ -98,18 +131,7 @@ check_prerequisites() {
   mountpoint --quiet "$DATA_MOUNT" \
     || die "$DATA_MOUNT is not mounted; inspect storage before continuing."
 
-  if command -v virsh >/dev/null; then
-    virsh_output=$(virsh list --name) \
-      || die "Could not read libvirt VM state."
-    while IFS= read -r vm_name; do
-      [[ -n "$vm_name" ]] && running_vms+=("$vm_name")
-    done <<<"$virsh_output"
-    if ((${#running_vms[@]} > 0)); then
-      printf 'Running virtual machines:\n' >&2
-      printf '  %s\n' "${running_vms[@]}" >&2
-      die "Stop or verify active VM workloads before shutting down the host."
-    fi
-  fi
+  read_running_vms
 
   failed_units=$(systemctl --failed --no-legend --plain || true)
   if [[ -n "$failed_units" ]]; then
@@ -146,7 +168,11 @@ check_prerequisites
 printf 'Preflight passed:\n'
 printf '  Docker is running.\n'
 printf '  %s is mounted.\n' "$DATA_MOUNT"
-printf '  No running virtual machines were found.\n'
+if ((${#running_vms[@]} > 0)); then
+  printf '  Running VMs, to be shut down first: %s\n' "${running_vms[*]}"
+else
+  printf '  No running virtual machines were found.\n'
+fi
 
 if container_is_running "$AIO_MASTER_CONTAINER"; then
   printf '  The Nextcloud AIO master container is running.\n'
@@ -159,16 +185,18 @@ if [[ "$mode" == "check" ]]; then
   exit 0
 fi
 
-printf '\nThis will stop Nextcloud and power off the homeserver.\n'
+printf '\nThis will shut down the VMs, stop Nextcloud and power off the homeserver.\n'
 printf 'Confirm that users have finished uploads and a suitable backup exists.\n'
 printf 'Type POWER OFF to continue: '
 read -r confirmation </dev/tty
 
 [[ "$confirmation" == "POWER OFF" ]] || die "Confirmation did not match; no changes made."
 
+services_may_be_stopped=true
+shutdown_running_vms
+
 if container_is_running "$AIO_MASTER_CONTAINER"; then
   printf 'Stopping Nextcloud AIO application containers...\n'
-  services_may_be_stopped=true
   timeout --foreground "${STOP_TIMEOUT_SECONDS}s" docker exec \
     --env STOP_CONTAINERS=1 \
     "$AIO_MASTER_CONTAINER" \
@@ -196,7 +224,8 @@ fi
 
 printf 'Nextcloud AIO application containers are stopped.\n'
 printf '%s\n' \
-  'After the next boot, start them through the AIO interface if needed:' \
+  'After the next boot the VMs start by themselves (autostart). Start the AIO' \
+  'containers through the AIO interface if needed:' \
   '  https://192.168.178.100:8080'
 printf 'Flushing filesystem buffers and powering off now...\n'
 sync
