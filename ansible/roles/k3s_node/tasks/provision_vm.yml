@@ -1,9 +1,5 @@
 ---
-# This role only stands up the bare VM -- no k3s installed yet. That's a
-# deliberate, separate step: standing up a VM is boilerplate this repo
-# already has a proven pattern for (github_runner's own provision_vm
-# mode); installing and learning k3s itself is the actual new ground,
-# and gets its own role/step once this one is confirmed working.
+# Stands up the bare VM only; k3s comes in configure_guest.
 
 - name: Validate k3s node storage configuration
   ansible.builtin.assert:
@@ -46,10 +42,7 @@
 - name: Check k3s node disk
   ansible.builtin.stat:
     path: "{{ k3s_node_vm_disk_path }}"
-    # Only .stat.exists is ever read below -- get_checksum defaults to
-    # true, which means this would otherwise SHA1 the entire qcow2
-    # disk (tens of GB) over SSH on every single run just to answer
-    # an existence check.
+    # Only .exists is read; skip hashing the multi-GB disk.
     get_checksum: false
   register: k3s_node_vm_disk
 
@@ -89,10 +82,7 @@
       automatically.
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
-# vcpu placement="static" has no live hotplug path -- see
-# KandlerLi/home-infra-docs' history.md ("k3s learning
-# cluster") for the resize-support design and the regex_search bug
-# this task's own shape works around.
+# Static vCPUs have no hotplug: see history.md ("k3s learning cluster").
 - name: Extract the current vCPU count from the existing domain definition
   ansible.builtin.set_fact:
     k3s_node_existing_vm_vcpus: >-
@@ -102,10 +92,7 @@
       | regex_replace('</vcpu>$', '') }}
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
-# Memory has no live path here either. libvirt's get_xml always
-# reports <memory unit='KiB'>; the assert below fails the run loudly if
-# that ever stops being true, because a wrongly-parsed value here would
-# make every single run shut both nodes down again.
+# libvirt reports KiB; a misparse would restart the nodes on every run, so assert it.
 - name: Verify the existing domain reports its memory in KiB
   ansible.builtin.assert:
     that:
@@ -125,9 +112,7 @@
       | regex_replace('</memory>$', '') | int) // 1024 }}
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
-# The system disk is the third thing with no online path here. -U
-# (--force-share) because the image is normally held open by the
-# running VM.
+# No online disk resize either; -U because the VM holds the image open.
 - name: Read the existing k3s node disk's virtual size
   ansible.builtin.command:
     argv:
@@ -148,9 +133,7 @@
       // (1024 * 1024 * 1024) }}
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
-# A shrink cannot be done safely at the image level (it would truncate the
-# guest's partition and filesystem), so it is refused outright instead of
-# quietly ignored or attempted.
+# A shrink would truncate the guest filesystem, so it is refused.
 - name: Refuse to shrink the existing k3s node disk
   ansible.builtin.assert:
     that:
@@ -183,11 +166,7 @@
     k3s_node_vm_name in k3s_node_defined_vms.list_vms
     and k3s_node_vm_resize_pending | bool
 
-# Only polled outside check mode -- under --check the shutdown above is
-# simulated, not real, so the domain never actually reaches "shutdown"
-# and this would otherwise burn its full retries/delay budget on every
-# syntax-check/dry-run. 15-minute budget -- see history.md for
-# the outage a shorter one caused.
+# Skipped under --check: a simulated shutdown never completes.
 - name: Wait for the k3s node VM to actually stop
   community.libvirt.virt:
     command: status
@@ -201,9 +180,7 @@
     and k3s_node_vm_name in k3s_node_defined_vms.list_vms
     and k3s_node_vm_resize_pending | bool
 
-# Only after the wait above has confirmed the domain is really stopped: growing
-# a qcow2 under a running VM from the command line is not safe. The guest picks
-# the extra space up on its next boot (configure_guest.yml).
+# Only once the domain is really stopped; the guest grows into it on boot.
 - name: Grow the k3s node system disk
   ansible.builtin.command:
     argv:
@@ -283,11 +260,7 @@
       The existing {{ k3s_node_network_name }} network does not match
       the configured bridge, subnet, or NAT mode. Refusing to modify it
       automatically.
-  # Deliberately doesn't check this node's own DHCP reservation here --
-  # a second node joining an already-existing network (see "Add this
-  # node's DHCP reservation" below) never has one yet on its first run.
-  # Only the network-wide facts that must never drift across any node
-  # are asserted at this point.
+  # A joining node has no reservation yet, so only network-wide facts are checked.
   when: k3s_node_network_name in k3s_node_defined_networks.list_nets
 
 - name: Define k3s libvirt network
@@ -295,13 +268,7 @@
     name: "{{ k3s_node_network_name }}"
     state: present
     xml: "{{ lookup('template', 'libvirt-network.xml.j2') }}"
-  # Only for the network's very first creation (this node's own
-  # reservation is baked into the initial XML then). An already-running
-  # network is never redefined wholesale after that -- redefining only
-  # updates libvirt's *persistent* config, not the live dnsmasq
-  # instance, and a second node's reservation needs to reach the *live*
-  # network without ever restarting it out from under k3s-node-1's own
-  # active connections. See the live net-update task below instead.
+  # Only on first creation; a running network is never redefined wholesale.
   when: k3s_node_network_name not in k3s_node_defined_networks.list_nets
 
 - name: Activate and enable k3s libvirt network
@@ -319,10 +286,7 @@
   register: k3s_node_network_info
   changed_when: false
 
-# The autostart: true above is a known upstream bug in
-# community.libvirt.virt_net -- see history.md ("k3s learning
-# cluster") for the two upstream issues this matches and the outage it
-# caused. Falling back to plain virsh directly, unaffected by either.
+# virt_net's autostart doesn't stick: see history.md.
 - name: Work around community.libvirt.virt_net's autostart bug
   ansible.builtin.command:
     argv:
@@ -337,12 +301,7 @@
       {{ (k3s_node_vm_mac | lower) in (k3s_node_existing_network_xml.get_xml | lower) }}
   when: k3s_node_network_name in k3s_node_defined_networks.list_nets
 
-# Adds this node's own reservation to an already-existing, already-live
-# network -- the second-node case. Uses --live --config specifically
-# (not a full net-define/redefine): it updates the running dnsmasq
-# instance and the persistent XML in one step, without ever restarting
-# the network or interrupting any other node's existing DHCP lease/NAT
-# state. Idempotent: skipped once the reservation is already present.
+# net-update --live --config adds the reservation without restarting the network.
 - name: Add this node's DHCP reservation to the live network
   ansible.builtin.command:
     argv:

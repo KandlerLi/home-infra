@@ -1,7 +1,4 @@
-# Always runs, regardless of aux_backup_enabled -- matches
-# blocky_ipv6_relay's/k3s_ingress_forward's own validation precedent:
-# a misconfigured source list should never lie dormant until the day
-# someone flips enabled=true without re-checking.
+# Validates even when disabled, so a broken source list can't lie dormant.
 - name: Validate aux_backup configuration
   ansible.builtin.assert:
     that:
@@ -12,13 +9,7 @@
       aux_backup_sources is empty -- aux_backup_enabled can't be true
       with nothing configured to back up.
 
-# The generated script shells out to rsync for any source with
-# sqlite_files configured (see aux-backup.sh.j2's own comment) --
-# confirmed live it isn't installed on this host by default. Installed
-# unconditionally rather than gated on whether a source currently
-# needs it: rsync is tiny, harmless to always have, and gating it
-# would just be one more thing to remember to flip if a future source
-# adds sqlite_files.
+# The script needs rsync for sqlite_files sources; not installed here by default.
 - name: Install rsync
   ansible.builtin.apt:
     name: rsync
@@ -33,14 +24,7 @@
     group: root
     mode: "0755"
 
-# The service unit's own ReadWritePaths= (aux-backup.service.j2) needs
-# this directory to exist *before* the unit ever starts -- systemd sets
-# up the mount namespace ahead of exec'ing anything, so the script's
-# own `mkdir -p` never gets a chance to run if this is missing.
-# Confirmed live: without this task, the service fails immediately
-# with exit code 226/NAMESPACE and zero log output (systemd refuses to
-# construct the namespace at all, before the script's own echo
-# statements ever execute) -- not a script bug, a missing prerequisite.
+# ReadWritePaths= needs the directory before the unit's first start.
 - name: Create aux_backup destination directory
   ansible.builtin.file:
     path: "{{ aux_backup_dest_dir }}"
@@ -84,11 +68,7 @@
     or aux_backup_service_unit.changed
     or aux_backup_timer_unit.changed
 
-# A real toggle, not just a skip-guard: enabled/state both flip off
-# disabling this, actually stopping the timer rather than merely
-# skipping its creation on a host that never had it. Only the timer is
-# managed directly -- aux-backup.service is Type=oneshot, started by
-# the timer, never itself enabled/started here.
+# A real toggle: disabling stops the timer.
 - name: Ensure aux-backup timer is in its desired running state
   ansible.builtin.systemd_service:
     name: aux-backup.timer

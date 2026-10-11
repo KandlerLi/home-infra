@@ -4,10 +4,9 @@ k3s_node_role_mode: provision_vm
 k3s_node_vm_name: k3s-node-1
 k3s_node_vm_memory_mb: 4096
 k3s_node_vm_vcpus: 2
-# Applied at creation *and* on later runs: a larger value grows an existing
-# node's disk (VM is stopped and restarted once); a smaller one is refused.
+# A larger value grows an existing disk (one VM restart); a smaller one is refused.
 k3s_node_vm_disk_size_gb: 40
-# Where the guest's root filesystem lives, for growing it after a disk resize.
+# The guest's root disk, grown after a resize.
 k3s_node_root_disk: /dev/vda
 k3s_node_root_partition: 1
 
@@ -16,10 +15,7 @@ k3s_node_vm_storage_dir: /mnt/black-hdd/k3s
 k3s_node_vm_disk_path: /mnt/black-hdd/k3s/k3s-node-1.qcow2
 
 k3s_node_image_cache_dir: /var/lib/libvirt/cloud-images
-# Same cache path/URL/checksum as github_runner's own Debian image
-# vars, deliberately: it's the same image, so pointing both roles at
-# the same cache file means the second role to run just finds it
-# already downloaded and verified, instead of pulling a second copy.
+# Cached cloud image, downloaded once.
 k3s_node_debian_image_path: >-
   {{ k3s_node_image_cache_dir }}/debian-13-genericcloud-amd64.qcow2
 k3s_node_debian_image_url: >-
@@ -32,10 +28,7 @@ k3s_node_cloud_init_dir: >-
 k3s_node_cloud_init_iso_path: >-
   {{ k3s_node_vm_storage_dir }}/{{ k3s_node_vm_name }}-cloud-init.iso
 
-# A dedicated NAT network, distinct from both the home LAN and the
-# github_runner VM's own isolated network -- no shared broadcast domain
-# with either (see ansible/inventory/home.yml and
-# ansible/roles/github_runner/defaults/main.yml for those ranges).
+# Its own NAT network, no broadcast domain shared with the LAN.
 k3s_node_network_name: k3s_network
 k3s_node_network_bridge: virbr11
 k3s_node_network_address: 192.168.101.1
@@ -48,29 +41,14 @@ k3s_node_vm_mac: "52:54:00:00:00:20"
 k3s_node_libvirt_user: libvirt-qemu
 k3s_node_libvirt_group: kvm
 
-# Which dynamic inventory group provision_vm.yml's own add_host task
-# registers this VM into. k3s-node-1 (the control-plane node) and any
-# agent node must land in different groups, since only the
-# control-plane node should ever run configure_guest's "server" tasks
-# against the original hosts: k3s_nodes play -- see
-# ansible/playbooks/k3s.yml's own dedicated agent-node plays.
+# Control-plane and agent nodes land in different groups.
 k3s_node_inventory_group: k3s_nodes
 
-# Second-node support: k3s_node_join_mode controls whether
-# configure_guest.yml renders a `k3s server` unit (default -- this is
-# k3s-node-1's own control plane) or a `k3s agent` unit joining an
-# already-running server instead. The join_* vars below are only
-# meaningful in agent mode, and deliberately left empty here rather
-# than given a real default -- ansible/playbooks/k3s.yml's own
-# agent-node play passes them explicitly (the token in particular
-# comes from a live slurp of k3s-node-1's own node-token, never a
-# static default that could end up committed).
+# server for k3s-node-1; agent joins an already-running server.
 k3s_node_join_mode: server
 k3s_node_join_server_url: ""
 k3s_node_join_token: ""
-# Confines every CI runner Pod (KandlerLi/k3s-apps' own modules/
-# github_runner) to this node alone -- kept off k3s-node-1, which
-# every other, non-CI workload in the cluster already depends on.
+# Keeps the CI runner Pods on the agent node only.
 k3s_node_agent_node_taint: ""
 k3s_node_agent_node_label: ""
 k3s_node_agent_env_path: /etc/systemd/system/k3s-agent.service.env
@@ -80,13 +58,7 @@ k3s_node_admin_ssh_public_key_path: >-
   {{ lookup('env', 'HOME') }}/.ssh/id_ed25519.pub
 k3s_node_ssh_host_key_alias: k3s-node-1-via-homeserver
 
-# k3s install -- configure_guest mode. Pinned to a specific release
-# (confirmed live against k3s's own update.k3s.io channel API to be the
-# real "stable" channel, not just whatever "latest" happens to return)
-# rather than piping the get.k3s.io install script through a shell,
-# matching this repo's existing pin-and-checksum pattern (the Debian
-# cloud image download uses the exact same get_url + remote-checksum-
-# file idiom below).
+# Pinned release from k3s's stable channel, checksum-verified.
 k3s_node_version: v1.36.4+k3s1
 k3s_node_release_url_tag: "{{ k3s_node_version | replace('+', '%2B') }}"
 k3s_node_release_base_url: >-
@@ -95,20 +67,10 @@ k3s_node_binary_path: /usr/local/bin/k3s
 k3s_node_kubectl_symlink: /usr/local/bin/kubectl
 k3s_node_config_dir: /etc/rancher/k3s
 k3s_node_kubeconfig_path: "{{ k3s_node_config_dir }}/k3s.yaml"
-# World-readable is fine here specifically: the only account that can
-# even reach this VM is "ansible" over SSH via the homeserver, and that
-# account already has passwordless root via sudo (see cloud-init-user-
-# data.yml.j2) -- 0644 just saves typing "sudo" before every kubectl
-# command on a single-user learning node, it doesn't cross a real
-# privilege boundary.
+# 0644 is fine: only the sudo-capable ansible account reaches this VM.
 k3s_node_kubeconfig_mode: "0644"
 
-# Terraform -- installed here so the VM's whole base toolset stays
-# reproducible via this Ansible role, the same way it already owns
-# installing k3s itself. What Terraform actually *manages* (the
-# workloads running inside the cluster) deliberately lives in its own
-# separate git repo instead, not here -- this role's job stops at
-# making the tool available.
+# Terraform on the VM, installed reproducibly like k3s.
 k3s_node_terraform_version: "1.16.0"
 k3s_node_terraform_zip_url: >-
   https://releases.hashicorp.com/terraform/{{ k3s_node_terraform_version }}/terraform_{{ k3s_node_terraform_version }}_linux_amd64.zip

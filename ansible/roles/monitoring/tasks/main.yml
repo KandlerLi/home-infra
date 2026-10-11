@@ -14,28 +14,19 @@
           - monitoring_ses_smtp_password | trim != "CHANGE_ME"
           - monitoring_probe_targets | length > 0
           - monitoring_ntfy_relay_port | int > 1024
-          # Additive, not a switch -- Prometheus supports repeating
-          # --web.listen-address, so this only ever adds a second one,
-          # never replaces the loopback default every scrape target
-          # here still needs. 192.168.101.1 is this homeserver's own
-          # address on the k3s VM's isolated network, never 0.0.0.0
-          # (Prometheus's API has no auth of its own).
+          # Additive: the scrape targets still need the loopback listener.
           - >-
             monitoring_prometheus_k3s_bind_address | length == 0
             or monitoring_prometheus_k3s_bind_address == "192.168.101.1"
-          # Same additive reasoning, for the ntfy relay's own second
-          # listener -- see ntfy_relay.py's own LISTEN_HOST_K3S comment.
+          # Additive, like Prometheus's second listener.
           - >-
             monitoring_ntfy_relay_k3s_bind_address | length == 0
             or monitoring_ntfy_relay_k3s_bind_address == "192.168.101.1"
-          # A clean switch, not an addition -- see this variable's own
-          # comment in defaults/main.yml for why listing both
-          # Alertmanagers at once would be actively harmful here.
+          # A clean switch: both Alertmanagers would double-fire.
           - >-
             monitoring_alertmanager_upstream == "127.0.0.1:9093"
             or monitoring_alertmanager_upstream == "192.168.101.10:9093"
-          # Same clean-switch reasoning as monitoring_alertmanager_upstream
-          # above -- see this variable's own comment in defaults/main.yml.
+          # A clean switch, like the Alertmanager upstream.
           - >-
             monitoring_blocky_upstream == "127.0.0.1:" ~ monitoring_blocky_http_port
             or monitoring_blocky_upstream == "192.168.101.10:" ~ monitoring_blocky_http_port
@@ -59,9 +50,7 @@
       loop:
         - "{{ monitoring_prometheus_container_user }}"
 
-    # getent does NOT accumulate looped keys into
-    # ansible_facts.getent_passwd -- each iteration replaces it. Do not
-    # re-loop this; see ADR 0019's own Update section.
+    # getent replaces, not accumulates, looped keys: don't loop this. See ADR 0019.
     - name: Read Prometheus service account
       ansible.builtin.getent:
         database: passwd
@@ -72,9 +61,7 @@
         monitoring_prometheus_uid: >-
           {{ ansible_facts.getent_passwd[monitoring_prometheus_container_user][1] }}
 
-    # Not a container, so no UID needs recording -- systemd's User=/Group=
-    # take a plain username directly, unlike docker_container's user:
-    # parameter.
+    # Not a container, so systemd takes the plain username.
     - name: Create ntfy relay service account
       ansible.builtin.user:
         name: "{{ monitoring_ntfy_relay_service_user }}"
@@ -82,8 +69,7 @@
         create_home: false
         shell: /usr/sbin/nologin
 
-    # A dedicated task, ahead of the shared loop below -- see ADR 0019's
-    # own Update section for the EACCES this avoids.
+    # Its own task ahead of the loop: see ADR 0019 for the EACCES this avoids.
     - name: Create monitoring data root directory
       ansible.builtin.file:
         path: "{{ monitoring_data_dir }}"
@@ -109,11 +95,7 @@
       loop_control:
         label: "{{ item.path }}"
 
-    # A dedicated task, not the loop above: that loop's shared 0750 mode
-    # is fine for directories only their own owner needs to enter, but
-    # this one is root-owned and must be readable by the relay's own
-    # (different) service account to execute the script inside it --
-    # same reasoning as nextcloud_tools_install_dir's 0755.
+    # Its own task: root-owned but readable by the relay's account.
     - name: Create ntfy relay install directory
       ansible.builtin.file:
         path: "{{ monitoring_ntfy_relay_install_dir }}"
@@ -122,12 +104,7 @@
         group: root
         mode: "0755"
 
-    # Grafana and Alertmanager now run as k3s-native copies (infra/
-    # k3s-apps) instead of Docker containers on this host -- actively
-    # removed here, not just stopped, so an unrelated site.yml run can
-    # never silently resurrect them. See KandlerLi/home-infra-docs'
-    # history.md ("k3s learning cluster") for the full cutover
-    # history.
+    # Removed, not stopped, so an unrelated run can't resurrect the retired containers.
     - name: Remove retired local Grafana/Alertmanager state
       ansible.builtin.file:
         path: "{{ item }}"
@@ -256,8 +233,7 @@
         mode: "0644"
       register: monitoring_blackbox_config
 
-    # Pulling by digest alone, not the shared name:tag@digest -- see ADR
-    # 0019's own Update section for the "changed" every run this avoids.
+    # Pull by digest alone: see ADR 0019 for the endless "changed" this avoids.
     - name: Pull pinned monitoring images
       community.docker.docker_image:
         name: "{{ item.name }}@{{ item.digest }}"
@@ -305,10 +281,7 @@
         log_driver: json-file
         log_options: "{{ monitoring_docker_log_options }}"
 
-    # Runs as the image's own default (root inside the container), not
-    # a dedicated unprivileged account -- a restricted uid can't read
-    # /var/lib/docker or the cgroup hierarchy this needs.
-    # --docker_only=true keeps it scoped to container metrics.
+    # Root in its container to read /var/lib/docker and cgroups; --docker_only=true limits scope.
     - name: Ensure cAdvisor container is running
       community.docker.docker_container:
         name: "{{ monitoring_cadvisor_container_name }}"
@@ -335,9 +308,7 @@
           - --listen_ip={{ monitoring_bind_address }}
           - --port={{ monitoring_cadvisor_port }}
           - --disable_metrics=percpu,sched,tcp,udp,resctrl,cpu_topology,advtcp,hugetlb,referenced_memory
-        # Overrides the image's own baked-in HEALTHCHECK (probes
-        # "localhost", ambiguous under network_mode: host) -- see ADR
-        # 0019 for the IPv6-first wget failure this avoids.
+        # Replaces the image's localhost healthcheck, which fails IPv6-first under host networking. See ADR 0019.
         healthcheck:
           test:
             - CMD

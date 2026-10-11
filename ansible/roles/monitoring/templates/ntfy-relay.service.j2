@@ -41,10 +41,7 @@ MemoryDenyWriteExecute=true
 CapabilityBoundingSet=
 AmbientCapabilities=
 RestrictAddressFamilies=AF_INET AF_INET6
-# Deliberately no address allowlist restricting this to loopback here,
-# unlike nextcloud-tools' unit: this service's whole job is an outbound
-# HTTPS call to ntfy.sh, a CDN-backed public host without a fixed IP set
-# stable enough to pin.
+# No address allowlist: it calls ntfy.sh, which has no fixed IP.
 SystemCallArchitectures=native
 
 [Install]

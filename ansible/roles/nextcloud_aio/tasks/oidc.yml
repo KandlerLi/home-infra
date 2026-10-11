@@ -1,19 +1,5 @@
 ---
-# Registers Authelia as a real "Sign in with Authelia" option on
-# Nextcloud's own login page, via the official user_oidc app --
-# KandlerLi/k3s-apps' own modules/authelia/ has the matching client
-# registration (client_id "nextcloud"). Deliberately additive only:
-# native login stays enabled (unlike Grafana/Open WebUI, see
-# KandlerLi/k3s-apps#30's own reasoning) -- Nextcloud may have other real
-# accounts not necessarily tied to this same Authelia identity.
-#
-# occ commands below were written from user_oidc's own documented
-# usage, not verified against a live instance at write time -- same
-# accepted convention this role's own external-storage tasks above
-# already use for exactly this reason. If any task here fails, run
-# the equivalent command by hand inside the nextcloud-aio-nextcloud
-# container to find the actual shape and fix this file -- do not
-# silently skip past a failure here.
+# "Sign in with Authelia" via user_oidc; k3s-apps registers the matching client. See the README.
 - name: Validate Authelia OIDC client secret for Nextcloud
   ansible.builtin.assert:
     that:
@@ -28,9 +14,7 @@
       same value KandlerLi/k3s-apps' own modules/authelia hashes for its
       "nextcloud" client.
 
-# app:install is itself idempotent (a no-op, not an error, if the app
-# is already installed) per Nextcloud's own occ conventions elsewhere
-# in this file.
+# app:install is idempotent.
 - name: Install the user_oidc app
   community.docker.docker_container_exec:
     container: "{{ nextcloud_aio_nextcloud_container }}"
@@ -47,12 +31,7 @@
     nextcloud_aio_oidc_app_install.rc != 0
     and 'already installed' not in (nextcloud_aio_oidc_app_install.stdout | default(''))
 
-# Confirmed idempotent (upsert, not error-on-exists) per user_oidc's
-# own documented occ usage -- re-running this with the same provider
-# name updates the existing provider in place, safe to run on every
-# apply. no_log on the whole task, not just the secret's own value --
-# the full argv (including a real credential) would otherwise be
-# logged verbatim.
+# An upsert, safe on every apply; no_log keeps the client secret out of output.
 - name: Register Authelia as an OIDC provider
   community.docker.docker_container_exec:
     container: "{{ nextcloud_aio_nextcloud_container }}"
@@ -68,18 +47,7 @@
   no_log: true
   changed_when: true
 
-# The real, documented force-SSO mechanism user_oidc itself provides
-# (https://github.com/nextcloud/user_oidc): with exactly one provider
-# configured (true here) and this disabled, the login page immediately
-# redirects to that provider instead of showing Nextcloud's own
-# username/password form. This is a browser /login redirect only -- it
-# does not touch Basic Auth/app-password API or WebDAV access (those
-# hit the API/DAV endpoints directly, never the /login page), so
-# home_agent's own nextcloud_tools sidecar and the sankey_export
-# CronJob are unaffected. Nextcloud's own admin escape hatch stays
-# available if ever needed: appending ?direct=1 to the login URL shows
-# the real form again (see that repo's own README for why this is a
-# deliberate, documented admin bypass, not a bug).
+# user_oidc's documented force-SSO: with one provider, the login page redirects to it.
 - name: Force SSO -- redirect Nextcloud's own login form to Authelia
   community.docker.docker_container_exec:
     container: "{{ nextcloud_aio_nextcloud_container }}"
