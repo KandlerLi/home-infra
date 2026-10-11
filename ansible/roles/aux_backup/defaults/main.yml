@@ -1,59 +1,24 @@
-# Opt-in, matching every other role's own convention -- covers the
-# real, small host directories Nextcloud AIO's own Borg backup was
-# never going to reach (it only backs up its own managed
-# containers/volumes): Deluge's config and Open WebUI's real data,
-# both NFS-exported to k3s from this exact host (nfs_server's own
-# nfs_server_exports). Their bulk/re-attainable counterpart, Deluge's
-# `downloads` directory, is deliberately excluded -- large and
-# trivially re-downloadable, not worth backup storage or time.
+# Opt-in. Small host directories Nextcloud AIO's Borg backup never covers: see the README.
 aux_backup_enabled: false
 
-# Where archives land -- the same disk Nextcloud's own Borg backup
-# already uses (`storage`'s own `red_hdd_mount_point`), a fresh
-# subdirectory so the two backup mechanisms never share files. Plain
-# dated tarballs, not another Borg repository -- these sources are
-# small enough that Borg's own dedup/compression machinery would be
-# disproportionate, and a plain tarball needs no separate encryption
-# password to lose track of.
+# Same disk as Borg, its own subdirectory; plain dated tarballs.
 aux_backup_dest_dir: /mnt/red-hdd/aux-backups
 
-# How long a dated tarball survives before this role's own prune step
-# deletes it. Independent of Nextcloud's own Borg
-# `--keep-within=7d --keep-weekly=4 --keep-monthly=6` retention --
-# these sources are small enough that a flat window is simpler and
-# the extra cost of a longer flat window is negligible.
+# Independent of Borg's retention.
 aux_backup_retention_days: 14
 
-# When the timer fires. Deliberately offset from Nextcloud's own daily
-# Borg backup (03:00, nextcloud-aio's own AIO-side schedule) rather
-# than overlapping it -- both jobs are disk-I/O-heavy against
-# different physical disks (source: black-hdd/var; destination:
-# red-hdd for this role, red-hdd for Nextcloud's own too), so running
-# back-to-back rather than concurrently avoids doubling up on
-# red-hdd's own write contention specifically.
+# Offset from Nextcloud's 03:00 Borg backup.
 aux_backup_schedule: "*-*-* 03:30:00"
 
-# What to back up: name (used for the archive filename and as this
-# source's own log/error label) plus the real absolute path on this
-# host. Add an entry here for any future small, non-Nextcloud,
-# non-re-attainable host directory that needs the same treatment --
-# this list is the only thing that needs to change, the script/unit
-# below are already generic over it.
+# name labels the archive and the logs; path is the real host directory.
 aux_backup_sources:
   - name: deluge-config
     path: /mnt/black-hdd/deluge-config
   - name: open-webui
     path: /var/lib/open-webui
-    # webui.db is a live SQLite database in WAL mode, actively open by
-    # the real Open WebUI Pod over this same NFS export -- a plain tar
-    # of it fails outright (the -shm file is held locked) and even if
-    # it didn't, a raw copy of a live WAL-mode database isn't
-    # guaranteed consistent. Listed sources here get backed up via
-    # SQLite's own online backup API instead of a raw file copy -- see
-    # the script template's own comment for the full reasoning.
+    # Live WAL-mode SQLite: snapshotted with the online backup API, never copied raw.
     sqlite_files:
       - webui.db
 
-# Matches blocky_ipv6_relay_install_dir's own convention/location for
-# a small, standalone script.
+# Same location convention as blocky_ipv6_relay_install_dir.
 aux_backup_install_dir: /usr/local/lib/aux-backup

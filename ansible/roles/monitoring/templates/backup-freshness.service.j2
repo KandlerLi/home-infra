@@ -5,8 +5,7 @@ Requires=local-fs.target
 
 [Service]
 Type=oneshot
-# Root: the markers sit in root-only (0700) backup directories. Only
-# stat()s them, never reads their contents.
+# Root: the markers sit in root-only directories. Only stat()s them.
 ExecStart={{ monitoring_backup_freshness_script }}
 
 NoNewPrivileges=true

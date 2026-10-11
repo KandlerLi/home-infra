@@ -6,9 +6,7 @@ monitoring_restart_policy: unless-stopped
 monitoring_config_dir: /etc/monitoring
 monitoring_data_dir: /var/lib/monitoring
 
-# node_exporter: host health. Every container in this role runs
-# network_mode: host (ADR 0017) so Prometheus's own scrape configs can
-# address everything as a plain 127.0.0.1:<port>.
+# node_exporter. Every container runs network_mode: host (ADR 0017), so scrapes use 127.0.0.1.
 monitoring_node_exporter_container_name: node-exporter
 monitoring_node_exporter_image_name: prom/node-exporter
 monitoring_node_exporter_image_tag: v1.12.1
@@ -21,10 +19,7 @@ monitoring_node_exporter_memory_limit: 128M
 monitoring_node_exporter_cpu_limit: 0.5
 monitoring_node_exporter_pids_limit: 64
 
-# cAdvisor: container health. Runs as its image's own default (root
-# inside the container), not a dedicated unprivileged account -- a
-# restricted uid can't read /var/lib/docker or the cgroup hierarchy
-# this needs.
+# cAdvisor runs as root in its container: it reads /var/lib/docker and the cgroup tree.
 monitoring_cadvisor_container_name: cadvisor
 monitoring_cadvisor_image_name: ghcr.io/google/cadvisor
 monitoring_cadvisor_image_tag: v0.60.5
@@ -32,17 +27,13 @@ monitoring_cadvisor_image_digest: >-
   sha256:763aecf1c32c2be8a1a75f9abfc2fc461005c9dbbaa39cb356b354aac1296dbe
 monitoring_cadvisor_image: >-
   {{ monitoring_cadvisor_image_name }}:{{ monitoring_cadvisor_image_tag }}@{{ monitoring_cadvisor_image_digest }}
-# NOT 8080 -- that collides with Nextcloud AIO's own mastercontainer
-# admin interface. See KandlerLi/home-infra-docs' history.md
-# for the outage this caused before the port moved.
+# Not 8080: that is Nextcloud AIO's admin interface.
 monitoring_cadvisor_port: 8081
 monitoring_cadvisor_memory_limit: 256M
 monitoring_cadvisor_cpu_limit: 0.5
 monitoring_cadvisor_pids_limit: 128
 
-# blackbox_exporter: service reachability AND cert/DNS expiry in one tool
-# -- its HTTPS probe module reports probe_ssl_earliest_cert_expiry for
-# free, so no separate certificate-expiry exporter is needed.
+# blackbox_exporter covers reachability and certificate expiry in one tool.
 monitoring_blackbox_exporter_container_name: blackbox-exporter
 monitoring_blackbox_exporter_image_name: prom/blackbox-exporter
 monitoring_blackbox_exporter_image_tag: v0.28.0
@@ -55,21 +46,15 @@ monitoring_blackbox_exporter_memory_limit: 64M
 monitoring_blackbox_exporter_cpu_limit: 0.25
 monitoring_blackbox_exporter_pids_limit: 32
 
-# Every URL blackbox_exporter probes with its HTTPS/HTTP module for both
-# reachability and (for the https:// ones) certificate expiry. See ADR
-# 0019's own Update section for the retired shared_ingress ping probe
-# this list used to also carry.
+# Probed for reachability and, for https://, certificate expiry. See ADR 0019.
 monitoring_probe_targets:
   - https://nextcloud.jkandler.de/
   - https://www.jkandler.de/
   - http://jkandler.de/
-  # Paperless-ngx (ADR 0023): public login page, no forward-auth.
+  # Paperless-ngx (ADR 0023): public login page.
   - https://docs.jkandler.de/accounts/login/
 
-# ai.jkandler.de and torrent.jkandler.de sit behind Authelia forward-auth
-# -- blackbox has no session to send, so it's probed with
-# http_2xx_or_401 instead. See ADR 0019's own Update section for why
-# 302 (not 401) is what's actually returned, and why that's fine.
+# Behind Authelia forward-auth, so probed with http_2xx_or_401. See ADR 0019.
 monitoring_probe_targets_authenticated:
   - https://ai.jkandler.de/healthz
   - https://torrent.jkandler.de/
@@ -86,69 +71,32 @@ monitoring_prometheus_memory_limit: 512M
 monitoring_prometheus_cpu_limit: 1.0
 monitoring_prometheus_pids_limit: 128
 monitoring_prometheus_scrape_interval: 30s
-# Retention is capped by both time and size: the root disk this lives on
-# (not the HDD -- small footprint, and the HDD is spinning disk already
-# busy with Nextcloud/Deluge I/O) only had 23 GiB free at last check.
+# Root disk, not the busy HDD; retention bounded by time and size.
 monitoring_prometheus_retention_time: 30d
 monitoring_prometheus_retention_size: 2GB
 monitoring_prometheus_container_user: monitoring-prometheus
 
-# Off by default (loopback only). When set, Prometheus additionally
-# listens on this address, letting the k3s-native Grafana reach it as
-# its own datasource. 192.168.101.1 is the only value the role's own
-# validation allows.
+# Additional listener for the k3s-native Grafana; only 192.168.101.1 passes validation.
 monitoring_prometheus_k3s_bind_address: ""
 
-# Grafana and Alertmanager are no longer deployed by this role -- both
-# run as k3s-native copies instead (KandlerLi/k3s-apps). This is a clean
-# switch, not an addition, unlike the *_k3s_bind_address variables
-# above -- listing both the homeserver's own Alertmanager and the
-# k3s-native one would double-fire every notification. See
-# KandlerLi/home-infra-docs' history.md ("k3s learning
-# cluster") for the full cutover history.
+# A clean switch: listing both Alertmanagers would double-fire every notification.
 monitoring_alertmanager_upstream: 127.0.0.1:9093
 
-# Alerting: deliberately dual-channel (ntfy push + email), both wired to
-# every alert rule so one channel being misconfigured doesn't mean
-# silence. Prometheus evaluates alert_rules.yml (its own native alerting)
-# and forwards firing alerts to Alertmanager, which owns notification
-# routing/delivery -- Grafana's built-in alerting was considered instead
-# (one fewer container) but dropped: it needs each rule's query/threshold
-# expressed in Grafana's own multi-step provisioning schema rather than
-# plain PromQL, which is real added risk to get exactly right without a
-# live Grafana to verify against, for a resource cost (a single small Go
-# binary) that isn't actually worth avoiding.
+# Dual-channel alerting (ntfy and email), so one broken channel never means silence. See ADR 0019.
 
-# ntfy.sh is a public, unauthenticated-by-default service: anyone who
-# knows the topic name can read (and post to) it, so the topic itself is
-# the only thing standing between "just me" and "anyone who guesses it".
-# Set through SOPS to a long random string before the first deploy.
+# The topic name is the only secret on public ntfy.sh; set via Secrets Manager.
 monitoring_ntfy_url: https://ntfy.sh
 monitoring_ntfy_topic: ""
 
-# Alertmanager's webhook_configs can't template its POST body, and ntfy
-# doesn't understand Alertmanager's payload shape -- posting straight to
-# ntfy.sh showed the raw JSON as the notification text (confirmed live).
-# This small stdlib-only Python service (no Docker container, matching
-# nextcloud_tools/sankey_export's precedent for small standalone logic
-# rather than pulling in a new base image) sits between the two:
-# Alertmanager posts here, it reformats, then republishes to ntfy's own
-# JSON API. Stays on this host even though Alertmanager itself has
-# moved into k3s -- reached over the k3s listener below instead.
+# Translates Alertmanager webhooks into ntfy's format, which neither side does itself. See ADR 0019.
 monitoring_ntfy_relay_port: 9096
 monitoring_ntfy_relay_service_user: monitoring-ntfy-relay
 monitoring_ntfy_relay_install_dir: /usr/local/lib/monitoring/ntfy-relay
 
-# Off by default (loopback only); set live in inventory so the
-# k3s-native Alertmanager can reach the relay too -- see
-# ntfy_relay.py's own comment on LISTEN_HOST_K3S. 192.168.101.1 is the
-# only value this role's own validation allows.
+# Additional listener for the k3s-native Alertmanager; only 192.168.101.1 passes validation.
 monitoring_ntfy_relay_k3s_bind_address: ""
 
-# SES SMTP credentials come from KandlerLi/ses-relay's Terraform outputs, not
-# generated here -- see that repo's README for the exact values to copy
-# into SOPS. eu-central-1 matches this workspace's other AWS roots'
-# default region.
+# Credentials from ses-relay's Terraform outputs, stored in Secrets Manager.
 monitoring_ses_smtp_host: email-smtp.eu-central-1.amazonaws.com
 monitoring_ses_smtp_port: 587
 monitoring_ses_smtp_username: ""
@@ -160,32 +108,19 @@ monitoring_alert_email: julian.kandler@outlook.com
 monitoring_alert_disk_full_percent: 85
 monitoring_alert_cert_expiry_days: 14
 
-# Blocky is fully k3s-native now (KandlerLi/k3s-apps, modules/blocky/) --
-# no role in this repo owns Blocky's own existence any more, so this is
-# a plain, unconditional true.
+# Blocky is k3s-native and always on.
 monitoring_blocky_enabled: true
 monitoring_blocky_http_port: 4000
-# A clean switch, not an addition -- same reasoning as
-# monitoring_alertmanager_upstream above. Stays pointed at the
-# homeserver's own address until KandlerLi/k3s-apps' own modules/blocky is
-# confirmed handling real production DNS traffic.
+# A clean switch, like monitoring_alertmanager_upstream.
 monitoring_blocky_upstream: "127.0.0.1:{{ monitoring_blocky_http_port }}"
 
-# Blocky's own query-log Postgres writer has no reconnect logic, and
-# its `up` metric stays green through a silent logging gap -- this
-# exporter exposes pg_stat_user_tables metrics so alert_rules.yml.j2
-# can catch "no new log_entries rows in N minutes" directly.
+# Blocky's log writer never reconnects; this exporter lets alert_rules catch a silent gap.
 monitoring_blocky_postgres_exporter_port: 9187
 monitoring_blocky_postgres_exporter_upstream: "192.168.101.10:{{ monitoring_blocky_postgres_exporter_port }}"
 
-# Per-k3s-node CPU/mem/disk visibility (the private task list's "Per-k3s-node
-# Grafana dashboard + alerting"). Off by default -- flip once
-# KandlerLi/k3s-apps' own modules/node_exporter is confirmed applied.
+# Per-k3s-node visibility; off until k3s-apps' node_exporter module runs.
 monitoring_k3s_node_health_enabled: false
-# node-exporter runs as a DaemonSet (host_network: true), so each
-# node's own real IP:9100 is the target directly -- no Service/LoadBalancer
-# involved, unlike kube-state-metrics below. Both k3s nodes' addresses
-# (ansible/roles/k3s_node/defaults/main.yml has the canonical values).
+# node-exporter uses host networking, so each node's own IP:9100 is the target.
 monitoring_k3s_node_exporter_targets:
   - address: 192.168.101.10:9100
     node: k3s-node-1
@@ -193,17 +128,12 @@ monitoring_k3s_node_exporter_targets:
     node: k3s-node-2
 monitoring_k3s_kube_state_metrics_upstream: 192.168.101.10:8080
 
-# Backup freshness: the "Backups" dashboard plus BackupStale/
-# BackupMissing. Host-side backups are tracked by the mtime of a file
-# each run only writes on success (backup-freshness.sh.j2 exports it
-# through node_exporter's textfile collector); k3s CronJob backups by
-# kube-state-metrics' last-successful-run time.
+# Backup freshness: each marker file is only written on success. See backup-freshness.sh.j2.
 monitoring_backup_markers:
-  # Borg rewrites the repository's index.N on every committed
-  # transaction, so a failed backup leaves it untouched.
+  # Borg rewrites index.N on every committed transaction only.
   - name: nextcloud-borg
     path: /mnt/red-hdd/borg/index.*
-  # Touched by aux-backup.sh as its very last step.
+  # Touched by aux-backup.sh as its last step.
   - name: aux-backup
     path: /mnt/red-hdd/aux-backups/.last-success
 monitoring_backup_k3s_cronjobs:
@@ -213,7 +143,7 @@ monitoring_backup_max_age_hours: 26
 monitoring_backup_textfile_dir: "{{ monitoring_data_dir }}/node-exporter-textfile"
 monitoring_backup_freshness_script: /usr/local/lib/monitoring/backup-freshness.sh
 
-# Shared Docker logging bounds for every container this role manages.
+# Shared Docker logging bounds.
 monitoring_docker_log_options:
   max-size: 10m
   max-file: "3"

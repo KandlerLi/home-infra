@@ -28,19 +28,13 @@ groups:
 
   - name: container_health
     rules:
-      # 1 while Nextcloud AIO's Borg backup runs and for 15 minutes after:
-      # AIO stops its containers for the backup and starts them again
-      # once the borgbackup container exits.
+      # 1 during Nextcloud AIO's Borg backup and 15 minutes after.
       - record: nextcloud_aio:backup_window
         expr: >-
           count(max_over_time(container_last_seen{name="nextcloud-aio-borgbackup"}[15m])) > 0
 
       - alert: ContainerDown
-        # Aggregates by the stable "name" label, not cAdvisor's own
-        # "id" (cgroup path, which churns on every container recreate)
-        # -- see ADR 0019 for the false alerts this avoided.
-        # borgbackup and watchtower are one-shot AIO containers that
-        # always exit when done.
+        # By the stable name label, not cAdvisor's churning id; one-shot AIO containers excluded. See ADR 0019.
         expr: >-
           absent(container_last_seen{name!=""})
           or (
@@ -62,8 +56,7 @@ groups:
   - name: service_reachability
     rules:
       - alert: ServiceUnreachable
-        # Nextcloud is down by design during its Borg backup; still down
-        # after nextcloud_aio:backup_window ends, this fires as usual.
+        # Down by design during the backup window only.
         expr: >-
           probe_success == 0
           unless on (instance) (
@@ -97,12 +90,7 @@ groups:
   - name: blocky_health
     rules:
       - alert: BlockyQueryLogStale
-        # Blocky's own query-log Postgres writer has no reconnect logic
-        # and its `up` metric stays green through the gap -- see
-        # KandlerLi/home-infra-docs' history.md ("k3s learning
-        # cluster", Blocky entry). pg_stat_user_tables_n_tup_ins is a
-        # monotonic row-insert counter; zero increase means zero new
-        # queries got logged.
+        # Blocky's log writer never reconnects and its up metric stays green, so this watches row inserts.
         expr: >-
           absent(pg_stat_user_tables_n_tup_ins{relname="log_entries"})
           or (increase(pg_stat_user_tables_n_tup_ins{relname="log_entries"}[10m]) == 0)
@@ -124,8 +112,7 @@ groups:
 {% set backup_names = (monitoring_backup_markers | map(attribute='name') | list) + backup_cronjobs %}
   - name: backups
     rules:
-      # One series per backup, whatever produced it, for the Backups
-      # dashboard and both alerts below.
+      # One series per backup, whatever produced it.
       - record: backup:last_success_timestamp_seconds
         expr: >-
           max by (backup) (backup_last_success_timestamp_seconds)
@@ -148,8 +135,7 @@ groups:
             No successful run in over {{ monitoring_backup_max_age_hours }}
             hours -- the nightly job is failing or not running.
 
-      # A backup that has never succeeded has no timestamp at all, so
-      # BackupStale alone would stay silent about it.
+      # A never-successful backup has no timestamp, so BackupStale alone stays silent.
       - alert: BackupMissing
         expr: >-
 {% for name in backup_names %}
@@ -179,10 +165,7 @@ groups:
             node-exporter DaemonSet Pod -- the node itself may be down,
             or kubelet may have stopped scheduling Pods on it.
 
-      # Real, sustained usage -- not the request-vs-actual bookkeeping
-      # gap kube-state-metrics exists to surface on the dashboard
-      # itself (that's a capacity-planning signal to look at, not
-      # something worth waking anyone up over).
+      # Real, sustained usage only; request-vs-actual gaps are a dashboard concern.
       - alert: K3sNodeCPUHigh
         expr: >-
           100 - (avg by (node) (rate(node_cpu_seconds_total{job="k3s_node_exporter", mode="idle"}[5m])) * 100)

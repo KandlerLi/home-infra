@@ -46,12 +46,9 @@ class K3sNodeTests(unittest.TestCase):
         # Without get_checksum: false, stat would hash the whole multi-GB disk on every run.
         tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
 
-        self.assertIn(
-            'path: "{{ k3s_node_vm_disk_path }}"\n'
-            "    # Only .stat.exists is ever read below",
-            tasks,
-        )
-        self.assertIn("get_checksum: false", tasks)
+        stat_task = tasks.split("- name: Check k3s node disk\n")[1].split("\n- name:")[0]
+        self.assertIn('path: "{{ k3s_node_vm_disk_path }}"', stat_task)
+        self.assertIn("get_checksum: false", stat_task)
 
     def test_storage_mount_is_verified_before_disk_creation(self) -> None:
         # Never create the VM disk on the root filesystem if /mnt/black-hdd isn't mounted.

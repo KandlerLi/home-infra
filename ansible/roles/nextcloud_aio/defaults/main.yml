@@ -1,10 +1,5 @@
 ---
-# Deliberately not digest-pinned, unlike every other image in this repo.
-# Nextcloud's own AIO docs recommend :latest for the mastercontainer: it
-# orchestrates the sub-containers it manages (Nextcloud app, database,
-# etc.), which self-update through AIO's own internal mechanism, not
-# through Ansible -- pinning this to an old digest risks exactly the
-# compatibility mismatch digest-pinning elsewhere is meant to prevent.
+# Not digest-pinned: AIO recommends :latest for the mastercontainer. See the README.
 nextcloud_aio_image: ghcr.io/nextcloud-releases/all-in-one:latest
 nextcloud_aio_container_name: nextcloud-aio-mastercontainer
 
@@ -12,18 +7,10 @@ nextcloud_aio_config_volume: nextcloud_aio_mastercontainer
 
 nextcloud_aio_data_dir: /mnt/black-hdd/nextcloud
 
-# Bind-mounts this host directory into the Nextcloud app container at the
-# same path via AIO's NEXTCLOUD_MOUNT, making it eligible for Nextcloud's
-# "Local" external storage backend. Empty disables the mount entirely.
-# Not covered by AIO's built-in backup -- see docs/storage.md.
+# Exposed via AIO's NEXTCLOUD_MOUNT for the Local external storage backend; empty disables it.
 nextcloud_aio_mount_dir: ""
 nextcloud_aio_mount_point_name: Downloads
-# Nextcloud username (your own personal account, not a service account) the
-# mount is made visible to. Deliberately has no default other than empty --
-# a wrong guess here would grant an unintended account visibility into the
-# host downloads folder. The mount is created either way once
-# nextcloud_aio_mount_dir is set; only the "make it visible" step is skipped
-# until this is set.
+# No default: a wrong guess would expose the host directory to the wrong account.
 nextcloud_aio_mount_applicable_user: ""
 nextcloud_aio_nextcloud_container: >-
   {{ nextcloud_tools_nextcloud_container | default('nextcloud-aio-nextcloud') }}
@@ -45,20 +32,12 @@ nextcloud_aio_apache_ip_binding: 127.0.0.1
 nextcloud_aio_skip_domain_validation: false
 nextcloud_aio_ingress_cutover_confirmation: ""
 
-# See files/reconnect_apache_network.sh's own header comment for why
-# this exists. Same directory-plus-filename split as
-# monitoring_ntfy_relay_install_dir -- the directory needs its own
-# explicit create task before the script can be copied into it.
+# See files/reconnect_apache_network.sh.
 nextcloud_aio_apache_network_fix_install_dir: /usr/local/lib/nextcloud-aio
 nextcloud_aio_apache_network_fix_install_path: >-
   {{ nextcloud_aio_apache_network_fix_install_dir }}/reconnect_apache_network.sh
 
-# Off by default, matching this role's own nextcloud_aio_mount_dir
-# convention for opt-in sub-features -- see tasks/oidc.yml. Client
-# secret comes from the authelia_oidc_nextcloud_client_secret AWS
-# Secrets Manager value (home-infra/nextcloud group, exposed by
-# playbooks/site.yml's own pre_tasks), not a variable here -- matching
-# every other real credential in this repo, never given a default.
+# Opt-in, see tasks/oidc.yml; the client secret comes from Secrets Manager.
 nextcloud_aio_oidc_enabled: false
 nextcloud_aio_oidc_provider_name: Authelia
 nextcloud_aio_oidc_client_id: nextcloud

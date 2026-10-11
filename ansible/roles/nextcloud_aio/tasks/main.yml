@@ -52,19 +52,7 @@
           - >-
             not nextcloud_aio_reverse_proxy_enabled | bool
             or nextcloud_aio_apache_port | int == 11000
-          # The same deliberate exception shared_ingress's own upstream
-          # validation already uses for home.jkandler.de/
-          # torrent.jkandler.de: 192.168.101.1 is this homeserver's own
-          # address on the k3s VM's isolated libvirt NAT network, not a
-          # public or LAN-wide address -- confirmed (see nfs_server's own
-          # README) that network has no route from anywhere but this
-          # host. Binding Apache there instead of 127.0.0.1 doesn't
-          # actually leave the host's own trust boundary, it just adds
-          # reachability for the one VM attached to it (needed once
-          # nextcloud_tools runs there instead of on this host) alongside
-          # every process already on this host. shared_ingress's own
-          # nextcloud_upstream must be switched to match at the same
-          # time, or it loses its own route to Apache.
+          # Loopback, or the homeserver's k3s-network address so k3s can reach Apache. See the README.
           - >-
             not nextcloud_aio_reverse_proxy_enabled | bool
             or nextcloud_aio_apache_ip_binding == "127.0.0.1"
@@ -150,12 +138,7 @@
              else {}
            ) }}
 
-# The occ commands below were not verified against a live AIO instance at
-# write time (files_external:list's exact JSON shape and files_external:
-# create's exact positional-argument acceptance can vary by Nextcloud
-# version). If any task here fails, run the equivalent commands by hand
-# inside the nextcloud-aio-nextcloud container to find the actual shape
-# and fix this file -- do not silently skip past a failure here.
+# occ output shapes vary by Nextcloud version; a failure here means checking the live JSON first.
 - name: Manage local external storage for the mounted downloads folder
   when: nextcloud_aio_mount_dir | length > 0
   block:
@@ -223,12 +206,7 @@
           }}
       when: nextcloud_aio_mount_applicable_user | length > 0
 
-    # Always reported changed -- docker_container_exec has no
-    # idempotency check at all (it's a raw command-exec wrapper), and
-    # occ files_external:applicable --add-user gives no idempotent way
-    # to ask "is this user already applicable" short of parsing its own
-    # human-readable output. Same accepted tradeoff as the e1000e
-    # ethtool tasks in the base role.
+    # Always changed: neither docker_container_exec nor occ offers an idempotency check.
     - name: Make the downloads mount visible to the configured account
       community.docker.docker_container_exec:
         container: "{{ nextcloud_aio_nextcloud_container }}"
@@ -242,10 +220,7 @@
           - "{{ nextcloud_aio_mount_applicable_user }}"
       when: nextcloud_aio_mount_applicable_user | length > 0
 
-    # Nextcloud's own permission cache for this mount goes stale relative
-    # to what Deluge does to the files underneath it -- see
-    # KandlerLi/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known
-    # issues"). Run every apply, not just once: it's cheap.
+    # Nextcloud's permission cache goes stale under Deluge: see the nextcloud-aio runbook.
     - name: Rescan the downloads mount so Nextcloud's permission cache is current
       community.docker.docker_container_exec:
         container: "{{ nextcloud_aio_nextcloud_container }}"
@@ -258,8 +233,7 @@
       when: nextcloud_aio_mount_applicable_user | length > 0
       changed_when: false
 
-# Automates the manual docker-network-connect recovery step -- see
-# KandlerLi/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known issues").
+# Automates the manual network-reconnect step: see the nextcloud-aio runbook.
 - name: Create Nextcloud AIO Apache network-reconnect install directory
   ansible.builtin.file:
     path: "{{ nextcloud_aio_apache_network_fix_install_dir }}"
@@ -290,10 +264,7 @@
     daemon_reload: true
   when: nextcloud_aio_apache_network_fix_unit.changed
 
-# state: restarted, not started -- a plain "started" is a no-op
-# against a oneshot systemd already considers "active (exited)",
-# which would stop this from ever self-healing again after its first
-# success. See the nextcloud-aio runbook.
+# restarted, not started: started is a no-op on an exited oneshot.
 - name: Run the Apache network-reconnect check
   ansible.builtin.systemd_service:
     name: nextcloud-aio-apache-network-fix.service

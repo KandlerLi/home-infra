@@ -1,15 +1,5 @@
 #!/usr/bin/env bash
-#
-# Reconnects nextcloud-aio-apache to the nextcloud-aio Docker network if
-# it's missing -- see
-# KandlerLi/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known issues")
-# for the reboot bug this automates recovery from. Root cause is still
-# unknown (most likely a startup-ordering race), owned by AIO's own
-# mastercontainer -- this only automates the manual recovery.
-#
-# Run at boot (via the accompanying systemd unit) and safe to run any
-# other time too -- idempotent, exits cleanly if Apache is already
-# connected or hasn't appeared yet.
+# Reconnects nextcloud-aio-apache to its Docker network after a reboot: see the nextcloud-aio runbook ("Known issues").
 
 set -Eeuo pipefail
 
@@ -25,10 +15,7 @@ die() {
 
 command -v docker >/dev/null || die "docker is not on PATH."
 
-# AIO's own mastercontainer creates and starts its child containers on
-# its own schedule after a host reboot -- there's no systemd-visible
-# signal for "AIO has finished starting everything," so this polls
-# rather than assuming Apache exists by the time this unit runs.
+# AIO starts its children on its own schedule, so poll.
 deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
 while true; do
   if [[ "$(docker inspect --format '{{.State.Running}}' "$TARGET_CONTAINER" 2>/dev/null || true)" == "true" ]]; then

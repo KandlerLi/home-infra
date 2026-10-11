@@ -28,20 +28,13 @@ scrape_configs:
           - 127.0.0.1:{{ monitoring_cadvisor_port }}
 
 {% if monitoring_blocky_enabled | bool %}
-  # Blocky exposes real Prometheus metrics natively, unlike
-  # node_exporter/cAdvisor/blackbox_exporter, which needed dedicated
-  # sidecar exporters -- scraped directly, no /probe proxying needed.
+  # Blocky exposes metrics natively.
   - job_name: blocky
     static_configs:
       - targets:
           - {{ monitoring_blocky_upstream }}
 
-  # A dedicated sidecar exporter, unlike Blocky itself above -- Postgres
-  # has no native Prometheus endpoint of its own. Exposes
-  # pg_stat_user_tables (row insert/update/delete counts per table) via
-  # its default collector, no custom queries needed -- see
-  # alert_rules.yml.j2's own BlockyQueryLogStale rule for what this
-  # scrape target actually enables.
+  # Postgres has no native endpoint, hence the exporter sidecar.
   - job_name: blocky_postgres_exporter
     static_configs:
       - targets:
@@ -49,13 +42,7 @@ scrape_configs:
 {% endif %}
 
 {% if monitoring_k3s_node_health_enabled | bool %}
-  # Distinct job_name from the homeserver's own "node_exporter" above --
-  # both jobs expose identically-named metrics (node_cpu_seconds_total
-  # etc.), so k3s-node-health.json's own PromQL filters on
-  # job="k3s_node_exporter" specifically to avoid mixing the two.
-  # Per-target "node" labels (not a single static_configs block) so
-  # every k3s_node_exporter series carries a friendly k3s-node-1/
-  # k3s-node-2 label instead of just its scrape address.
+  # Its own job name: k3s-node-health.json filters on it, since the metric names are identical.
   - job_name: k3s_node_exporter
     static_configs:
 {% for target in monitoring_k3s_node_exporter_targets %}
@@ -71,9 +58,7 @@ scrape_configs:
           - {{ monitoring_k3s_kube_state_metrics_upstream }}
 {% endif %}
 
-  # blackbox_exporter's own multi-target pattern: each real target is
-  # passed as a "target" query param on a single /probe endpoint, not
-  # scraped directly -- the exporter does the actual probing per request.
+  # blackbox's multi-target pattern: each target is a query param on /probe.
   - job_name: blackbox_http
     metrics_path: /probe
     params:
@@ -91,9 +76,7 @@ scrape_configs:
       - target_label: __address__
         replacement: 127.0.0.1:{{ monitoring_blackbox_exporter_port }}
 
-  # Same pattern, but for targets behind Authelia forward-auth -- see
-  # monitoring_probe_targets_authenticated in defaults/main.yml and
-  # blackbox.yml.j2's http_2xx_or_401 module.
+  # The same pattern for targets behind Authelia forward-auth.
   - job_name: blackbox_http_authenticated
     metrics_path: /probe
     params:

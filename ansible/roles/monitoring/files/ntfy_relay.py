@@ -22,11 +22,7 @@ LOGGER = logging.getLogger(__name__)
 NTFY_URL = os.environ.get("NTFY_URL", "https://ntfy.sh")
 NTFY_TOPIC_FILE = os.environ.get("NTFY_TOPIC_FILE", "")
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "9096"))
-# Off by default (loopback only). When set, a second listener binds
-# this address additionally, so the k3s-native Alertmanager can reach
-# this too without breaking the loopback listener every other consumer
-# on this host still uses. 192.168.101.1 is the only value
-# ansible/roles/monitoring's own validation allows.
+# Optional second listener for the k3s-native Alertmanager, besides loopback.
 LISTEN_HOST_K3S = os.environ.get("LISTEN_HOST_K3S", "")
 MAX_REQUEST_BYTES = 262144
 
@@ -146,11 +142,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     server = ThreadingHTTPServer(("127.0.0.1", LISTEN_PORT), WebhookHandler)
     if LISTEN_HOST_K3S:
-        # A second, independent server instance -- not the same one
-        # bound twice, since ThreadingHTTPServer/socket.bind only takes
-        # one address. Runs in a background thread so the primary
-        # (loopback) server below can still own the main thread the
-        # same way it always has.
+        # A second server instance in a background thread; one server binds only one address.
         k3s_server = ThreadingHTTPServer((LISTEN_HOST_K3S, LISTEN_PORT), WebhookHandler)
         threading.Thread(target=k3s_server.serve_forever, daemon=True).start()
     server.serve_forever()

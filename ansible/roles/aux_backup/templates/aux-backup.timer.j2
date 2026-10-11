@@ -3,10 +3,7 @@ Description=Daily timer for aux-backup.service
 
 [Timer]
 OnCalendar={{ aux_backup_schedule }}
-# Runs the missed backup on next boot if the host was off at the
-# scheduled time, rather than silently skipping a whole day -- same
-# reasoning as this repo's other timer-adjacent asks around not
-# silently missing scheduled infra work.
+# Runs a missed backup on the next boot.
 Persistent=true
 
 [Install]
