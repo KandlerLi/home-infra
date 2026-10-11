@@ -246,7 +246,7 @@ class K3sNodeTests(unittest.TestCase):
 
         self.assertIn("k3s_node_vm_vcpus: 3", k3s_playbook)
         self.assertIn("k3s_node_vm_vcpus: 2", defaults)
-        self.assertNotIn("k3s_node_vm_vcpus", k3s_playbook.split("Second node:")[1])
+        self.assertNotIn("k3s_node_vm_vcpus", k3s_playbook.split("name: Provision k3s runner node")[1])
 
     def test_disk_creation_never_overwrites_an_existing_disk(self) -> None:
         tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")

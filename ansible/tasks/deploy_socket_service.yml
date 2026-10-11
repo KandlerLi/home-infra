@@ -1,19 +1,5 @@
 ---
-# Used by home_agent (originally shared with nextcloud_tools too, but
-# that role stopped deploying anything at all once it moved to k3s --
-# see its own README): install a restricted Python service, template
-# and restart its systemd unit, and wait for its Unix socket to
-# appear. Included with `role_path`-relative paths so it still works
-# from whichever role includes it, even though only one does today.
-#
-# Required vars (set on the `include_tasks` task that includes this file):
-#   socket_service_name           human-readable name used in task labels
-#   socket_service_src             absolute path to the Python file to copy
-#   socket_service_dest            destination path for the copied file
-#   socket_service_unit_template   absolute path to the systemd unit template
-#   socket_service_unit_name       systemd unit file name, e.g. home-tools.service
-#   socket_service_socket_path     Unix socket path to wait for
-#   socket_service_handler         exact handler name to notify
+# Restricted Python socket service, used by home_agent; its inputs are the socket_service_* vars below.
 
 - name: Install restricted {{ socket_service_name }} service
   ansible.builtin.copy:

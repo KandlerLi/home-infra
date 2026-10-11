@@ -5,33 +5,7 @@
   gather_facts: true
 
   pre_tasks:
-    # Replaces the 4 secrets community.sops.sops's own vars plugin used
-    # to expose directly to Ansible -- that plugin, secrets.sops.yml,
-    # and .sops.yaml are all gone now (the SOPS-to-Secrets-Manager
-    # cutover, a private task list item, fully done as of 2026-09-09).
-    # Explicit per-key facts, not a generic "spread every key" trick --
-    # confirmed live there's no documented set_fact mechanism for
-    # unpacking a whole dict into separate facts (a single fact holding
-    # the dict is all "set_fact: {{ dict }}" actually does), and only 4
-    # keys are genuinely consumed by Ansible directly (everything else
-    # flows through KandlerLi/k3s-apps' own Terraform instead -- see
-    # the private task list's secrets inventory). One lookup per Secrets
-    # Manager group, not per key, to avoid redundant API calls for the
-    # 3 keys that share "home-infra/monitoring".
-    #
-    # Gated the same way each value's own downstream role already gates
-    # its use (monitoring_enabled / nextcloud_aio_oidc_enabled) -- a
-    # real, new tradeoff worth being explicit about: unlike SOPS's
-    # local, offline GPG decrypt, this needs live AWS reachability and
-    # credentials at apply time. Gating means a playbook run doesn't
-    # gain that dependency when the features consuming these are
-    # disabled.
-    #
-    # region is explicit, not left to AWS_DEFAULT_REGION/~/.aws/config --
-    # found live 2026-09-09 that the operator's own local AWS CLI config
-    # defaults to a different region (eu-west-1) than where these
-    # secrets actually live (eu-central-1, KandlerLi/terraform-state's
-    # own var.aws_region), which 404s instead of erroring clearly.
+    # The only Secrets Manager values Ansible consumes directly; everything else flows through k3s-apps' Terraform.
     - name: Load Ansible-consumed secrets from AWS Secrets Manager
       when: monitoring_enabled | bool or nextcloud_aio_oidc_enabled | bool
       block:
@@ -60,14 +34,7 @@
   roles:
     - base
     - storage
-    # Must run before nfs_server -- its own "Reload NFS exports"
-    # task (exportfs -ra) fails outright if an export's directory
-    # doesn't exist yet ("Failed to stat ...: No such file or
-    # directory", confirmed live 2026-09-16 the one time this ran
-    # after nfs_server instead). Deluge's/Open WebUI's own export
-    # directories never hit this because they already existed on disk
-    # from before those exports were ever added -- a genuinely new
-    # export's owning role has to run first.
+    # Before nfs_server: exportfs -ra fails while an export's directory doesn't exist yet.
     - authelia_backup
     - paperless_storage
     - nfs_server
