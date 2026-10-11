@@ -1,25 +1,5 @@
 #!/usr/bin/env bash
-# Mimics what a real CI check would do for this repo before a real
-# local apply: run the test suite + syntax-check, then the actual
-# ansible-playbook invocation with the right flags -- so there's one
-# command to run instead of remembering the venv path, the playbook
-# path, and which flags mean "dry run" vs. "for real".
-#
-# Unlike KandlerLi/repo-infra's and KandlerLi/k3s-bootstrap's own
-# roll-out.sh, this one needs no SSH tunnel -- but it does need AWS
-# credentials, the same way those two do: playbooks/site.yml's own
-# pre_tasks read the 4 secret values (across 2 groups,
-# home-infra/monitoring and home-infra/nextcloud) Ansible genuinely
-# consumes straight from AWS Secrets Manager. Sourced from the
-# home-infra-local IAM identity in pass (never an ambient `aws login`
-# session -- see KandlerLi/terraform-state/README.md's
-# "home-infra-local Identity" section for how those got there).
-# --ask-become-pass stays interactive on purpose: sudo password entry
-# is exactly the kind of credential ADR 0018's own principle says
-# shouldn't be scripted away.
-#
-#   scripts/roll-out.sh dry-run
-#   scripts/roll-out.sh apply
+# Runs the tests and syntax check, then site.yml with the right flags. See the README.
 
 set -Eeuo pipefail
 

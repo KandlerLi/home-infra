@@ -19,14 +19,7 @@ from typing import Any
 
 SOCKET_PATH = os.environ.get("HOME_TOOLS_SOCKET", "/run/home-tools/home-tools.sock")
 DOCKER_SOCKET_PATH = os.environ.get("HOME_TOOLS_DOCKER_SOCKET", "/var/run/docker.sock")
-# Off by default. When set, a second listener joins the Unix socket above --
-# same fixed, argument-free, read-only handler either way, so widening
-# reachability doesn't widen what's actually exposed. Exists so home_agent
-# can still reach this service once it runs in the k3s VM instead of on
-# this host directly: TCP_BIND_ADDRESS is meant to be this homeserver's own
-# address on the k3s VM's isolated network (192.168.101.1), never 0.0.0.0
-# or a LAN-wide address -- enforced by the Ansible role's own validation,
-# not by this script, which only does what it's told.
+# Optional second listener with the same fixed, read-only handler.
 TCP_BIND_ADDRESS = os.environ.get("HOME_TOOLS_TCP_BIND_ADDRESS", "")
 TCP_PORT = int(os.environ.get("HOME_TOOLS_TCP_PORT", "0") or "0")
 FILESYSTEMS = tuple(
@@ -259,10 +252,7 @@ class ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamSe
 
 class ThreadingTCPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
-    # Rebinding immediately after a restart matters here since this
-    # listens on a specific address, not an ephemeral port -- without
-    # this a quick Restart=on-failure cycle can hit "Address already in
-    # use" while the kernel still holds the old socket in TIME_WAIT.
+    # Rebind right after a restart on a fixed address.
     allow_reuse_address = True
 
 

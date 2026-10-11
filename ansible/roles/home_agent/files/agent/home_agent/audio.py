@@ -21,8 +21,7 @@ from email.message import Message
 
 import httpx2
 
-# OpenAI's own transcription endpoint caps uploads at 25 MB; there is no
-# reason to accept more than the upstream would.
+# OpenAI's transcription endpoint caps uploads at 25 MB.
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 TRANSCRIPTIONS_URL = "https://api.openai.com/v1/audio/transcriptions"
 
@@ -43,8 +42,7 @@ def _extract_parts(body: bytes, content_type: str) -> tuple[bytes, str, str, str
     if not content_type.lower().startswith("multipart/form-data"):
         raise AudioTranscriptionError("expected a multipart/form-data request")
 
-    # email.message_from_bytes needs a header line ahead of the body to know
-    # the boundary; we already have that as the request's own Content-Type.
+    # email.message_from_bytes needs the Content-Type header to find the boundary.
     header = f"Content-Type: {content_type}\r\n\r\n".encode("ascii", "replace")
     message = email.message_from_bytes(header + body)
     if not message.is_multipart():

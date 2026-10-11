@@ -8,12 +8,10 @@ from typing import Any
 from .unix_socket_client import call_unix_socket_json
 
 MAX_TOOL_RESPONSE_BYTES = 1024 * 1024
-# read_nextcloud_document returns a PDF base64-encoded: the service's own
-# MAX_DOCUMENT_BYTES (4 MiB) * 4/3, plus metadata/JSON overhead.
+# A base64 PDF: the service's 4 MiB cap * 4/3, plus JSON overhead.
 MAX_DOCUMENT_RESPONSE_BYTES = 6 * 1024 * 1024
 MAX_ARGUMENT_BYTES = 4096
-# write_nextcloud_file can carry file content; matches the service's own
-# MAX_WRITE_BYTES + JSON overhead allowance (nextcloud_tools_service.py).
+# Matches the service's MAX_WRITE_BYTES plus JSON overhead.
 MAX_WRITE_ARGUMENT_BYTES = 256 * 1024 + 4096
 
 TOOL_PATHS = {
@@ -278,7 +276,6 @@ class NextcloudToolsClient:
             error_cls=NextcloudToolsError,
             body=body,
             headers={"Content-Type": "application/json"},
-            # A missing/unshared path is an answer the model should see,
-            # not an outage: the sidecar sends 404 {"error": "not_found"}.
+            # A missing path is an answer for the model, not an outage.
             passthrough_statuses=frozenset({404}),
         )

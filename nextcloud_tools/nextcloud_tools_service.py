@@ -27,14 +27,7 @@ SOCKET_PATH = os.environ.get(
     "NEXTCLOUD_TOOLS_SOCKET", "/run/nextcloud-tools/nextcloud-tools.sock"
 )
 ENDPOINT_HOST = os.environ.get("NEXTCLOUD_ENDPOINT_HOST", "127.0.0.1")
-# Closed allowlist, not a bare loopback check -- this guards against the
-# endpoint being pointed at an arbitrary host (defense in depth for an
-# AI-agent-facing tool), not against it running off the homeserver.
-# 192.168.101.1 is this homeserver's own address on the k3s VM's
-# isolated libvirt NAT network, the address the k3s-native copy of this
-# service (KandlerLi/k3s-apps) reaches Nextcloud AIO's Apache at -- same
-# trust boundary as nextcloud_aio_apache_ip_binding and
-# shared_ingress_nextcloud_upstream's own widened allowlists.
+# A closed allowlist guards against pointing the endpoint at an arbitrary host.
 ALLOWED_ENDPOINT_HOSTS = frozenset({"127.0.0.1", "192.168.101.1"})
 ENDPOINT_PORT = int(os.environ.get("NEXTCLOUD_ENDPOINT_PORT", "11000"))
 HTTP_HOST = os.environ.get("NEXTCLOUD_HTTP_HOST", "nextcloud.jkandler.de")
@@ -55,7 +48,7 @@ MAX_WRITE_BYTES = int(os.environ.get("NEXTCLOUD_MAX_WRITE_BYTES", str(256 * 1024
 MAX_SUMMARY_CHARS = int(os.environ.get("NEXTCLOUD_MAX_SUMMARY_CHARS", "4000"))
 MAX_ITEM_NAME_CHARS = int(os.environ.get("NEXTCLOUD_MAX_ITEM_NAME_CHARS", "200"))
 MAX_QUANTITY_CHARS = int(os.environ.get("NEXTCLOUD_MAX_QUANTITY_CHARS", "32"))
-# read_document (PDF/xlsx, see the "Document reading" section below).
+# read_document (PDF/xlsx), see Document reading below.
 MAX_DOCUMENT_BYTES = int(
     os.environ.get("NEXTCLOUD_MAX_DOCUMENT_BYTES", str(4 * 1024 * 1024))
 )
@@ -70,11 +63,7 @@ MAX_XLSX_COLUMNS = 1000
 MAX_XLSX_SHARED_STRINGS = 200_000
 MAX_XLSX_CELL_CHARS = 32_000
 
-# Scope for the Shopping List app is enforced entirely by Nextcloud's own
-# list sharing (the dedicated account only ever sees lists shared with it),
-# unlike WebDAV, which needs the ALLOWED_ROOT restriction above because an
-# account's DAV namespace always exposes its whole home directory tree. So
-# there is no allowed-list config to add here -- see ADR 0014.
+# Nextcloud's list sharing scopes the Shopping List app; no ALLOWED_ROOT needed.
 SHOPPING_LIST_APP_ID = "shopping_list"
 
 DAV = "DAV:"
@@ -218,17 +207,7 @@ def _send_http_request(
         connection.close()
 
 
-# --- Document reading (PDF/xlsx) -------------------------------------------
-#
-# Deliberately dependency-free: an .xlsx is a zip of XML, so it is turned
-# into plain text with zipfile + streaming ElementTree, never a third-party
-# parser. A PDF is not parsed here at all -- its bytes are handed to the
-# caller unchanged (after a magic-number check) and the model provider reads
-# it natively. Both file types are untrusted input, so everything below is
-# bounded: declared sizes are capped before anything is read, only named
-# parts are ever opened, XML with a DOCTYPE/ENTITY is refused outright, and
-# sheets are streamed instead of building a DOM (this runs in a 128 MiB
-# container).
+# Document reading (PDF/xlsx), dependency-free: an .xlsx is a zip of XML, read with zipfile and streaming ElementTree.
 _SS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 _PKG_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
@@ -1223,8 +1202,7 @@ class NextcloudToolsRequestHandler(BaseHTTPRequestHandler):
         except ValueError:
             self._send_json(400, {"error": "invalid_content_length"})
             return
-        # /v1/write can carry up to MAX_WRITE_BYTES of file content, far
-        # beyond the small fixed-shape arguments every other tool takes.
+        # /v1/write carries file content, far beyond other tools' small arguments.
         max_bytes = (
             MAX_WRITE_BYTES + 4096 if self.path == "/v1/write" else MAX_REQUEST_BYTES
         )

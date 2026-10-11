@@ -24,15 +24,7 @@ from pathlib import Path
 import yaml
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[3] / "github" / "repo-infra" / "config.yml"
-# A sibling repo, not a subdirectory of this one. In the standalone
-# k3s-bootstrap repo (extracted 2026-09-03 from what was originally a
-# bootstrap/ subdirectory inside KandlerLi/k3s-apps itself -- see that
-# migration's own plan) since this file feeds a variable
-# modules/github_runner/variables.tf declares, and that module now
-# lives there, in bootstrap/ alongside terraform-state -- repo-infra
-# itself moved out to its own github/ directory (2026-09-05), grouping
-# it with gha-common instead, since both are GitHub-specific rather
-# than AWS- or k3s-specific.
+# A sibling repo checkout, not a subdirectory of this one.
 DEFAULT_K3S_BOOTSTRAP_OUTPUT = (
     Path(__file__).resolve().parents[3] / "bootstrap" / "k3s-bootstrap" / "repositories.auto.tfvars.json"
 )

@@ -13,11 +13,7 @@
     fail_msg: "Ansible does not have root privileges."
     success_msg: "Ansible is running with root privileges."
 
-# The zsh/zsh-autosuggestions/zsh-syntax-highlighting group was
-# Homebrew-installed by hand before, entirely outside this repo --
-# migrated here so the interactive shell setup isn't an untracked install
-# any more (zsh-syntax-highlighting was already apt-installed and unused
-# by Ansible).
+# The interactive shell setup, formerly a hand-made Homebrew install.
 - name: Install base packages
   ansible.builtin.apt:
     name:
@@ -35,12 +31,7 @@
     update_cache: true
     cache_valid_time: 86400
 
-# The homeserver's onboard NIC (Intel 82579LM, driver e1000e) hits a
-# well-documented PCIe ASPM bug -- see
-# KandlerLi/home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
-# Only `base` needs this -- no other host in this repo has this NIC.
-# Takes effect only after a reboot -- this task and the `update-grub`
-# regeneration below just get the new parameter written and staged.
+# Intel 82579LM PCIe ASPM bug: see the homeserver-e1000e-nic-watchdog-hang runbook.
 - name: Disable PCIe ASPM in the kernel command line (e1000e watchdog-hang fix)
   ansible.builtin.lineinfile:
     path: /etc/default/grub
@@ -63,10 +54,7 @@
       that separately.
   when: grub_cmdline.changed
 
-# pcie_aspm=off alone wasn't enough -- see the e1000e runbook for the
-# recurrence. TSO/GSO/GRO offloading and Energy Efficient Ethernet are
-# the other two commonly-cited contributors for this chipset's bug --
-# takes effect immediately, no reboot needed.
+# ASPM off alone wasn't enough: offloading and EEE are the other usual contributors. See the runbook.
 - name: Install ethtool
   ansible.builtin.apt:
     name: ethtool
@@ -79,16 +67,10 @@
     cmd: >-
       ethtool -K {{ base_e1000e_interface }}
       tso off gso off gro off
-  # Always reported changed -- ethtool has no way to ask "would this
-  # change anything", and re-running an already-off setting is a
-  # harmless no-op. Same accepted tradeoff as k3s_ingress_forward's own
-  # "Force-persist once" task.
+  # ethtool can't tell whether anything would change.
   changed_when: true
 
-# Not every e1000e/kernel combination supports EEE at all -- tolerate
-# "Operation not supported" specifically rather than failing the whole
-# play, but still fail loudly on anything else (a typo'd interface
-# name, for instance).
+# Tolerates NICs without EEE support, fails on anything else.
 - name: Disable Energy Efficient Ethernet on the onboard NIC (e1000e watchdog-hang fix)
   ansible.builtin.command:
     cmd: "ethtool --set-eee {{ base_e1000e_interface }} eee off"
@@ -98,28 +80,18 @@
     base_eee_result.rc != 0
     and 'Operation not supported' not in base_eee_result.stderr
 
-# Persists the two settings above across reboots and any hotplug
-# re-up of this interface -- ethtool itself only ever changes the
-# live, in-kernel state, never anything on disk. ifupdown (this host
-# uses /etc/network/interfaces, not systemd-networkd) runs post-up
-# hooks every time it brings an interface up, which covers both boot
-# and a real cable reconnect the same way.
+# ethtool changes live state only; an ifupdown post-up hook reapplies it.
 - name: Persist the NIC offload/EEE settings via an ifupdown post-up hook
   ansible.builtin.blockinfile:
     path: /etc/network/interfaces
     insertafter: '^iface {{ base_e1000e_interface }} inet dhcp$'
     marker: "# {mark} ANSIBLE MANAGED BLOCK -- e1000e watchdog-hang fix"
-    # Flush-left, not tab-indented -- ifupdown parses each stanza
-    # continuation line on its own merits regardless of indentation;
-    # only YAML's own block-scalar indentation rules matter here.
+    # Flush-left is fine: ifupdown ignores the indentation.
     content: |
       post-up /sbin/ethtool -K {{ base_e1000e_interface }} tso off gso off gro off
       post-up /sbin/ethtool --set-eee {{ base_e1000e_interface }} eee off || true
 
-# A safety net on top of the two fixes above, not a replacement for
-# them -- forces a full PCI-level unbind/rebind of the NIC the moment
-# the kernel logs a NETDEV WATCHDOG event, rather than trusting the
-# driver's own internal reset to recover. See the e1000e runbook.
+# A safety net: rebinds the NIC on a NETDEV WATCHDOG event. See the runbook.
 - name: Create e1000e watchdog recovery install directory
   ansible.builtin.file:
     path: "{{ base_e1000e_watchdog_recovery_install_dir }}"
@@ -159,15 +131,7 @@
       {{ 'restarted' if (base_e1000e_watchdog_recovery_script.changed
          or base_e1000e_watchdog_recovery_unit.changed) else 'started' }}
 
-# A total, silent freeze (no kernel log entries at all, unlike the
-# e1000e bug's own signature) needed a manual physical reboot -- see
-# KandlerLi/home-infra-docs/docs/runbooks/homeserver-silent-freeze.md. This
-# hardware has a working watchdog timer device systemd wasn't using at
-# all; enabling it is a root-cause-agnostic safety net: if the kernel
-# ever stops scheduling entirely and can't pet the watchdog, the
-# hardware forces a real reset on its own. daemon-reexec (not
-# daemon-reload) is what gets PID1 to pick up the changed system.conf
-# immediately.
+# For total silent freezes: see the homeserver-silent-freeze runbook.
 - name: Enable the hardware watchdog via systemd
   ansible.builtin.lineinfile:
     path: /etc/systemd/system.conf
@@ -180,11 +144,7 @@
     cmd: systemctl daemon-reexec
   when: base_watchdog_config.changed
 
-# the private task list, "Homeserver has no stable IPv6 address" -- pins IPv6
-# address generation on enp0s25 to EUI-64. Confirmed live this host has
-# no dhcpcd.service unit at all (dhcpcd-base is installed only as a
-# dependency of something else, never actually running) -- IPv6 here
-# is kernel-native SLAAC via these sysctls alone, not dhcpcd.
+# Pins enp0s25's IPv6 address generation to EUI-64 for a stable address.
 - name: Persist deterministic IPv6 address generation via sysctl
   ansible.posix.sysctl:
     name: "{{ item.name }}"
@@ -198,9 +158,7 @@
       value: "0"
   register: base_ipv6_sysctl
 
-# Deliberately doesn't bounce enp0s25 itself -- this Ansible run is
-# SSHing over it. See the private task list for why a config change alone doesn't
-# move the address.
+# Doesn't bounce enp0s25: this run uses it for SSH.
 - name: Flag that the IPv6 address won't update until the interface is recycled
   ansible.builtin.debug:
     msg: >-
@@ -229,9 +187,7 @@
     name: "{{ admin_user }}"
     shell: /usr/bin/zsh
 
-# Pinned to today's HEAD, not a moving branch -- a future update is a
-# deliberate SHA bump here, the same way Terraform/base-image versions
-# are pinned elsewhere in this repo.
+# Pinned to a commit; updates are deliberate SHA bumps.
 - name: Install Oh My Zsh
   ansible.builtin.git:
     repo: https://github.com/ohmyzsh/ohmyzsh.git
@@ -239,8 +195,7 @@
     version: 146461f7c6d95f4ba1220559d66eb113418b40a8
     depth: 1
 
-# Pinned to v1.20.0 -- the exact version already in use via Homebrew, so
-# migrating off brew doesn't change the prompt's look.
+# The version Homebrew had installed, so the prompt looks the same.
 - name: Install Powerlevel10k theme
   ansible.builtin.git:
     repo: https://github.com/romkatv/powerlevel10k.git

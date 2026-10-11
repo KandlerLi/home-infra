@@ -25,9 +25,7 @@
       /dev/kvm does not exist. Hardware virtualization may be disabled
       in the BIOS/UEFI or unsupported by the CPU.
 
-# getent fails the task on its own if the key isn't found (same idiom
-# deluge's role uses to look up its own service account) -- no need for
-# a raw `getent` shell-out plus a separate assert on the return code.
+# getent fails on its own when the key is missing.
 - name: Verify libvirt QEMU runtime user exists
   ansible.builtin.getent:
     database: passwd
@@ -66,11 +64,7 @@
   changed_when: false
   when: "'default' in libvirt_host_defined_networks.stdout_lines"
 
-# libvirt's own "default" NAT network is created by the package install
-# itself -- it ships with autostart off. Set directly via virsh, not
-# community.libvirt.virt_net -- see k3s_node's own provision_vm.yml
-# and KandlerLi/home-infra-docs' history.md for the upstream
-# bug this works around.
+# The package's default network ships with autostart off; virsh because virt_net's autostart doesn't stick.
 - name: Ensure the default libvirt network autostarts
   ansible.builtin.command:
     argv:

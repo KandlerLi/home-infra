@@ -68,9 +68,7 @@ def call_unix_socket_json(
         if not isinstance(payload, dict):
             raise error_cls("tool returned an unexpected response")
         if response.status_code != 200 and "error" not in payload:
-            # A pass-through status only counts when the service itself
-            # sent a structured error; a bare 404 (wrong route, proxy)
-            # must not look like an empty successful result.
+            # Only a structured error from the service passes through; a bare 404 must not look like an empty result.
             raise error_cls("tool is unavailable")
         return payload
     except (httpx2.HTTPError, json.JSONDecodeError) as error:

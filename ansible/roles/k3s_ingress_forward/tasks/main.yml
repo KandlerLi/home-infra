@@ -9,8 +9,7 @@
       static address -- this role forwards real public traffic, so a
       silent typo here would relay it to the wrong place entirely.
 
-# debconf preseed avoids apt blocking on iptables-persistent's
-# interactive "Save current IPv4/IPv6 rules?" install-time prompt.
+# Avoids iptables-persistent's interactive install prompt.
 - name: Preseed iptables-persistent to skip its install-time prompts
   ansible.builtin.debconf:
     name: iptables-persistent
@@ -27,12 +26,7 @@
     state: present
     update_cache: true
 
-# Inserted at rule_num 1 of the base FORWARD chain -- ahead of Docker's
-# and libvirt's own chains, so this terminates before ever reaching
-# either. See KandlerLi/home-infra-docs' history.md ("k3s
-# learning cluster") for why libvirt's own LIBVIRT_FWI chain needs
-# this. Scoped tightly to k3s_ingress_forward_target_ip and each
-# rule's own target_port, never a blanket FORWARD ACCEPT.
+# rule_num 1, ahead of Docker's and libvirt's chains: see history.md.
 - name: Allow forwarded ingress traffic to reach k3s
   ansible.builtin.iptables:
     state: "{{ 'present' if (k3s_ingress_forward_enabled | bool) else 'absent' }}"
@@ -57,11 +51,7 @@
       {{ item.public_port }} -> {{ item.target_port }}
   register: k3s_ingress_forward_accept_result
 
-# One-time reconciliation: this rule's own comment format (and its
-# always-tcp protocol) predates per-rule protocol support, and the
-# pre-fix shape was never cleaned up the way the DNAT rule's own was --
-# harmless duplicate ACCEPT rules, but the kind of drift this repo
-# tries not to accumulate.
+# One-time removal of the accept rule's pre-protocol shape.
 - name: Remove the pre-fix FORWARD accept rule shape (always tcp, no protocol in comment)
   ansible.builtin.iptables:
     state: absent
@@ -85,12 +75,7 @@
   when: k3s_ingress_forward_enabled | bool
   register: k3s_ingress_forward_accept_reconcile_result
 
-# One-time reconciliation for the hairpin bug this role's DNAT rule
-# used to have -- see history.md. Ansible's iptables module
-# matches rules by exact parameter set, so re-applying the corrected
-# rule alone would add it alongside the old, still-winning one instead
-# of replacing it. Safe to delete once every real host has picked up
-# this fix.
+# One-time removal of the old DNAT shape: re-applying alone would add a second rule. See history.md.
 - name: Remove the pre-fix DNAT rule shape (no interface restriction)
   ansible.builtin.iptables:
     state: absent
@@ -100,12 +85,7 @@
     destination_port: "{{ item.public_port }}"
     jump: DNAT
     to_destination: "{{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}"
-    # Matches this role's very first shape (commit 4accac7), from
-    # before per-rule protocol support added a "tcp"/"udp" prefix to
-    # this comment (commit 84662f5) -- iptables -C requires every
-    # specified field to match exactly, comment included, so this has
-    # to reproduce the original text verbatim, not the current
-    # template, to actually find and remove the live rule.
+    # The first rule's exact comment: iptables -C matches comments too.
     comment: >-
       k3s_ingress_forward: {{ item.public_port }} ->
       {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
@@ -117,11 +97,7 @@
   when: k3s_ingress_forward_enabled | bool
   register: k3s_ingress_forward_reconcile_result
 
-# One-time reconciliation, same class of bug as the interface-
-# restriction fix above -- see history.md for the real Nextcloud
-# AIO/ghcr.io crash loop this caused. Removes the old,
-# destination-unrestricted rule shape; a no-op after the first apply
-# that includes it.
+# One-time removal of the destination-unrestricted shape: see history.md.
 - name: Remove the destination-unrestricted DNAT rule shape (2026-09-05 fix)
   ansible.builtin.iptables:
     state: absent
@@ -149,15 +125,9 @@
     state: "{{ 'present' if (k3s_ingress_forward_enabled | bool) else 'absent' }}"
     table: nat
     chain: PREROUTING
-    # Excludes the k3s VM's own outbound traffic from matching this
-    # rule -- see k3s_ingress_forward_target_bridge's own comment in
-    # defaults/main.yml for why this is required, not optional.
+    # Excludes the k3s VM's own outbound traffic.
     in_interface: "!{{ k3s_ingress_forward_target_bridge }}"
-    # Restricts this rule to packets actually addressed to this host --
-    # ansible_host is the same address inventory already uses to reach
-    # this box, so there's no separate literal to drift out of sync.
-    # See the reconciliation task above for why this wasn't here
-    # before, and what it broke.
+    # Only packets addressed to this host.
     destination: "{{ ansible_host }}"
     protocol: "{{ item.protocol | default('tcp') }}"
     destination_port: "{{ item.public_port }}"
@@ -174,10 +144,7 @@
       {{ item.public_port }} -> {{ item.target_port }}
   register: k3s_ingress_forward_dnat_result
 
-# One-time catch-up: an earlier apply removed the old rule live but
-# skipped persisting, so the saved iptables-persistent state on disk
-# is stale until this runs once. Safe to delete once every real host
-# has picked up this fix.
+# One-time catch-up of stale saved rules; delete once every host has run it.
 - name: Force-persist once to catch the saved state up to 2026-09-01's live fix
   ansible.builtin.command:
     argv:
