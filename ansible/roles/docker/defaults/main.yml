@@ -12,5 +12,5 @@ docker_packages:
 
 docker_service_name: docker
 
-# See tasks/main.yml -- empty means Docker's own defaults, untouched.
+# Empty keeps Docker's own defaults.
 docker_daemon_config: {}

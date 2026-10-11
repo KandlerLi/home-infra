@@ -59,11 +59,7 @@ def create_provider() -> AnthropicMessagesProvider:
     key_path = os.environ.get("ANTHROPIC_API_KEY_FILE", "/run/secrets/anthropic/anthropic_api_key")
     model = os.environ.get("HOME_AGENT_MODEL", "claude-opus-5")
     socket_path = os.environ.get("HOME_TOOLS_SOCKET", "/run/home-tools/home-tools.sock")
-    # Set only when home_agent runs off the homeserver itself (the k3s
-    # cluster) and needs home_tools_service's TCP listener instead --
-    # see HomeToolsClient's own docstring. Takes precedence over
-    # socket_path so a deployment that sets both doesn't silently keep
-    # trying (and failing) the Unix socket.
+    # Set only when home_agent runs off the homeserver; takes precedence over socket_path.
     home_tools_tcp_base_url = os.environ.get("HOME_TOOLS_TCP_BASE_URL")
     nextcloud_socket_path = os.environ.get("NEXTCLOUD_TOOLS_SOCKET")
     return AnthropicMessagesProvider(
@@ -220,7 +216,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
                 raise ValueError("truncated chunked body")
             chunk_size = int(size_line.split(b";", 1)[0].strip(), 16)
             if chunk_size == 0:
-                # Consume any trailer headers up to the terminating blank line.
+                # Consume trailer headers up to the blank line.
                 while True:
                     trailer_line = self.rfile.readline(64)
                     if not trailer_line or trailer_line in (b"\r\n", b"\n"):
@@ -236,12 +232,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
     def _handle_audio_transcriptions(self) -> None:
         content_type = self.headers.get("Content-Type", "")
 
-        # Open WebUI streams the recorded file through aiohttp from an
-        # async generator, so it can't know the body's total size upfront
-        # and sends Transfer-Encoding: chunked with no Content-Length at
-        # all (confirmed against its actual FormData behavior) -- handle
-        # both shapes rather than assuming a fixed Content-Length always
-        # exists like the JSON endpoints can.
+        # Open WebUI streams audio chunked, without Content-Length.
         if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
             try:
                 body = self._read_chunked_body(MAX_AUDIO_BYTES)
@@ -351,8 +342,7 @@ class AgentRequestHandler(BaseHTTPRequestHandler):
         )
 
     def _log_provider_failure(self, error: Exception) -> None:
-        # This HTTP boundary deliberately logs only the exception type so SDK
-        # details, request contents, and credentials never leak.
+        # Only the exception type, so request contents and credentials never leak.
         LOGGER.error("Agent request failed: %s", type(error).__name__)
 
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
@@ -382,9 +372,7 @@ def normalize_conversation(value: Any) -> list[dict[str, str]] | None:
         role = item.get("role")
         content = item.get("content")
 
-        # Open WebUI may prepend its own system text. The home-agent keeps its
-        # fixed server-side instructions and never accepts a caller-supplied
-        # replacement for that safety boundary.
+        # The fixed server-side instructions are a safety boundary; callers can't replace them.
         if role in {"system", "developer"}:
             continue
         if role not in {"user", "assistant"} or not isinstance(content, str):

@@ -48,14 +48,7 @@
     state: present
     update_cache: true
 
-# Empty by default -- every network docker network create makes still
-# just gets Docker's own default MTU. Set docker_daemon_config to override
-# it if a real need shows up again (was used once to lower the runner
-# VM's bridge MTU after a live TLS reset; removed after direct testing
-# showed ICMP PMTUD works correctly end-to-end through every hop on that
-# path -- see the docker role's README). Symmetric with the removal task
-# below it, so going back to {} actually reverts a previously-installed
-# override instead of silently leaving it in place.
+# Empty by default; set docker_daemon_config when a real override is needed again.
 - name: Install Docker daemon configuration
   ansible.builtin.copy:
     content: "{{ docker_daemon_config | to_nice_json }}\n"

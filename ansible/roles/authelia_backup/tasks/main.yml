@@ -19,14 +19,7 @@
         authelia_backup_uid: "{{ ansible_facts.getent_passwd[authelia_backup_user][1] }}"
         authelia_backup_gid: "{{ ansible_facts.getent_passwd[authelia_backup_user][2] }}"
 
-    # KandlerLi/k3s-apps' CronJob hardcodes run_as_user/run_as_group to
-    # whatever uid/gid this account was actually assigned (see this
-    # role's own README) rather than looking them up dynamically --
-    # same "confirmed live, then hardcoded, then drift-checked here"
-    # pattern open_webui's own role already established. Unlike
-    # open_webui's own single uid=gid coincidence, this account's
-    # uid/gid are NOT the same number (984/979), so both need their
-    # own hardcoded expectation and their own drift check.
+    # k3s-apps hardcodes this account's uid/gid, so a mismatch must fail here.
     - name: Validate the Authelia backup service account matches what k3s-apps hardcodes
       ansible.builtin.assert:
         that:

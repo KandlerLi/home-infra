@@ -1,15 +1,5 @@
 ---
-# Host prerequisites for Open WebUI: a dedicated service account and
-# its real data directory. This role used to also run Open WebUI
-# itself as a Docker container; that's retired now (cut over to
-# ai.jkandler.de together with home_agent on 2026-08-30, see
-# KandlerLi/k3s-apps' modules/open_webui/), but this prerequisite stays --
-# the k3s-native copy reads the exact same real data (accounts, chat
-# history) over a new NFS export of open_webui_data_dir (see
-# nfs_server's exports in group_vars) as this exact service account
-# (its uid is hardcoded in k3s-apps' Deployment), so a homeserver
-# rebuild still needs Ansible to recreate it identically rather than
-# leaving that as undocumented manual state.
+# Host prerequisites for the k3s-native Open WebUI: service account and data directory. See the README.
 
 - name: Create Open WebUI container account
   ansible.builtin.user:
@@ -28,14 +18,7 @@
     open_webui_container_uid: >-
       {{ ansible_facts.getent_passwd[open_webui_container_user][1] }}
 
-# KandlerLi/k3s-apps' Deployment hardcodes run_as_user=995 (and, notably,
-# run_as_group=0/root -- not this account's own default group, matching
-# how this role has always started the container: "995:0", not
-# "995:988") rather than looking the uid up dynamically -- confirmed
-# live to match this account when it was created. If a homeserver
-# rebuild ever assigned a different uid here, the k3s Pod would
-# silently mount the NFS export as the wrong uid instead of failing
-# loudly -- catch that drift here instead.
+# k3s-apps hardcodes run_as_user 995 and group 0, so a mismatch must fail here.
 - name: Validate the Open WebUI service account matches what k3s-apps hardcodes
   ansible.builtin.assert:
     that:

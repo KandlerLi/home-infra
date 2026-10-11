@@ -83,14 +83,11 @@ ANTHROPIC_NEXTCLOUD_TOOL_DEFINITIONS = [
 ]
 
 
-# Per-request ceilings on how much tool use one question may trigger. Every
-# round re-sends the whole conversation (PDFs included), so these bound the
-# worst-case cost of a single question. Overridable in api.create_provider.
+# Per-request tool-use ceilings: every round re-sends the whole conversation.
 DEFAULT_MAX_TOOL_ROUNDS = 6
 DEFAULT_MAX_TOOL_CALLS = 20
 
-# Sent instead of results once a limit is hit, so the model still answers
-# with what it already retrieved instead of the whole request failing.
+# Sent instead of results once a limit is hit, so the model still answers.
 TOOL_LIMIT_ERROR = {"error": "tool_limit_reached"}
 TOOL_LIMIT_WRAP_UP = (
     "You have reached the limit of tool calls allowed for this request, so "
@@ -173,9 +170,7 @@ class AnthropicMessagesProvider:
             if not calls:
                 return self._final_text(response)
 
-            # Only appended once we know there are tool_use blocks to answer --
-            # a conversation that ends here (the branch above) has no reason
-            # to grow its own history right before returning.
+            # Only appended when there are tool_use blocks to answer.
             conversation.append({"role": "assistant", "content": response.content})
 
             if round_number == self.max_tool_rounds:
@@ -186,8 +181,7 @@ class AnthropicMessagesProvider:
             for call in calls:
                 tool_call_count += 1
                 if limit_hit or tool_call_count > self.max_tool_calls:
-                    # Every tool_use still needs a tool_result, so the rest of
-                    # this round is answered with the limit error, not run.
+                    # Every tool_use needs a tool_result, so the rest get the limit error.
                     limit_hit = True
                     tool_results.append(_tool_limit_result(call))
                     continue
@@ -237,10 +231,7 @@ class AnthropicMessagesProvider:
             model=self.model,
             max_tokens=4096,
             system=SYSTEM_INSTRUCTIONS,
-            # This is a quick conversational homeserver assistant, not a
-            # coding/agentic workload -- low effort keeps cost close to
-            # the previous gpt-5.4-mini baseline instead of defaulting to
-            # this workload onto full reasoning depth.
+            # A quick conversational assistant: low effort keeps the cost down.
             output_config={"effort": "low"},
             tools=tools,
             messages=conversation,

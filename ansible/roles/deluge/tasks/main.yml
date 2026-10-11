@@ -1,13 +1,5 @@
 ---
-# Host prerequisites for Deluge: a dedicated service account and the
-# NFS-exported directories/ACL it needs. This role used to also run
-# Deluge itself as a Docker container; that's retired now (see
-# KandlerLi/k3s-apps, Terraform-managed) but these prerequisites stay --
-# the k3s-native copy reads these same two directories over NFS (see
-# nfs_server's exports in group_vars) as this exact service account
-# (its uid/gid are hardcoded as PUID/PGID in k3s-apps' Deployment), so
-# a homeserver rebuild still needs Ansible to recreate them identically
-# rather than leaving that as undocumented manual state.
+# Host prerequisites for the k3s-native Deluge: service account, directories and ACLs. See the README.
 
 - name: Create Deluge service group
   ansible.builtin.group:
@@ -39,13 +31,7 @@
     deluge_uid: "{{ ansible_facts.getent_passwd[deluge_service_user][1] }}"
     deluge_gid: "{{ ansible_facts.getent_group[deluge_service_group][1] }}"
 
-# KandlerLi/k3s-apps' Deployment hardcodes PUID=993/PGID=986 rather than
-# looking these up dynamically -- confirmed live to match this account
-# when it was created. If a homeserver rebuild ever assigned different
-# uid/gid numbers here (e.g. some other system account taking 993
-# first), the k3s Deployment would silently write into these
-# directories as the wrong uid instead of failing loudly -- catch that
-# drift here instead.
+# k3s-apps hardcodes PUID 993/PGID 986, so a mismatch must fail here.
 - name: Validate the Deluge service account matches what k3s-apps hardcodes
   ansible.builtin.assert:
     that:
@@ -74,23 +60,7 @@
     group: "{{ deluge_service_group }}"
     mode: "{{ item.mode }}"
   loop:
-    # downloads is 0755, not 0750: Nextcloud's external storage mount
-    # reads this directory as its own container's runtime uid
-    # (www-data, confirmed live to not be in the deluge group), so
-    # "other" needs read+execute to traverse and list it -- this is
-    # the one directory the deluge role's own comment above says is
-    # meant to be exposed to Nextcloud. Deluge's own default umask
-    # already makes the per-torrent subfolders/files it creates
-    # world-readable, so this top-level directory was the only thing
-    # actually blocking visibility. config stays 0750 (private
-    # session state/password hash, never meant to be shared).
-    #
-    # 0755's "other" bits are read+execute only, not write -- Unix
-    # delete/rename needs write on the *containing* directory, so
-    # Nextcloud could list and open files but never delete them. Not
-    # widened to 0757: that would let any process on the host write
-    # here, not just www-data specifically. The ACL tasks below grant
-    # write access to exactly that one account instead.
+    # downloads is 0755: Nextcloud reads it as www-data, outside the deluge group.
     - path: "{{ deluge_downloads_dir }}"
       mode: "0755"
     - path: "{{ deluge_config_dir }}"
@@ -98,14 +68,7 @@
   loop_control:
     label: "{{ item.path }}"
 
-# Grants www-data (Nextcloud AIO's own process, see
-# deluge_downloads_nextcloud_user above) write access to the downloads
-# directory and everything already inside it, so Nextcloud can delete
-# files it can already see. "default: true" makes this the default ACL
-# too, so any new per-torrent subfolder Deluge creates going forward
-# inherits it automatically (Linux propagates a directory's default ACL
-# into both the access and default ACL of anything created inside it) --
-# the recursive pass below only needs to cover what already exists.
+# Write access for Nextcloud's www-data, so it can delete files.
 - name: Grant Nextcloud's process future write access to new downloads
   ansible.posix.acl:
     path: "{{ deluge_downloads_dir }}"
@@ -115,11 +78,7 @@
     default: true
     state: present
 
-# Always reported changed -- ansible.posix.acl with recursive: true
-# re-applies via setfacl -R every run rather than diffing existing
-# entries first, a known module limitation (unlike the non-recursive
-# task above, which correctly no-ops once the ACL's already set). Same
-# accepted tradeoff as the e1000e ethtool tasks in the base role.
+# Always changed: a recursive ACL re-applies every run.
 - name: Grant Nextcloud's process write access to existing downloads
   ansible.posix.acl:
     path: "{{ deluge_downloads_dir }}"

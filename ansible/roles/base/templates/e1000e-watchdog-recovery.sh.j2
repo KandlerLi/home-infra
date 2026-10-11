@@ -1,13 +1,5 @@
 #!/bin/sh
-# Watches the kernel log for the e1000e NIC's own watchdog-detected
-# hardware hang ("NETDEV WATCHDOG ... transmit queue N timed out") and
-# forces a full PCI-level unbind/rebind of the device -- a stronger,
-# independent reinitialization than the driver's own internal reset,
-# which can get stuck retrying and failing for hours on its own. See
-# KandlerLi/home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
-#
-# "-n 0" skips the existing journal backlog on start -- only react to
-# NEW hangs from this point on, never replay history on every restart.
+# Rebinds the e1000e NIC at PCI level on a watchdog hang: see the homeserver-e1000e-nic-watchdog-hang runbook.
 set -u
 
 journalctl -k -f -o cat -n 0 | while IFS= read -r line; do
@@ -24,10 +16,7 @@ journalctl -k -f -o cat -n 0 | while IFS= read -r line; do
         logger -t e1000e-watchdog-recovery "Rebind failed: $(cat "${err_file}")"
       fi
       rm -f "${err_file}"
-      # Debounce: the driver keeps re-logging "Detected Hardware Unit
-      # Hang" every ~2s for as long as it stays wedged -- without this,
-      # a rebind that doesn't immediately clear the hang could
-      # otherwise be re-triggered every couple of seconds.
+      # Debounce: the driver re-logs the hang every ~2s while wedged.
       sleep 10
       ;;
   esac

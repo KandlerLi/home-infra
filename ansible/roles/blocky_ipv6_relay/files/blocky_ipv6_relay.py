@@ -27,14 +27,7 @@ BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "53"))
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "53"))
 FORWARD_TIMEOUT_SECONDS = float(os.environ.get("FORWARD_TIMEOUT_SECONDS", "5"))
 
-# ThreadingMixIn spawns one OS thread per query with no cap of its own --
-# confirmed live (2026-09-24) that a real query burst can pile up threads
-# each blocking for up to FORWARD_TIMEOUT_SECONDS, hitting this service's
-# own systemd TasksMax before anything here notices. Bounding how many
-# forwards can be in flight at once means an over-limit query fails fast
-# (immediate SERVFAIL, no forward attempted) instead of spawning a thread
-# that sits blocked for seconds -- see the private task list's entry for the
-# full incident this responds to.
+# ThreadingMixIn has no thread cap; a query burst exhausted threads once.
 MAX_CONCURRENT_FORWARDS = int(os.environ.get("MAX_CONCURRENT_FORWARDS", "16"))
 FORWARD_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_FORWARDS)
 
@@ -77,10 +70,7 @@ def forward_udp(query: bytes) -> bytes:
 
 
 def forward_tcp(query: bytes) -> bytes:
-    # DNS-over-TCP length-prefixes every message with a 2-byte
-    # big-endian length (RFC 1035 4.2.2) -- framing is this function's
-    # own job, independent of TcpHandler's own framing on the client
-    # side.
+    # DNS over TCP prefixes each message with a 2-byte length (RFC 1035 4.2.2).
     with socket.create_connection(
         (BACKEND_HOST, BACKEND_PORT), timeout=FORWARD_TIMEOUT_SECONDS
     ) as backend:
@@ -174,12 +164,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     udp_server = Ipv6ThreadingUDPServer(("::", LISTEN_PORT), UdpHandler)
     tcp_server = Ipv6ThreadingTCPServer(("::", LISTEN_PORT), TcpHandler)
-    # Two independent server instances, not one socket serving both
-    # protocols -- UDP and TCP DNS servers are different socket types
-    # entirely. TCP runs in a background thread so UDP (the common
-    # case for ordinary queries) owns the main thread via its own
-    # blocking serve_forever(), matching ntfy_relay.py's own
-    # dual-listener shape.
+    # UDP and TCP need separate servers; TCP gets the background thread.
     threading.Thread(target=tcp_server.serve_forever, daemon=True).start()
     udp_server.serve_forever()
 

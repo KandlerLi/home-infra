@@ -1,15 +1,5 @@
 ---
-# home_agent itself now runs as KandlerLi/k3s-apps' modules/home_agent
-# Pod, not a Docker container here -- this role's own job narrows down
-# to home_tools_service, the one dependency that couldn't move into
-# the k3s Pod as a sidecar (it reports this homeserver's own hardware,
-# so it has to keep running here). Reached from the k3s Pod over its
-# TCP listener (home_agent_tools_tcp_bind_address), same as before.
-#
-# files/agent/ (home_agent's actual Python application) stays in this
-# repo even though it's no longer built/run here -- it's the canonical
-# source build-home-agent.yml's CI workflow builds the k3s Pod's GHCR
-# image from.
+# Only home_tools_service is left on the host; home_agent runs in k3s. See the README.
 
 - name: Validate home agent configuration
   ansible.builtin.assert:
@@ -20,11 +10,7 @@
       - >-
         home_agent_tools_socket_path | dirname
         == home_agent_tools_socket_dir
-      # 192.168.101.1 is this homeserver's own address on the k3s VM's
-      # isolated libvirt NAT network, not a public or LAN-wide one --
-      # same trust boundary as nextcloud_aio_apache_ip_binding and
-      # shared_ingress's own home/deluge upstream exceptions. A closed
-      # allowlist of one address, not an open door.
+      # Only empty or the homeserver's k3s-network address are allowed.
       - >-
         home_agent_tools_tcp_bind_address | length == 0
         or home_agent_tools_tcp_bind_address == "192.168.101.1"
