@@ -2,114 +2,29 @@
 shared_ingress_acme_email: "julian.kandler@outlook.com"
 nextcloud_aio_reverse_proxy_enabled: true
 
-# First step of migrating home_agent + open_webui + nextcloud_tools to
-# the k3s cluster: nextcloud_tools is moving into the cluster alongside
-# home_agent (as a sidecar sharing a Unix socket, preserving its current
-# trust shape), which means it needs to reach Nextcloud AIO's Apache
-# from inside the k3s VM instead of on loopback. AIO's mastercontainer
-# only accepts one APACHE_IP_BINDING value at a time, so this is a
-# switch, not an addition -- 192.168.101.1 is this homeserver's own
-# address on the k3s VM's isolated libvirt NAT network, reachable from
-# both this host and that one VM, same trust boundary shared_ingress's
-# own home/deluge upstream exceptions already rely on (see both roles'
-# widened validation for the full reasoning). shared_ingress's own
-# nextcloud_upstream below must move in lockstep, or it loses its route
-# to Apache entirely. Applying this needs the guarded
-# MIGRATE_NEXTCLOUD_INGRESS confirmation flow, same as the original
-# Docker->shared_ingress cutover.
-#
-# nextcloud_tools/home_agent themselves haven't moved into k3s yet --
-# this proves the network path works with them still on this host,
-# before adding that variable too.
+# The homeserver's address on the k3s network, so k3s reaches Apache. Change together with shared_ingress_nextcloud_upstream.
 nextcloud_aio_apache_ip_binding: 192.168.101.1
-# Must move in lockstep with nextcloud_aio_apache_ip_binding above --
-# see its comment for the full reasoning.
+# Must match nextcloud_aio_apache_ip_binding.
 shared_ingress_nextcloud_upstream: http://192.168.101.1:11000
 
-# Second half of the same migration step: home_tools_service can't move
-# into the k3s cluster the way nextcloud_tools does (it reports this
-# homeserver's own hardware, not something that makes sense to run
-# anywhere else), so home_agent reaches it over this TCP listener
-# instead once home_agent itself runs in the cluster. Purely additive --
-# the Unix socket every other consumer keeps using is unaffected. See
-# home_agent's own README/role comments for the full reasoning.
+# Lets the k3s-native home_agent reach home_tools_service over TCP, besides the Unix socket.
 home_agent_tools_tcp_bind_address: 192.168.101.1
 
-# false as of 2026-09-01: shared_ingress itself moved to k3s
-# (KandlerLi/k3s-apps' own modules/ingress/), reached via the new
-# k3s_ingress_forward DNAT relay instead of this role's own container.
-# shared_ingress_enabled gates the whole role behind a `when:` -- a
-# pure skip-guard, not a real toggle -- so this is the only thing
-# standing between the next routine site.yml apply (for any unrelated
-# change) and silently resurrecting the container that was
-# deliberately stopped for the cutover, exactly the near-miss already
-# documented for open_webui's own reshape. The container itself was
-# stopped via ansible/playbooks/shared-ingress-k3s-cutover.yml, not by
-# this flag -- flipping it back to true alone would NOT restart
-# anything by itself, only re-arm the role's own tasks for the next
-# apply. The role/container/host prerequisites stay as-is, not yet
-# reshaped or deleted -- deferred to a real bake-in period, the same
-# "prove it, then remove the old thing" discipline every prior
-# migration here used.
-# A real, live production outage 2026-09-01 caused exactly this way:
-# k3s_ingress_forward_enabled was never persisted here, only ever
-# passed via -e k3s_ingress_forward_enabled=true at apply time. That
-# role is a real toggle, not a skip-guard (state: flips present/absent
-# off this flag directly) -- so the one ansible-playbook run that
-# omitted the -e flag didn't just skip re-creating the DNAT rules for
-# 80/443/53, it actively tore them out, taking every public
-# *.jkandler.de service down until caught and re-applied with the flag
-# restored. Persisted here now specifically so a normal apply can
-# never silently do that again -- every other role's own enabled flag
-# already works this way; this one was the one outlier, by omission,
-# not a deliberate choice.
+# shared_ingress is retired: k3s Traefik serves 80/443 via k3s_ingress_forward. The shared_ingress_* variables are leftovers.
 k3s_ingress_forward_enabled: true
 
 shared_ingress_enabled: false
 shared_ingress_start: true
 shared_ingress_apex_redirect_enabled: true
 shared_ingress_agent_enabled: true
-# ai.jkandler.de -- served by the k3s-native home_agent + open_webui
-# pairing (KandlerLi/k3s-apps' modules/home_agent and modules/open_webui),
-# not the Docker containers here any more. Both upstreams move in
-# lockstep (see shared_ingress' own comment on
-# shared_ingress_agent_upstream) since this file's own /healthz +
-# /v1/chat vs. everything-else path split forwards both branches to
-# the same k3s Traefik entrypoint, which then does the equivalent
-# split on its own side via KandlerLi/k3s-apps' combined Ingress.
-# Confirmed live before this cutover: the Docker open-webui container
-# stopped cleanly, the k3s copy read the existing accounts/chat
-# history correctly over the new NFS export (persisted database
-# settings came back, not fresh env-var defaults). The home_agent and
-# open_webui roles are reshaped now too, the same way deluge's own
-# role was -- down to just the host prerequisites (home_tools_service;
-# the open-webui service account and data directory) their k3s copies
-# still depend on, no more Docker container/image logic, no more
-# enable flags of their own. nextcloud_tools' role is gone outright
-# (not reshaped) -- nothing on this host consumed it once home_agent's
-# own Docker container, its only client, was retired; its Python
-# source stays on as KandlerLi/k3s-apps' own vendored copy's canonical
-# original, see that role's own README.
 shared_ingress_agent_upstream: http://192.168.101.10:80
 shared_ingress_open_webui_enabled: true
 shared_ingress_open_webui_upstream: http://192.168.101.10:80
 
-# Deluge itself runs as a k3s-native copy (KandlerLi/k3s-apps,
-# Terraform-managed), not by anything in this repo -- confirmed live in
-# production (real domain, real auth, real session state read cleanly
-# over NFS) before the old Docker container was stopped. The deluge
-# role here now only manages the host prerequisites the k3s copy still
-# depends on (service account, NFS-exported directories/ACL) -- see its
-# README -- so it has no enabled flag of its own any more.
 shared_ingress_deluge_enabled: true
 shared_ingress_deluge_upstream: http://192.168.101.10:80
 
-# Shares exactly Deluge's own two directories with the k3s learning VM
-# (KandlerLi/k3s-apps) -- nothing else under /mnt/black-hdd -- so a
-# Kubernetes-native copy of Deluge can be a real drop-in replacement,
-# Nextcloud integration included, rather than a disconnected sandbox
-# with its own separate downloads directory. 192.168.101.10 is that
-# VM's static address (see ansible/roles/k3s_node/defaults/main.yml).
+# Exports for k3s workloads on k3s-node-1 (192.168.101.10), nothing else under /mnt/black-hdd.
 nfs_server_enabled: true
 nfs_server_exports:
   - path: /mnt/black-hdd/downloads
@@ -118,29 +33,15 @@ nfs_server_exports:
   - path: /mnt/black-hdd/deluge-config
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
-  # Open WebUI's real, already-live data (accounts, chat history,
-  # WEBUI_SECRET_KEY_FILE) -- same "share the k3s copy's real state,
-  # don't start it fresh" choice already made for Deluge's config, and
-  # the same live concurrent-write risk that surfaced during Deluge's
-  # own migration applies here too: home-infra's own open-webui
-  # container must be stopped before KandlerLi/k3s-apps' Pod is ever
-  # started against this export, not just before the routing cutover --
-  # two writers touching the same SQLite file (one local, one over NFS)
-  # risks corrupting real chat history, unlike Deluge's crash-safe
-  # session state.
+  # Open WebUI's live SQLite data: never two writers at once.
   - path: /var/lib/open-webui
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
-  # Write target for KandlerLi/k3s-apps' own Authelia backup CronJob --
-  # see the authelia_backup role for the account/directory this
-  # exports, and that CronJob's own comments for why Authelia's real
-  # data can't just be read off this host's disk directly the way
-  # Deluge's/Open WebUI's own exports above are.
+  # Target of k3s-apps' Authelia backup CronJob: see the authelia_backup role.
   - path: /mnt/red-hdd/authelia-backup
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
-  # Paperless-ngx (ADR 0023): live documents, and the nightly
-  # document_exporter target. See the paperless_storage role.
+  # Paperless-ngx (ADR 0023): see the paperless_storage role.
   - path: /mnt/black-hdd/paperless-media
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
@@ -148,156 +49,44 @@ nfs_server_exports:
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
 
-# Nextcloud external storage for Deluge's downloads folder, visible only to
-# the personal account below (not a service account) -- confirmed working
-# privately (torrent + default-password bug both verified fixed) before
-# wiring this up.
+# Deluge's downloads as Nextcloud external storage, for the personal account below only.
 nextcloud_aio_mount_dir: /mnt/black-hdd/downloads
-# c3d555d14a9e6f55acce409da0bf8fa03e31deff7b9d20c951aecfcf15832cd1 is the
-# user_oidc-provisioned account for the same person (Authelia login,
-# 2026-09-09) -- the native "admin" account's real data (134GB, verified
-# byte-for-byte via occ files:transfer-ownership) was migrated onto it
-# and "admin" itself retired, once Nextcloud SSO was added
-# (nextcloud_aio_oidc_enabled). files_external:applicable's own
-# --add-user is additive-only, so admin's now-dead grant on this mount
-# doesn't need an explicit --remove-user -- it stops mattering the
-# moment that account is deleted.
+# The Authelia-provisioned (user_oidc) account; the old native admin account was migrated onto it and retired.
 nextcloud_aio_mount_applicable_user: c3d555d14a9e6f55acce409da0bf8fa03e31deff7b9d20c951aecfcf15832cd1
 
-# "Sign in with Authelia" on Nextcloud's own login page (KandlerLi/k3s-apps'
-# modules/authelia registers the matching "nextcloud" OIDC client) --
-# see nextcloud_aio's own README for the full reasoning. Needs
-# authelia_oidc_nextcloud_client_secret set in the home-infra/nextcloud
-# AWS Secrets Manager group (playbooks/site.yml's own pre_tasks expose
-# it under this same variable name) before a site.yml run against this
-# flag will pass tasks/oidc.yml's own assert.
+# Needs authelia_oidc_nextcloud_client_secret in Secrets Manager: see the nextcloud_aio README.
 nextcloud_aio_oidc_enabled: true
 
-# Prometheus/Grafana/Alertmanager monitoring stack (ADR 0019). Needs
-# monitoring_ntfy_topic, monitoring_ses_smtp_username, and
-# monitoring_ses_smtp_password set in the home-infra/monitoring AWS
-# Secrets Manager group (playbooks/site.yml's own pre_tasks expose them
-# under these same variable names) before a site.yml run against this
-# flag will pass its own validate checks. (Grafana's own admin password
-# isn't a shared secret any more -- see monitoring/README.md.)
+# Needs the home-infra/monitoring secrets in Secrets Manager: see the monitoring README.
 monitoring_enabled: true
 shared_ingress_grafana_enabled: true
-# Phase 1 of moving the monitoring stack into the k3s cluster
-# (KandlerLi/k3s-apps, modules/grafana): Grafana only -- Prometheus and
-# Postgres stay on this host (node_exporter/cAdvisor/blackbox_exporter/
-# Blocky itself all have to, see monitoring's and blocky's own
-# comments), reached by the k3s-native Grafana over the two additive
-# listeners below. Additive on both -- see
-# monitoring_prometheus_k3s_bind_address's and
-# blocky_postgres_k3s_bind_address's own comments for why neither one
-# is a switch away from loopback the way nextcloud_aio_apache_ip_binding
-# was. Confirmed live before the cutover below: the k3s Pod's real
-# admin login working (not the default admin/admin -- an earlier bug in
-# how its password Secret was wired up got caught here first), both
-# datasources healthy, and a real PromQL query against Prometheus
-# returning real, current scrape data through Grafana's own proxy.
+# Additive listener for the k3s-native Grafana; Prometheus itself stays on this host.
 monitoring_prometheus_k3s_bind_address: 192.168.101.1
-# Same k3s cutover as shared_ingress_home_upstream/_deluge_upstream/
-# etc. below -- see this file's own comment on shared_ingress_agent_upstream
-# for the full reasoning. shared_ingress' own health check now sends
-# the Host header this needs (see that role's tasks/main.yml).
 shared_ingress_grafana_upstream: http://192.168.101.10:80
 
-# Phase 2 of moving the monitoring stack into k3s: Alertmanager.
-# Additive, same shape as monitoring_prometheus_k3s_bind_address above
-# -- lets the k3s-native Alertmanager (KandlerLi/k3s-apps' modules/
-# alertmanager) reach the ntfy relay, which stays on this host.
+# Additive listener for the k3s-native Alertmanager; the ntfy relay stays on this host.
 monitoring_ntfy_relay_k3s_bind_address: 192.168.101.1
-# The actual cutover: confirmed independently first (2026-08-31) that
-# KandlerLi/k3s-apps' own Alertmanager delivers real notifications on its
-# own -- a synthetic test alert posted straight to its API reached both
-# ntfy and the real SES inbox -- before ever pointing Prometheus at it.
-# A clean switch, not an addition (see this variable's own comment in
-# ansible/roles/monitoring/defaults/main.yml for why listing both
-# Alertmanagers at once would double-fire every real notification).
+# The k3s-native Alertmanager only: listing both would double-fire every notification.
 monitoring_alertmanager_upstream: 192.168.101.10:9093
 
-# Phase 3: per-k3s-node CPU/mem/disk visibility (the private task list's
-# "Per-k3s-node Grafana dashboard + alerting", KandlerLi/k3s-apps' own
-# modules/node_exporter). Confirmed live before flipping this on, the
-# same bar monitoring_alertmanager_upstream's own cutover was held to:
-# both node-exporter Pods (kubectl get daemonset node-exporter: 2/2
-# ready) answer real /metrics on their own node's address from this
-# homeserver directly (curl 192.168.101.10:9100 and .11:9100), and
-# kube-state-metrics answers both /healthz and /metrics at
-# 192.168.101.10:8080.
+# Scrapes the k3s nodes' node-exporter and kube-state-metrics (k3s-apps' node_exporter module).
 monitoring_k3s_node_health_enabled: true
 
-# home.jkandler.de -- served by the k3s-native copy of this service
-# (KandlerLi/k3s-apps, Terraform-managed), not by anything in this repo.
-# The landing_page role that used to run this as a Docker container is
-# gone entirely (not just disabled) -- its cutover was confirmed live
-# in production first (real domain, real TLS, real auth, checked in the
-# browser, then its container's clean removal also confirmed live)
-# before the role itself was deleted.
 shared_ingress_home_enabled: true
 shared_ingress_home_upstream: http://192.168.101.10:80
 
-# Network-wide DNS ad-blocking (ADR 0020) -- now fully k3s-native
-# (KandlerLi/k3s-apps, modules/blocky/), reached over k3s_ingress_forward's
-# own DNAT relay. blocky_enabled and blocky_postgres_k3s_bind_address
-# (this repo's own Docker deployment and its additive Grafana-reach
-# listener) are both gone -- the blocky role itself was deleted once
-# the cutover was confirmed live, matching shared_ingress's own
-# precedent. blocky_postgres_password is still real: KandlerLi/k3s-apps'
-# own modules/blocky consumes it directly from the home-infra/blocky
-# AWS Secrets Manager group (secrets.tf), independent of this repo's
-# own roles entirely.
-#
-# The actual cutover: confirmed independently first (2026-09-01) that
-# KandlerLi/k3s-apps' own modules/blocky is serving real production LAN
-# DNS traffic correctly (k3s_ingress_forward's own DNAT relay, a real
-# dig against the homeserver's own LAN IP resolving correctly, and
-# Blocky's own query log showing the real requesting client's address
-# after blocky-svc's externalTrafficPolicy fix) -- the same bar
-# monitoring_alertmanager_upstream's own cutover was held to. A clean
-# switch, not an addition -- see this variable's own comment in
-# ansible/roles/monitoring/defaults/main.yml for why scraping both at
-# once would be actively misleading.
+# Blocky runs in k3s (ADR 0020); its Postgres password lives in Secrets Manager for k3s-apps.
 monitoring_blocky_upstream: 192.168.101.10:4000
 
-# blocky_ipv6_relay: bridges IPv6-transport DNS queries from the LAN
-# to Blocky's own IPv4-only address in k3s (see that role's own README
-# for why a relay, not a DNAT extension). fd71:c3c8:f74d::/64 is this
-# LAN's own real ULA prefix (FRITZ!Box Heimnetz-Eigenschaften, checked
-# 2026-09-01) -- ULA specifically, not the ISP-delegated GUA prefix
-# also shown there, since ULA never rotates the way a delegated prefix
-# can. This is the access boundary for the relay (see
-# blocky_ipv6_relay_lan_prefix's own comment in defaults/main.yml),
-# not optional hardening. FRITZ!Box's own "Andere DNSv6-Server"
-# setting is NOT pointed at the homeserver yet -- that's a separate,
-# still-pending step (needs the homeserver's own IPv6 interface ID
-# confirmed stable first; its addresses were still showing
-# "Temporary" as of this same check) -- so nothing about real LAN
-# traffic changes yet just from this being enabled.
+# The LAN's ULA prefix, which never rotates; it is the relay's access boundary. See the role README.
 blocky_ipv6_relay_enabled: true
 blocky_ipv6_relay_lan_prefix: fd71:c3c8:f74d::/64
 
-# aux_backup: daily backup of Deluge's config and Open WebUI's real
-# data to the local backup disk (see that role's own README). Two
-# real bugs found and fixed getting here, both confirmed live before
-# this flag was persisted, not assumed from a clean apply: the service
-# unit's own ReadWritePaths= needed its destination directory created
-# before the unit's first start (226/NAMESPACE otherwise, home-infra#34),
-# and Open WebUI's live SQLite database needed SQLite's own online
-# backup API rather than a raw file copy -- its -shm file is held
-# locked by the real, actively-running Pod (home-infra#35). Confirmed
-# working 2026-09-16: a manually-triggered run completed successfully
-# and left real, correctly-sized archives for both sources in
-# aux_backup_dest_dir.
+# Daily backup of Deluge config and Open WebUI data: see the aux_backup role.
 aux_backup_enabled: true
 
-# Destination side only (service account + NFS-exported directory) --
-# KandlerLi/k3s-apps' own modules/authelia/cronjob.tf does the actual
-# backup work. See the authelia_backup role's own README for why
-# Authelia's data needs this different shape from aux_backup's own
-# homeserver-local sources above.
+# Destination side only; k3s-apps' CronJob does the backup. See the authelia_backup role.
 authelia_backup_enabled: true
 
-# Host side of Paperless-ngx (ADR 0023) -- see the paperless_storage role.
+# Host side of Paperless-ngx (ADR 0023): see the paperless_storage role.
 paperless_storage_enabled: true

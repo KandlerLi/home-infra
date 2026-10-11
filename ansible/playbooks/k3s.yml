@@ -1,8 +1,5 @@
 ---
-# Deliberately NOT imported into site.yml -- this is a learning project,
-# kept separate from the production apply so it never runs as a side
-# effect of a normal homelab change. Run explicitly:
-#   ansible-playbook ansible/playbooks/k3s.yml --ask-become-pass
+# Not imported into site.yml on purpose: run explicitly with --ask-become-pass.
 
 - name: Provision k3s learning node
   hosts: home_servers
@@ -12,27 +9,12 @@
   roles:
     - role: libvirt_host
     - role: k3s_node
-      # Bumped from the role default (2) 2026-09-08: node-1 was
-      # requesting 94% of its 2-vCPU budget (kubectl describe node)
-      # while the physical host itself sat at ~23% CPU / had ~5.3GB
-      # RAM genuinely available (node_memory_MemAvailable_bytes, not
-      # the raw "free" column) -- real headroom to grow into, not
-      # already spoken for. Deliberately not touching k3s-node-2's own
-      # allocation (still the role default of 2) -- this is scoped to
-      # node-1 specifically, where everything except the CI runner
-      # Pods actually runs.
+      # node-1 runs everything except the CI runners and needed the CPU headroom.
       k3s_node_vm_vcpus: 3
-      # Bumped 4096 -> 6144 2026-09-19 alongside the host's own RAM
-      # upgrade (16 -> 32 GiB), and 6144 -> 10240 2026-09-26 for
-      # Paperless-ngx's OCR peaks (ADR 0023; ~2.1 GiB for a 6-page
-      # phone scan). Host had ~14.6 GiB available before this.
+      # Sized for Paperless-ngx OCR peaks (ADR 0023).
       k3s_node_vm_memory_mb: 10240
 
-# Second node: dedicated to KandlerLi/k3s-apps' own modules/github_runner/
-# workload, tainted so nothing else in the cluster schedules there.
-# Provisioned into its own inventory group (k3s_agent_nodes, not
-# k3s_nodes) so the "Install k3s on the learning node" play below --
-# which always renders a `k3s server` unit -- never runs against it.
+# Runner node: tainted for CI, in k3s_agent_nodes so the server-unit play below skips it.
 - name: Provision k3s runner node
   hosts: home_servers
   become: true
@@ -41,16 +23,9 @@
   roles:
     - role: k3s_node
       k3s_node_vm_name: k3s-node-2
-      # Bumped 4096 -> 8192 2026-09-19 (host RAM 16 -> 32 GiB): every
-      # repository now runs 2 concurrent runner slots (bootstrap/
-      # k3s-bootstrap's github_runner_slots_per_repository), each a
-      # runner + dind Pod that can burst to ~1.75 GiB.
+      # Two runner slots per repository, each able to burst to ~1.75 GiB.
       k3s_node_vm_memory_mb: 8192
-      # Grown 40 -> 100 GiB 2026-09-19: the runner slots' persistent
-      # Docker and Terraform-plugin caches (2 slots x 8 repos, each
-      # ~1-3 GiB of Docker data plus ~0.9 GiB of providers, plus ~0.7 GiB
-      # of per-Pod volumes) filled the 40 GiB disk twice in one day. The
-      # qcow2 is sparse, so this only uses host space as the guest writes.
+      # The runner caches outgrew 40 GiB; the qcow2 is sparse.
       k3s_node_vm_disk_size_gb: 100
       k3s_node_vm_disk_path: /mnt/black-hdd/k3s/k3s-node-2.qcow2
       k3s_node_vm_ip: 192.168.101.11
@@ -67,9 +42,7 @@
     - role: k3s_node
       k3s_node_role_mode: configure_guest
 
-# The agent node's own join needs k3s-node-1's live node-token --
-# read directly off it (never written to the controller's disk or
-# anywhere in this repo) and exposed as a hostvar the next play reads.
+# Read off node-1 into a hostvar, never written to disk.
 - name: Retrieve k3s cluster join token
   hosts: k3s_nodes
   become: true
@@ -96,24 +69,13 @@
     - role: k3s_node
       k3s_node_role_mode: configure_guest
       k3s_node_join_mode: agent
-      # k3s-node-1's own static address (its k3s_node_vm_ip default,
-      # see ansible/roles/k3s_node/defaults/main.yml) -- a literal
-      # here rather than a hostvars lookup of that default, since role
-      # defaults aren't reliably exposed via hostvars across plays the
-      # way a real set_fact (the token, below) is.
+      # A literal: role defaults aren't reliably visible via hostvars across plays.
       k3s_node_join_server_url: "https://192.168.101.10:6443"
       k3s_node_join_token: "{{ hostvars['k3s-node-1'].k3s_node_join_token }}"
       k3s_node_agent_node_taint: "ci=github-runner:NoSchedule"
       k3s_node_agent_node_label: "role=github-runner"
 
-# The one iptables/firewall role in this repo -- runs on the
-# homeserver itself (it owns the physical ports being forwarded), not
-# inside either k3s VM. Opt-in, off by default -- see
-# k3s_ingress_forward's own README for the full DNAT/FORWARD-chain
-# reasoning. Deliberately its own play rather than folded into the
-# first one above -- this is the real cutover step in the
-# shared_ingress-to-k3s migration, worth being able to target and
-# reason about on its own.
+# Runs on the homeserver, which owns the forwarded ports: see the k3s_ingress_forward README.
 - name: Forward ingress traffic to k3s's own Traefik
   hosts: home_servers
   become: true

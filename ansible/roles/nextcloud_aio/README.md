@@ -20,6 +20,12 @@ repo builds around.
 - `nextcloud_aio_reverse_proxy_enabled` switches its published ports so
   a reverse proxy can front it instead of talking to AIO's own
   built-in proxy directly.
+- `nextcloud_aio_apache_ip_binding` is set to `192.168.101.1`, the
+  homeserver's address on the k3s VMs' isolated network, so the
+  k3s-native Traefik and `nextcloud_tools` reach AIO's Apache. AIO's
+  mastercontainer accepts only one binding, so this replaced loopback
+  rather than adding to it, and `shared_ingress_nextcloud_upstream`
+  must name the same address.
 - `nextcloud_aio_oidc_enabled` (off by default, same "opt-in" shape as
   `nextcloud_aio_mount_dir` above) registers Authelia as a "Sign in
   with Authelia" option on Nextcloud's own login page, via the
