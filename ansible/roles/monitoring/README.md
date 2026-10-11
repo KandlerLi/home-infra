@@ -25,10 +25,11 @@ copies instead (`infra/k3s-apps`, `modules/grafana` and `modules/
 alertmanager`). Grafana is reached at `grafana.jkandler.de` through
 `infra/k3s-apps`' own Traefik (`modules/ingress`); Alertmanager is
 reached by Prometheus over `monitoring_alertmanager_upstream`.
-Prometheus, the exporters, and Blocky stay on this host permanently --
-they report *this physical host's* own hardware/Docker daemon, or are
-LAN-facing, so moving them into the k3s VM would monitor the wrong
-thing entirely. `files/dashboards/*.json` stay here as the canonical
+Prometheus and the exporters stay on this host permanently -- they
+report *this physical host's* own hardware/Docker daemon, so moving them
+into the k3s VM would monitor the wrong thing entirely. (Blocky moved to
+k3s on 2026-09-01 after all; Prometheus scrapes it over
+`monitoring_blocky_upstream`.) `files/dashboards/*.json` stay here as the canonical
 source `infra/k3s-apps`' own `modules/grafana` vendors a synced copy
 from, even though nothing here installs them any more. See
 `docs/home-infra-docs`' history.md ("k3s learning
