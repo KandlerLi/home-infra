@@ -1,0 +1,90 @@
+---
+# One-time removal of what the Docker deployments retired by the k3s move left on the host.
+
+- name: Remove leftovers of the Docker deployments retired by the k3s move
+  hosts: home_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    retired_containers:
+      - blocky
+      - blocky-postgres
+      - shared-ingress
+      - home-agent
+      - open-webui
+    retired_images:
+      - ghcr.io/0xerr0r/blocky@sha256:595136fb127f4c952b621113e668c09acdcf15ac054d96ee6d4c51a76c35f5fd
+      - postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+      - traefik@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42
+      - ghcr.io/open-webui/open-webui@sha256:88da9f0e08b8ada8e40bc6d6291494e2c6775a62d24b67b0cefb74ffee4ce621
+      - home-agent:local
+    retired_paths:
+      - /etc/systemd/system/nextcloud-tools.service
+      - /usr/local/lib/nextcloud-tools
+      - /etc/nextcloud-tools
+      - /etc/blocky
+      - /mnt/black-hdd/blocky
+      - /etc/shared-ingress
+      - /var/lib/shared-ingress
+      - /opt/home-agent
+      - /etc/home-agent
+
+  pre_tasks:
+    - name: Require explicit confirmation
+      ansible.builtin.assert:
+        that:
+          - retired_services_confirmation | default('') == "REMOVE_RETIRED_SERVICES"
+        fail_msg: >-
+          Pass -e retired_services_confirmation=REMOVE_RETIRED_SERVICES
+          to delete the retired containers, images and data.
+
+  tasks:
+    - name: Remove retired containers
+      community.docker.docker_container:
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ retired_containers }}"
+
+    - name: Remove the retired home-agent-frontend network
+      community.docker.docker_network:
+        name: home-agent-frontend
+        state: absent
+
+    - name: Remove retired images
+      community.docker.docker_image:
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ retired_images }}"
+
+    - name: Check for the retired nextcloud-tools unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/nextcloud-tools.service
+      register: retired_nextcloud_tools_unit
+
+    - name: Stop and disable nextcloud-tools.service
+      ansible.builtin.systemd_service:
+        name: nextcloud-tools.service
+        state: stopped
+        enabled: false
+      when: retired_nextcloud_tools_unit.stat.exists
+
+    - name: Remove retired files and data
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ retired_paths }}"
+
+    - name: Reload systemd after removing the unit
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Remove the retired nextcloud-tools account
+      ansible.builtin.user:
+        name: nextcloud-tools
+        state: absent
+
+    - name: Remove the retired nextcloud-tools-client group
+      ansible.builtin.group:
+        name: nextcloud-tools-client
+        state: absent

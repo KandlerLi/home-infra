@@ -1,28 +1,13 @@
 ---
-shared_ingress_acme_email: "julian.kandler@outlook.com"
 nextcloud_aio_reverse_proxy_enabled: true
 
-# The homeserver's address on the k3s network, so k3s reaches Apache. Change together with shared_ingress_nextcloud_upstream.
+# The homeserver's address on the k3s network, so k3s reaches Apache.
 nextcloud_aio_apache_ip_binding: 192.168.101.1
-# Must match nextcloud_aio_apache_ip_binding.
-shared_ingress_nextcloud_upstream: http://192.168.101.1:11000
 
 # Lets the k3s-native home_agent reach home_tools_service over TCP, besides the Unix socket.
 home_agent_tools_tcp_bind_address: 192.168.101.1
 
-# shared_ingress is retired: k3s Traefik serves 80/443 via k3s_ingress_forward. The shared_ingress_* variables are leftovers.
 k3s_ingress_forward_enabled: true
-
-shared_ingress_enabled: false
-shared_ingress_start: true
-shared_ingress_apex_redirect_enabled: true
-shared_ingress_agent_enabled: true
-shared_ingress_agent_upstream: http://192.168.101.10:80
-shared_ingress_open_webui_enabled: true
-shared_ingress_open_webui_upstream: http://192.168.101.10:80
-
-shared_ingress_deluge_enabled: true
-shared_ingress_deluge_upstream: http://192.168.101.10:80
 
 # Exports for k3s workloads on k3s-node-1 (192.168.101.10), nothing else under /mnt/black-hdd.
 nfs_server_enabled: true
@@ -59,10 +44,8 @@ nextcloud_aio_oidc_enabled: true
 
 # Needs the home-infra/monitoring secrets in Secrets Manager: see the monitoring README.
 monitoring_enabled: true
-shared_ingress_grafana_enabled: true
 # Additive listener for the k3s-native Grafana; Prometheus itself stays on this host.
 monitoring_prometheus_k3s_bind_address: 192.168.101.1
-shared_ingress_grafana_upstream: http://192.168.101.10:80
 
 # Additive listener for the k3s-native Alertmanager; the ntfy relay stays on this host.
 monitoring_ntfy_relay_k3s_bind_address: 192.168.101.1
@@ -71,9 +54,6 @@ monitoring_alertmanager_upstream: 192.168.101.10:9093
 
 # Scrapes the k3s nodes' node-exporter and kube-state-metrics (k3s-apps' node_exporter module).
 monitoring_k3s_node_health_enabled: true
-
-shared_ingress_home_enabled: true
-shared_ingress_home_upstream: http://192.168.101.10:80
 
 # Blocky runs in k3s (ADR 0020); its Postgres password lives in Secrets Manager for k3s-apps.
 monitoring_blocky_upstream: 192.168.101.10:4000

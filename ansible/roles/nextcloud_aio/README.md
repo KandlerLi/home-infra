@@ -24,8 +24,7 @@ repo builds around.
   homeserver's address on the k3s VMs' isolated network, so the
   k3s-native Traefik and `nextcloud_tools` reach AIO's Apache. AIO's
   mastercontainer accepts only one binding, so this replaced loopback
-  rather than adding to it, and `shared_ingress_nextcloud_upstream`
-  must name the same address.
+  rather than adding to it.
 - `nextcloud_aio_oidc_enabled` (off by default, same "opt-in" shape as
   `nextcloud_aio_mount_dir` above) registers Authelia as a "Sign in
   with Authelia" option on Nextcloud's own login page, via the
