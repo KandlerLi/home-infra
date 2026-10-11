@@ -90,7 +90,7 @@
   when: k3s_node_vm_name in k3s_node_defined_vms.list_vms
 
 # vcpu placement="static" has no live hotplug path -- see
-# docs/home-infra-docs' current-state.md ("k3s learning
+# docs/home-infra-docs' history.md ("k3s learning
 # cluster") for the resize-support design and the regex_search bug
 # this task's own shape works around.
 - name: Extract the current vCPU count from the existing domain definition
@@ -186,7 +186,7 @@
 # Only polled outside check mode -- under --check the shutdown above is
 # simulated, not real, so the domain never actually reaches "shutdown"
 # and this would otherwise burn its full retries/delay budget on every
-# syntax-check/dry-run. 15-minute budget -- see current-state.md for
+# syntax-check/dry-run. 15-minute budget -- see history.md for
 # the outage a shorter one caused.
 - name: Wait for the k3s node VM to actually stop
   community.libvirt.virt:
@@ -320,7 +320,7 @@
   changed_when: false
 
 # The autostart: true above is a known upstream bug in
-# community.libvirt.virt_net -- see current-state.md ("k3s learning
+# community.libvirt.virt_net -- see history.md ("k3s learning
 # cluster") for the two upstream issues this matches and the outage it
 # caused. Falling back to plain virsh directly, unaffected by either.
 - name: Work around community.libvirt.virt_net's autostart bug

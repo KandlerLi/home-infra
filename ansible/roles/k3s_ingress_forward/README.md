@@ -35,7 +35,7 @@ Service), so it lives in that role instead of here.
   DNAT rule.** libvirt's own `LIBVIRT_FWI` chain only accepts
   `RELATED,ESTABLISHED` traffic into a NAT-mode network by default,
   rejecting a fresh externally-initiated connection otherwise -- see
-  `docs/home-infra-docs`' current-state.md ("k3s learning
+  `docs/home-infra-docs`' history.md ("k3s learning
   cluster") for the full reasoning. This role inserts its own
   narrowly-scoped `ACCEPT` at the very top of the base `FORWARD`
   chain, ahead of Docker's and libvirt's own chains alike.
@@ -62,7 +62,7 @@ Service), so it lives in that role instead of here.
   traffic, and this host's own locally-originated traffic,
   respectively, both re-entering `PREROUTING` and matching the rule's
   `destination_port` just like real inbound traffic. See
-  current-state.md for the two real incidents (an `ImagePullBackOff`
+  history.md for the two real incidents (an `ImagePullBackOff`
   and a Nextcloud AIO/`ghcr.io` crash loop) that found each gap.
 - **Persisted via `iptables-persistent`** (`netfilter-persistent
   save`, only when a rule actually changed) so the relay survives a
@@ -72,6 +72,6 @@ Service), so it lives in that role instead of here.
   tasks flips between `present`/`absent` off
   `k3s_ingress_forward_enabled` directly, so disabling this role
   actually removes the rules again rather than merely skipping their
-  creation on a fresh host. See current-state.md for the outage a
+  creation on a fresh host. See history.md for the outage a
   forgotten `-e` flag caused before this variable was persisted in
   inventory.

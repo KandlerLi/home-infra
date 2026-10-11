@@ -126,7 +126,7 @@
     # k3s-apps) instead of Docker containers on this host -- actively
     # removed here, not just stopped, so an unrelated site.yml run can
     # never silently resurrect them. See docs/home-infra-docs'
-    # current-state.md ("k3s learning cluster") for the full cutover
+    # history.md ("k3s learning cluster") for the full cutover
     # history.
     - name: Remove retired local Grafana/Alertmanager state
       ansible.builtin.file:
