@@ -223,10 +223,12 @@ where that list now gets synced to changed (see
 
 ## Hardware maintenance shutdown
 
-The guarded shutdown helper stops the Nextcloud AIO application containers,
-verifies that they are down, flushes filesystem buffers, and powers off the
-host. It refuses to continue if `/mnt/black-hdd` is not mounted or a libvirt VM
-is running. It does not create a backup; verify a suitable backup separately.
+The guarded shutdown helper shuts down the running libvirt VMs (`k3s-node-2`
+before `k3s-node-1`, up to 5 minutes each), stops the Nextcloud AIO application
+containers, verifies that they are down, flushes filesystem buffers, and powers
+off the host. It refuses to continue if `/mnt/black-hdd` is not mounted, and
+stops without powering off if a VM doesn't shut down in time. It does not
+create a backup; verify a suitable backup separately.
 
 Copy the script to the homeserver and run its read-only check from the
 controller:
@@ -248,7 +250,8 @@ ssh -t julian@192.168.178.100 \
 ```
 
 Wait for the host to turn off completely before disconnecting power. After the
-hardware work, the AIO application containers may remain stopped. Start them
+hardware work, the VMs start by themselves (autostart), but the AIO
+application containers may remain stopped. Start them
 through the AIO interface at `https://192.168.178.100:8080`, then verify the
 detected memory, failed units, containers, and public Nextcloud status.
 
