@@ -101,7 +101,7 @@ Nextcloud file/shopping-list access), and `open_webui` (the chat
 frontend) all used to run as Docker containers managed by this repo.
 As of 2026-08-30 they run as a personal, single-node k3s cluster
 instead (`infra/k3s-apps`, a sibling repository, Terraform-managed) --
-see `docs/home-infra-docs/docs/history.md`'s "k3s
+see `home-infra-docs/docs/history.md`'s "k3s
 learning cluster" section for the full cutover history. This repo now
 only owns the host-level prerequisites those k3s Pods still depend on:
 

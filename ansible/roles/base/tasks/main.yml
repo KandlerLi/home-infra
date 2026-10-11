@@ -37,7 +37,7 @@
 
 # The homeserver's onboard NIC (Intel 82579LM, driver e1000e) hits a
 # well-documented PCIe ASPM bug -- see
-# docs/home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
+# home-infra-docs/docs/runbooks/homeserver-e1000e-nic-watchdog-hang.md.
 # Only `base` needs this -- no other host in this repo has this NIC.
 # Takes effect only after a reboot -- this task and the `update-grub`
 # regeneration below just get the new parameter written and staged.
@@ -161,7 +161,7 @@
 
 # A total, silent freeze (no kernel log entries at all, unlike the
 # e1000e bug's own signature) needed a manual physical reboot -- see
-# docs/home-infra-docs/docs/runbooks/homeserver-silent-freeze.md. This
+# home-infra-docs/docs/runbooks/homeserver-silent-freeze.md. This
 # hardware has a working watchdog timer device systemd wasn't using at
 # all; enabling it is a root-cause-agnostic safety net: if the kernel
 # ever stops scheduling entirely and can't pet the watchdog, the

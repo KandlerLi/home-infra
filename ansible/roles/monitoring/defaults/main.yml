@@ -33,7 +33,7 @@ monitoring_cadvisor_image_digest: >-
 monitoring_cadvisor_image: >-
   {{ monitoring_cadvisor_image_name }}:{{ monitoring_cadvisor_image_tag }}@{{ monitoring_cadvisor_image_digest }}
 # NOT 8080 -- that collides with Nextcloud AIO's own mastercontainer
-# admin interface. See docs/home-infra-docs' history.md
+# admin interface. See home-infra-docs' history.md
 # for the outage this caused before the port moved.
 monitoring_cadvisor_port: 8081
 monitoring_cadvisor_memory_limit: 256M
@@ -104,7 +104,7 @@ monitoring_prometheus_k3s_bind_address: ""
 # switch, not an addition, unlike the *_k3s_bind_address variables
 # above -- listing both the homeserver's own Alertmanager and the
 # k3s-native one would double-fire every notification. See
-# docs/home-infra-docs' history.md ("k3s learning
+# home-infra-docs' history.md ("k3s learning
 # cluster") for the full cutover history.
 monitoring_alertmanager_upstream: 127.0.0.1:9093
 

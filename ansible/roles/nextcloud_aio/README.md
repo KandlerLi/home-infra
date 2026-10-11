@@ -47,7 +47,7 @@ CronJob -- see `infra/k3s-apps`' `modules/home_agent/`/`modules/sankey_export/`.
 - A systemd oneshot (`nextcloud-aio-apache-network-fix.service`, runs at
   boot and on every apply) automatically reconnects
   `nextcloud-aio-apache` to the `nextcloud-aio` Docker network if it's
-  missing. See `docs/home-infra-docs/docs/runbooks/nextcloud-aio.md`
+  missing. See `home-infra-docs/docs/runbooks/nextcloud-aio.md`
   ("Known issues") for the reboot bug this automates recovery from --
   the root cause is still unknown, owned by AIO's own mastercontainer,
   not this repo.

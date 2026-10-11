@@ -32,7 +32,7 @@ k3s on 2026-09-01 after all; Prometheus scrapes it over
 `monitoring_blocky_upstream`.) `files/dashboards/*.json` stay here as the canonical
 source `infra/k3s-apps`' own `modules/grafana` vendors a synced copy
 from, even though nothing here installs them any more. See
-`docs/home-infra-docs`' history.md ("k3s learning
+`home-infra-docs`' history.md ("k3s learning
 cluster") for the full cutover history.
 
 Two listeners exist purely so the k3s-native pieces can reach what

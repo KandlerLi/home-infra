@@ -22,7 +22,7 @@ k3s_ingress_forward_target_ip: 192.168.101.10
 # DNAT rule's own in_interface match below -- PREROUTING/nat sees every
 # packet entering any interface, including the k3s VM's own outbound
 # connections transiting this bridge on their way out to the internet.
-# See docs/home-infra-docs' history.md ("k3s learning
+# See home-infra-docs' history.md ("k3s learning
 # cluster") for the ImagePullBackOff hairpin bug this exclusion fixes.
 k3s_ingress_forward_target_bridge: virbr11
 
