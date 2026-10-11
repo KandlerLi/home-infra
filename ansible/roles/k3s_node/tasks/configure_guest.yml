@@ -43,7 +43,7 @@
 # Go binaries (containerd included) use Go's own pure-Go resolver,
 # which fires a raw UDP query straight at /etc/resolv.conf, bypassing
 # systemd-resolved's smarter D-Bus path that glibc's NSS resolver uses
-# instead. See docs/home-infra-docs' current-state.md ("k3s
+# instead. See docs/home-infra-docs' history.md ("k3s
 # learning cluster") for the containerd DNS failure this fixes.
 - name: Create systemd-resolved drop-in directory
   ansible.builtin.file:
@@ -73,7 +73,7 @@
   register: k3s_node_resolv_conf_link
 
 # Direct reality check, not just "did this run's own tasks report a
-# change" -- see current-state.md for why .changed-gating alone would
+# change" -- see history.md for why .changed-gating alone would
 # never self-heal a node stuck in this state.
 - name: Check whether systemd-resolved's stub listener is still active
   ansible.builtin.wait_for:
