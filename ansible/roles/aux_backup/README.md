@@ -30,7 +30,7 @@ disproportionate.
   guaranteed to be a consistent point-in-time snapshot. Any configured
   `sqlite_files` entry gets excluded from the plain `rsync -a` copy
   and snapshotted separately via Python's stdlib `sqlite3` module's
-  `Connection.backup()`, the same approach `infra/k3s-apps`' own
+  `Connection.backup()`, the same approach [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own
   `modules/authelia` uses.
 - **A real toggle**: disabling this role stops the timer, not just
   skips creating it on a host that never had it. The service/timer

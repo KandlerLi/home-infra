@@ -1,6 +1,6 @@
 ---
 # One-time cutover playbook for shared_ingress's own move to k3s (see
-# infra/k3s-apps' own modules/ingress/ and this repo's own
+# KandlerLi/k3s-apps' own modules/ingress/ and this repo's own
 # k3s_ingress_forward role). Stops shared_ingress's own container --
 # never deletes it -- so this stays a fast, reviewed rollback path.
 # The `shared_ingress` role itself (and the family of guarded

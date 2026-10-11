@@ -5,14 +5,14 @@
 # command to run instead of remembering the venv path, the playbook
 # path, and which flags mean "dry run" vs. "for real".
 #
-# Unlike github/repo-infra's and bootstrap/k3s-bootstrap's own
+# Unlike KandlerLi/repo-infra's and KandlerLi/k3s-bootstrap's own
 # roll-out.sh, this one needs no SSH tunnel -- but it does need AWS
 # credentials, the same way those two do: playbooks/site.yml's own
 # pre_tasks read the 4 secret values (across 2 groups,
 # home-infra/monitoring and home-infra/nextcloud) Ansible genuinely
 # consumes straight from AWS Secrets Manager. Sourced from the
 # home-infra-local IAM identity in pass (never an ambient `aws login`
-# session -- see bootstrap/terraform-state/README.md's
+# session -- see KandlerLi/terraform-state/README.md's
 # "home-infra-local Identity" section for how those got there).
 # --ask-become-pass stays interactive on purpose: sudo password entry
 # is exactly the kind of credential ADR 0018's own principle says
@@ -45,10 +45,10 @@ fail() {
 }
 
 access_key_id="$(pass show aws/home-infra-local/access-key-id 2>/dev/null | head -1 || true)"
-[ -n "${access_key_id}" ] || fail "pass entry aws/home-infra-local/access-key-id is empty or missing -- see bootstrap/terraform-state/README.md's 'home-infra-local Identity' section"
+[ -n "${access_key_id}" ] || fail "pass entry aws/home-infra-local/access-key-id is empty or missing -- see KandlerLi/terraform-state/README.md's 'home-infra-local Identity' section"
 
 secret_access_key="$(pass show aws/home-infra-local/secret-access-key 2>/dev/null | head -1 || true)"
-[ -n "${secret_access_key}" ] || fail "pass entry aws/home-infra-local/secret-access-key is empty or missing -- see bootstrap/terraform-state/README.md's 'home-infra-local Identity' section"
+[ -n "${secret_access_key}" ] || fail "pass entry aws/home-infra-local/secret-access-key is empty or missing -- see KandlerLi/terraform-state/README.md's 'home-infra-local Identity' section"
 
 export AWS_ACCESS_KEY_ID="${access_key_id}"
 export AWS_SECRET_ACCESS_KEY="${secret_access_key}"

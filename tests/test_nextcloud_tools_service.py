@@ -923,7 +923,7 @@ class EndpointHostAllowlistTests(unittest.TestCase):
     """main() guards ENDPOINT_HOST against an arbitrary host, not just
     loopback -- defense in depth for an AI-agent-facing tool, widened to
     also admit the k3s VM's isolated-network address the k3s-native copy
-    of this service (infra/k3s-apps) reaches Nextcloud AIO's Apache at.
+    of this service (KandlerLi/k3s-apps) reaches Nextcloud AIO's Apache at.
     Confirmed live: the original bare loopback-only check broke that
     copy outright ("Nextcloud endpoint must remain on loopback").
     """

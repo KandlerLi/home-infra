@@ -5,9 +5,9 @@ Opt-in (`k3s_ingress_forward_enabled`, default `false`, set `true` in
 comment there for why it's persisted, not passed via `-e`) iptables
 DNAT relay on the homeserver, forwarding its own public/LAN-facing ports
 straight through to a k3s Service at `192.168.101.10`, unmodified at
-the packet level -- k3s's own Traefik (`infra/k3s-apps`' own
+the packet level -- k3s's own Traefik ([`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own
 `modules/ingress/`) originally, now also Blocky's own DNS Service
-(`infra/k3s-apps`' own `modules/blocky/`). The `iptables` (IPv4) role
+([`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own `modules/blocky/`). The `iptables` (IPv4) role
 in this repo -- `blocky_ipv6_relay`'s own `ip6tables` INPUT rule is a
 materially different concern (protecting a locally-listening process
 from the LAN, not DNAT-relaying real inbound traffic through to a k3s
@@ -35,7 +35,7 @@ Service), so it lives in that role instead of here.
   DNAT rule.** libvirt's own `LIBVIRT_FWI` chain only accepts
   `RELATED,ESTABLISHED` traffic into a NAT-mode network by default,
   rejecting a fresh externally-initiated connection otherwise -- see
-  `home-infra-docs`' history.md ("k3s learning
+  [`home-infra-docs`](https://github.com/KandlerLi/home-infra-docs)' history.md ("k3s learning
   cluster") for the full reasoning. This role inserts its own
   narrowly-scoped `ACCEPT` at the very top of the base `FORWARD`
   chain, ahead of Docker's and libvirt's own chains alike.
@@ -46,7 +46,7 @@ Service), so it lives in that role instead of here.
   -- forwarding a throwaway external port straight to Traefik's real
   `websecure` entryPoint (443) internally, so Traefik's own config
   needs no separate test entryPoint of its own.
-- **Port 25 (inbound SMTP)** is forwarded tcp-only to `infra/k3s-apps`'
+- **Port 25 (inbound SMTP)** is forwarded tcp-only to [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)'
   own `modules/stalwart/`. The FRITZ!Box's own port-forward for 25 is
   manual and out-of-band, IPv4 only, targeting the homeserver's LAN IP
   -- redo it from a runbook if the router is ever reset. Only 25 is

@@ -2,7 +2,7 @@
 # Host prerequisites for Deluge: a dedicated service account and the
 # NFS-exported directories/ACL it needs. This role used to also run
 # Deluge itself as a Docker container; that's retired now (see
-# infra/k3s-apps, Terraform-managed) but these prerequisites stay --
+# KandlerLi/k3s-apps, Terraform-managed) but these prerequisites stay --
 # the k3s-native copy reads these same two directories over NFS (see
 # nfs_server's exports in group_vars) as this exact service account
 # (its uid/gid are hardcoded as PUID/PGID in k3s-apps' Deployment), so
@@ -39,7 +39,7 @@
     deluge_uid: "{{ ansible_facts.getent_passwd[deluge_service_user][1] }}"
     deluge_gid: "{{ ansible_facts.getent_group[deluge_service_group][1] }}"
 
-# infra/k3s-apps' Deployment hardcodes PUID=993/PGID=986 rather than
+# KandlerLi/k3s-apps' Deployment hardcodes PUID=993/PGID=986 rather than
 # looking these up dynamically -- confirmed live to match this account
 # when it was created. If a homeserver rebuild ever assigned different
 # uid/gid numbers here (e.g. some other system account taking 993
@@ -52,7 +52,7 @@
       - deluge_uid == "993"
       - deluge_gid == "986"
     fail_msg: >-
-      deluge's uid/gid drifted from 993/986, which infra/k3s-apps'
+      deluge's uid/gid drifted from 993/986, which KandlerLi/k3s-apps'
       Deployment hardcodes as PUID/PGID. Either recreate the account
       with the expected uid/gid, or update k3s-apps' deluge.tf and
       re-apply it to match the new values.

@@ -58,7 +58,7 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         self.assertIn("public_port: 443", defaults)
 
     def test_default_rules_forward_dns_over_both_tcp_and_udp(self) -> None:
-        # The real cutover: infra/k3s-apps' own modules/blocky verified
+        # The real cutover: KandlerLi/k3s-apps' own modules/blocky verified
         # healthy internally first (a real in-cluster nslookup
         # resolving correctly via both the Service name and this exact
         # 192.168.101.10 target) before ever forwarding real LAN DNS
@@ -79,7 +79,7 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
             self.assertEqual(rule["target_port"], 53)
 
     def test_default_rules_forward_inbound_smtp_over_tcp(self) -> None:
-        # Inbound mail for infra/k3s-apps' own modules/stalwart. Port 25
+        # Inbound mail for KandlerLi/k3s-apps' own modules/stalwart. Port 25
         # only -- nothing else mail-related is meant to be publicly
         # reachable through this relay.
         defaults = yaml.safe_load(
@@ -96,7 +96,7 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         self.assertEqual(smtp_rules[0]["protocol"], "tcp")
 
     def test_default_rules_forward_imaps_and_submissions_over_tcp(self) -> None:
-        # Mail clients, to infra/k3s-apps' modules/stalwart. TLS-only
+        # Mail clients, to KandlerLi/k3s-apps' modules/stalwart. TLS-only
         # ports: 993 (IMAPS) and 465 (implicit-TLS submission). The
         # plaintext ports (143/587) must never be forwarded.
         defaults = yaml.safe_load(

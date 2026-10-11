@@ -10,12 +10,12 @@ to `k3s-node-1` (`nfs_server_exports` in `group_vars/all/main.yml`):
   `document_exporter` CronJob. The backup.
 
 Paperless itself (app, PostgreSQL, Redis, the export CronJob) runs in
-`infra/k3s-apps`' `modules/paperless`, as this uid/gid. Changing the
+[`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' `modules/paperless`, as this uid/gid. Changing the
 pinned numbers here means changing them there too.
 
 Runs before `nfs_server` in `site.yml`: `exportfs -ra` fails if an
 exported directory doesn't exist yet.
 
-- Repo: `infra/home-infra` (this role, `nfs_server_exports`),
-  `bootstrap/k3s-bootstrap` (the NFS PersistentVolumes),
-  `infra/k3s-apps` (`modules/paperless`)
+- Repo: [`home-infra`](https://github.com/KandlerLi/home-infra) (this role, `nfs_server_exports`),
+  [`k3s-bootstrap`](https://github.com/KandlerLi/k3s-bootstrap) (the NFS PersistentVolumes),
+  [`k3s-apps`](https://github.com/KandlerLi/k3s-apps) (`modules/paperless`)

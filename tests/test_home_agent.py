@@ -34,7 +34,7 @@ _home_tools_service_spec.loader.exec_module(home_tools_service)
 
 class HomeAgentRoleReshapeTests(unittest.TestCase):
     # This role used to also build and run home_agent's own Docker
-    # container. home_agent itself now runs as infra/k3s-apps'
+    # container. home_agent itself now runs as KandlerLi/k3s-apps'
     # modules/home_agent Pod (cut over to ai.jkandler.de 2026-08-30) --
     # this role only keeps home_tools_service, the one dependency that
     # couldn't move into that Pod as a sidecar (it reports this

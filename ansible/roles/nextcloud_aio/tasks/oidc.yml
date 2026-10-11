@@ -1,10 +1,10 @@
 ---
 # Registers Authelia as a real "Sign in with Authelia" option on
 # Nextcloud's own login page, via the official user_oidc app --
-# infra/k3s-apps' own modules/authelia/ has the matching client
+# KandlerLi/k3s-apps' own modules/authelia/ has the matching client
 # registration (client_id "nextcloud"). Deliberately additive only:
 # native login stays enabled (unlike Grafana/Open WebUI, see
-# infra/k3s-apps#30's own reasoning) -- Nextcloud may have other real
+# KandlerLi/k3s-apps#30's own reasoning) -- Nextcloud may have other real
 # accounts not necessarily tied to this same Authelia identity.
 #
 # occ commands below were written from user_oidc's own documented
@@ -25,7 +25,7 @@
       secret (its own JSON blob, not just this one key --
       `aws secretsmanager get-secret-value` first, merge in the real
       value, then `put-secret-value` the whole thing back) with the
-      same value infra/k3s-apps' own modules/authelia hashes for its
+      same value KandlerLi/k3s-apps' own modules/authelia hashes for its
       "nextcloud" client.
 
 # app:install is itself idempotent (a no-op, not an error, if the app

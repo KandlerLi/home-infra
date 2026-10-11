@@ -68,7 +68,7 @@ k3s_node_inventory_group: k3s_nodes
 k3s_node_join_mode: server
 k3s_node_join_server_url: ""
 k3s_node_join_token: ""
-# Confines every CI runner Pod (infra/k3s-apps' own modules/
+# Confines every CI runner Pod (KandlerLi/k3s-apps' own modules/
 # github_runner) to this node alone -- kept off k3s-node-1, which
 # every other, non-CI workload in the cluster already depends on.
 k3s_node_agent_node_taint: ""

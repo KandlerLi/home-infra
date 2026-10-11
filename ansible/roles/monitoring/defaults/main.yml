@@ -33,7 +33,7 @@ monitoring_cadvisor_image_digest: >-
 monitoring_cadvisor_image: >-
   {{ monitoring_cadvisor_image_name }}:{{ monitoring_cadvisor_image_tag }}@{{ monitoring_cadvisor_image_digest }}
 # NOT 8080 -- that collides with Nextcloud AIO's own mastercontainer
-# admin interface. See home-infra-docs' history.md
+# admin interface. See KandlerLi/home-infra-docs' history.md
 # for the outage this caused before the port moved.
 monitoring_cadvisor_port: 8081
 monitoring_cadvisor_memory_limit: 256M
@@ -100,11 +100,11 @@ monitoring_prometheus_container_user: monitoring-prometheus
 monitoring_prometheus_k3s_bind_address: ""
 
 # Grafana and Alertmanager are no longer deployed by this role -- both
-# run as k3s-native copies instead (infra/k3s-apps). This is a clean
+# run as k3s-native copies instead (KandlerLi/k3s-apps). This is a clean
 # switch, not an addition, unlike the *_k3s_bind_address variables
 # above -- listing both the homeserver's own Alertmanager and the
 # k3s-native one would double-fire every notification. See
-# home-infra-docs' history.md ("k3s learning
+# KandlerLi/home-infra-docs' history.md ("k3s learning
 # cluster") for the full cutover history.
 monitoring_alertmanager_upstream: 127.0.0.1:9093
 
@@ -145,7 +145,7 @@ monitoring_ntfy_relay_install_dir: /usr/local/lib/monitoring/ntfy-relay
 # only value this role's own validation allows.
 monitoring_ntfy_relay_k3s_bind_address: ""
 
-# SES SMTP credentials come from aws/ses-relay's Terraform outputs, not
+# SES SMTP credentials come from KandlerLi/ses-relay's Terraform outputs, not
 # generated here -- see that repo's README for the exact values to copy
 # into SOPS. eu-central-1 matches this workspace's other AWS roots'
 # default region.
@@ -160,14 +160,14 @@ monitoring_alert_email: julian.kandler@outlook.com
 monitoring_alert_disk_full_percent: 85
 monitoring_alert_cert_expiry_days: 14
 
-# Blocky is fully k3s-native now (infra/k3s-apps, modules/blocky/) --
+# Blocky is fully k3s-native now (KandlerLi/k3s-apps, modules/blocky/) --
 # no role in this repo owns Blocky's own existence any more, so this is
 # a plain, unconditional true.
 monitoring_blocky_enabled: true
 monitoring_blocky_http_port: 4000
 # A clean switch, not an addition -- same reasoning as
 # monitoring_alertmanager_upstream above. Stays pointed at the
-# homeserver's own address until infra/k3s-apps' own modules/blocky is
+# homeserver's own address until KandlerLi/k3s-apps' own modules/blocky is
 # confirmed handling real production DNS traffic.
 monitoring_blocky_upstream: "127.0.0.1:{{ monitoring_blocky_http_port }}"
 
@@ -178,9 +178,9 @@ monitoring_blocky_upstream: "127.0.0.1:{{ monitoring_blocky_http_port }}"
 monitoring_blocky_postgres_exporter_port: 9187
 monitoring_blocky_postgres_exporter_upstream: "192.168.101.10:{{ monitoring_blocky_postgres_exporter_port }}"
 
-# Per-k3s-node CPU/mem/disk visibility (BACKLOG.md's "Per-k3s-node
+# Per-k3s-node CPU/mem/disk visibility (the private task list's "Per-k3s-node
 # Grafana dashboard + alerting"). Off by default -- flip once
-# infra/k3s-apps' own modules/node_exporter is confirmed applied.
+# KandlerLi/k3s-apps' own modules/node_exporter is confirmed applied.
 monitoring_k3s_node_health_enabled: false
 # node-exporter runs as a DaemonSet (host_network: true), so each
 # node's own real IP:9100 is the target directly -- no Service/LoadBalancer

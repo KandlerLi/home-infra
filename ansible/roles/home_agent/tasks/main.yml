@@ -1,5 +1,5 @@
 ---
-# home_agent itself now runs as infra/k3s-apps' modules/home_agent
+# home_agent itself now runs as KandlerLi/k3s-apps' modules/home_agent
 # Pod, not a Docker container here -- this role's own job narrows down
 # to home_tools_service, the one dependency that couldn't move into
 # the k3s Pod as a sidecar (it reports this homeserver's own hardware,

@@ -34,7 +34,7 @@ echo "Backing up {{ source.name }} ({{ source.path }})..."
 # file isn't a guaranteed consistent snapshot. SQLite's own online
 # backup API (Connection.backup(), via Python's stdlib sqlite3
 # binding, not the separate CLI package) produces one without needing
-# exclusive access -- same approach infra/k3s-apps' modules/authelia
+# exclusive access -- same approach KandlerLi/k3s-apps' modules/authelia
 # uses for its own db.sqlite3.
 STAGING_DIR="$(mktemp -d)"
 STAGING_DIRS+=("$STAGING_DIR")

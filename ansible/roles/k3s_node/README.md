@@ -11,7 +11,7 @@ Two nodes share this one role, distinguished by `k3s_node_join_mode`:
 `k3s-node-1` (`server`, the default -- everything else in the cluster
 runs here) and `k3s-node-2` (`agent`, joined to `k3s-node-1`'s control
 plane and tainted `ci=github-runner:NoSchedule` so only
-`infra/k3s-apps`' own `modules/github_runner/` Pods ever land there --
+[`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own `modules/github_runner/` Pods ever land there --
 see that repo's README). Both share the same isolated NAT network
 (`k3s_network`, `virbr11`) rather than each getting their own: a
 second DHCP reservation is added to the *live* network via `virsh
@@ -57,7 +57,7 @@ Two modes, run as two separate plays in `ansible/playbooks/k3s.yml`:
   deliberately, so what gets learned via `kubectl` is k3s's real
   out-of-the-box behavior, not a customized one. Bundled Traefik is
   the one deliberate exception (`config.yaml`'s `disable: [traefik]`):
-  `infra/k3s-apps`' own `modules/ingress/` Deployment replaces it
+  [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own `modules/ingress/` Deployment replaces it
   entirely, since real production ACME/auth/rate-limit config has no
   business living in a role that's meant to stay at defaults; `agent`
   renders

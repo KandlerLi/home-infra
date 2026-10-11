@@ -41,13 +41,13 @@
             or monitoring_blocky_upstream == "192.168.101.10:" ~ monitoring_blocky_http_port
         fail_msg: >-
           Configure monitoring_ntfy_topic and the SES SMTP credentials
-          (from aws/ses-relay's outputs) through SOPS before the first
+          (from KandlerLi/ses-relay's outputs) through SOPS before the first
           deploy, keep monitoring_prometheus_k3s_bind_address and
           monitoring_ntfy_relay_k3s_bind_address empty or pinned to the
           k3s VM's isolated network address, and keep
           monitoring_alertmanager_upstream and monitoring_blocky_upstream
           each pointed at either the homeserver's own instance or
-          infra/k3s-apps' one, never both.
+          KandlerLi/k3s-apps' one, never both.
       no_log: true
 
     - name: Create monitoring service accounts
@@ -125,7 +125,7 @@
     # Grafana and Alertmanager now run as k3s-native copies (infra/
     # k3s-apps) instead of Docker containers on this host -- actively
     # removed here, not just stopped, so an unrelated site.yml run can
-    # never silently resurrect them. See home-infra-docs'
+    # never silently resurrect them. See KandlerLi/home-infra-docs'
     # history.md ("k3s learning cluster") for the full cutover
     # history.
     - name: Remove retired local Grafana/Alertmanager state

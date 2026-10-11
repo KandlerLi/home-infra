@@ -20,7 +20,7 @@ class DelugeRoleTests(unittest.TestCase):
     def test_tasks_run_unconditionally_now_container_is_retired(self) -> None:
         # This role used to gate everything behind deluge_enabled (opt-in
         # Docker container). Deluge itself now runs as a k3s-native copy
-        # (infra/k3s-apps) -- this role only keeps the host prerequisites
+        # (KandlerLi/k3s-apps) -- this role only keeps the host prerequisites
         # (service account, directories, ACL) that copy still depends on,
         # so those need to always run, not be conditional on a flag that
         # no longer exists.
@@ -33,7 +33,7 @@ class DelugeRoleTests(unittest.TestCase):
         self.assertNotIn("docker_container", tasks)
 
     def test_service_account_uid_gid_is_validated_against_k3s_apps(self) -> None:
-        # infra/k3s-apps' Deployment hardcodes PUID=993/PGID=986 rather
+        # KandlerLi/k3s-apps' Deployment hardcodes PUID=993/PGID=986 rather
         # than looking them up dynamically -- a homeserver rebuild that
         # ever assigned this account a different uid/gid would otherwise
         # let the k3s copy silently write into these directories as the

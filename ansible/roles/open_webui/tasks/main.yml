@@ -3,7 +3,7 @@
 # its real data directory. This role used to also run Open WebUI
 # itself as a Docker container; that's retired now (cut over to
 # ai.jkandler.de together with home_agent on 2026-08-30, see
-# infra/k3s-apps' modules/open_webui/), but this prerequisite stays --
+# KandlerLi/k3s-apps' modules/open_webui/), but this prerequisite stays --
 # the k3s-native copy reads the exact same real data (accounts, chat
 # history) over a new NFS export of open_webui_data_dir (see
 # nfs_server's exports in group_vars) as this exact service account
@@ -28,7 +28,7 @@
     open_webui_container_uid: >-
       {{ ansible_facts.getent_passwd[open_webui_container_user][1] }}
 
-# infra/k3s-apps' Deployment hardcodes run_as_user=995 (and, notably,
+# KandlerLi/k3s-apps' Deployment hardcodes run_as_user=995 (and, notably,
 # run_as_group=0/root -- not this account's own default group, matching
 # how this role has always started the container: "995:0", not
 # "995:988") rather than looking the uid up dynamically -- confirmed
@@ -41,7 +41,7 @@
     that:
       - open_webui_container_uid == "995"
     fail_msg: >-
-      open-webui-container's uid drifted from 995, which infra/k3s-apps'
+      open-webui-container's uid drifted from 995, which KandlerLi/k3s-apps'
       Deployment hardcodes as run_as_user. Either recreate the account
       with the expected uid, or update k3s-apps' open_webui module and
       re-apply it to match the new value.

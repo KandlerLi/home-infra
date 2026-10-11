@@ -2,7 +2,7 @@
 
 Opt-in (`blocky_ipv6_relay_enabled`, default `false`) IPv6-to-Blocky
 DNS relay on the homeserver. Bridges IPv6-transport DNS queries from
-the LAN to Blocky (`infra/k3s-apps`, `modules/blocky/`), which only
+the LAN to Blocky ([`k3s-apps`](https://github.com/KandlerLi/k3s-apps), `modules/blocky/`), which only
 has an IPv4 address inside the k3s VM's isolated network.
 
 - **Why this exists at all**: a FRITZ!Box's own IPv6 DNS setting
@@ -45,7 +45,7 @@ has an IPv4 address inside the k3s VM's isolated network.
 - **`blocky_ipv6_relay_lan_prefix` is not optional hardening, it's the
   actual access boundary.** This service listens on `::` -- reachable
   from wherever the homeserver's own firewall lets it be reached from.
-  `home-infra-docs` carries a standing, explicitly-stated
+  [`home-infra-docs`](https://github.com/KandlerLi/home-infra-docs) carries a standing, explicitly-stated
   rule against exposing IPv6 services without end-to-end proof (a past
   incident: an accidental AAAA record exposed the FRITZ!Box's own
   self-signed cert to the public internet). An open DNS relay reachable

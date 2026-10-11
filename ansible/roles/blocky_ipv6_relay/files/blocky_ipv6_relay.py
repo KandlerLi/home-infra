@@ -1,6 +1,6 @@
 """Bridge IPv6 DNS queries to Blocky's IPv4-only address inside k3s.
 
-Blocky (infra/k3s-apps, modules/blocky/) only has an IPv4 address
+Blocky (KandlerLi/k3s-apps, modules/blocky/) only has an IPv4 address
 inside the k3s VM's own isolated network -- plain DNAT can't bridge
 address families, so this small stdlib-only relay does it directly:
 listens on IPv6 (both UDP and TCP, matching DNS's own protocol needs --
@@ -33,7 +33,7 @@ FORWARD_TIMEOUT_SECONDS = float(os.environ.get("FORWARD_TIMEOUT_SECONDS", "5"))
 # own systemd TasksMax before anything here notices. Bounding how many
 # forwards can be in flight at once means an over-limit query fails fast
 # (immediate SERVFAIL, no forward attempted) instead of spawning a thread
-# that sits blocked for seconds -- see BACKLOG.md's own entry for the
+# that sits blocked for seconds -- see the private task list's entry for the
 # full incident this responds to.
 MAX_CONCURRENT_FORWARDS = int(os.environ.get("MAX_CONCURRENT_FORWARDS", "16"))
 FORWARD_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_FORWARDS)

@@ -259,7 +259,7 @@ class K3sNodeTests(unittest.TestCase):
     def test_network_does_not_collide_with_lan(self) -> None:
         # 192.168.100.0/24 (virbr10) was the old VM-based github_runner
         # role's own isolated network -- that role is gone now (moved
-        # to infra/k3s-apps entirely), so this only guards against the
+        # to KandlerLi/k3s-apps entirely), so this only guards against the
         # home LAN itself these days, not a cross-role collision.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
             encoding="utf-8"
@@ -318,7 +318,7 @@ class K3sNodeTests(unittest.TestCase):
         # effect of a normal homelab apply. Checks the actual roles
         # list structurally, not a blind substring scan of the whole
         # file -- found live 2026-09-09: a comment merely mentioning
-        # "infra/k3s-apps" (unrelated to this concern -- k3s-apps is a
+        # "KandlerLi/k3s-apps" (unrelated to this concern -- k3s-apps is a
         # real, always-applied production repo, not the learning
         # project this test guards against) false-positived a plain
         # `assertNotIn("k3s", site)` the moment such a comment landed
@@ -513,7 +513,7 @@ class K3sNodeTests(unittest.TestCase):
 
     def test_agent_unit_joins_with_a_taint_and_label(self) -> None:
         # The taint is what actually keeps every other workload off
-        # this node -- infra/k3s-apps' own github_runner module supplies
+        # this node -- KandlerLi/k3s-apps' own github_runner module supplies
         # the matching toleration.
         unit = (ROLE_ROOT / "templates/k3s-agent.service.j2").read_text(
             encoding="utf-8"

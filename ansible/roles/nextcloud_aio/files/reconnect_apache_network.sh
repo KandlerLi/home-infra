@@ -2,7 +2,7 @@
 #
 # Reconnects nextcloud-aio-apache to the nextcloud-aio Docker network if
 # it's missing -- see
-# home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known issues")
+# KandlerLi/home-infra-docs/docs/runbooks/nextcloud-aio.md ("Known issues")
 # for the reboot bug this automates recovery from. Root cause is still
 # unknown (most likely a startup-ordering race), owned by AIO's own
 # mastercontainer -- this only automates the manual recovery.

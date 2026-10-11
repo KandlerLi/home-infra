@@ -2,7 +2,7 @@ name: Build home-agent image
 
 # Builds and pushes home_agent's image to GHCR on the self-hosted CI
 # runner (a k3s-native Pod on its own dedicated, tainted node -- see
-# infra/k3s-apps' modules/github_runner/ -- deliberately never on the
+# KandlerLi/k3s-apps' modules/github_runner/ -- deliberately never on the
 # homeserver itself, so its Docker daemon and workloads stay untouched
 # by CI). Mirrors checks.yml's own CI-image build/push
 # job -- same runner, same GITHUB_TOKEN-based GHCR login, no long-lived
@@ -50,7 +50,7 @@ jobs:
       # Prints the real, immutable pushed digest -- this repo pins every
       # image by digest, not a moving tag (see e.g. deluge/blocky/
       # monitoring), so this is what actually gets copied into
-      # infra/k3s-apps' Deployment once this image is ready to use.
+      # KandlerLi/k3s-apps' Deployment once this image is ready to use.
       - name: Print pushed image digest
         run: >-
           docker inspect

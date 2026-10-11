@@ -49,7 +49,7 @@ class NextcloudAioApacheBindingTests(unittest.TestCase):
 class ApacheNetworkReconnectTests(unittest.TestCase):
     # Confirmed live on two independent reboots (2026-09-01, 2026-09-04)
     # that nextcloud-aio-apache silently drops off the nextcloud-aio
-    # Docker network -- see PARKED.md's "Homeserver: make a reboot a
+    # Docker network -- see the private task list's "Homeserver: make a reboot a
     # complete non-event".
     def test_script_is_idempotent_and_bounded(self) -> None:
         script = (ROLE_ROOT / "files/reconnect_apache_network.sh").read_text(
