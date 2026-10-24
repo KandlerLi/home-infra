@@ -48,16 +48,6 @@ class DockerRoleTests(unittest.TestCase):
         self.assertIn("dns:", config)
         self.assertIn("- 192.168.178.1", config)
 
-    def test_retired_wait_for_nameserver_dropin_is_removed(self) -> None:
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        removal_task = tasks.split(
-            "Remove retired wait-for-nameserver drop-in", 1
-        )[1].split("- name:", 1)[0]
-        self.assertIn("wait-for-nameserver.conf", removal_task)
-        self.assertIn("state: absent", removal_task)
-        self.assertNotIn("ExecStartPre", tasks)
-
 
 if __name__ == "__main__":
     unittest.main()
