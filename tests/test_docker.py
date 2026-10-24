@@ -39,6 +39,29 @@ class DockerRoleTests(unittest.TestCase):
         self.assertIn("docker_daemon_config_file.changed", service_task)
         self.assertIn("docker_daemon_config_removed.changed", service_task)
 
+    def test_docker_waits_for_a_nameserver_without_blocking_forever(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        dropin_task = tasks.split(
+            "Make Docker wait for a nameserver in resolv.conf", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("dest: /etc/systemd/system/docker.service.d/", dropin_task)
+        # The leading "-" lets Docker start even if the wait times out.
+        self.assertIn("ExecStartPre=-/usr/bin/timeout", dropin_task)
+        self.assertIn('grep -q "^nameserver" /etc/resolv.conf', dropin_task)
+
+    def test_dropin_change_reloads_systemd_without_restarting_docker(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        reload_task = tasks.split(
+            "Reload systemd after Docker drop-in change", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("daemon_reload: true", reload_task)
+        service_task = tasks.split(
+            "Ensure Docker service is enabled and running", 1
+        )[1]
+        self.assertNotIn("docker_wait_for_nameserver_dropin", service_task)
+
 
 if __name__ == "__main__":
     unittest.main()
