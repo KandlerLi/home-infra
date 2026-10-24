@@ -66,28 +66,14 @@
   register: docker_daemon_config_removed
   when: docker_daemon_config | length == 0
 
-- name: Create Docker service drop-in directory
+# Superseded by a fixed DNS server in docker_daemon_config; delete this task once it has run.
+- name: Remove retired wait-for-nameserver drop-in
   ansible.builtin.file:
-    path: /etc/systemd/system/docker.service.d
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-# Containers started at boot keep the upstream DNS Docker saw, so wait for dhcpcd's nameserver.
-- name: Make Docker wait for a nameserver in resolv.conf
-  ansible.builtin.copy:
-    content: |
-      [Service]
-      ExecStartPre=-/usr/bin/timeout {{ docker_resolv_conf_wait_seconds }} /bin/sh -c 'until grep -q "^nameserver" /etc/resolv.conf; do sleep 1; done'
-    dest: /etc/systemd/system/docker.service.d/wait-for-nameserver.conf
-    owner: root
-    group: root
-    mode: "0644"
+    path: /etc/systemd/system/docker.service.d/wait-for-nameserver.conf
+    state: absent
   register: docker_wait_for_nameserver_dropin
 
-# Only affects the next start; restarting Docker here would stop every container.
-- name: Reload systemd after Docker drop-in change
+- name: Reload systemd after Docker drop-in removal
   ansible.builtin.systemd_service:
     daemon_reload: true
   when: docker_wait_for_nameserver_dropin.changed

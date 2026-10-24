@@ -39,28 +39,24 @@ class DockerRoleTests(unittest.TestCase):
         self.assertIn("docker_daemon_config_file.changed", service_task)
         self.assertIn("docker_daemon_config_removed.changed", service_task)
 
-    def test_docker_waits_for_a_nameserver_without_blocking_forever(self) -> None:
+    def test_homeserver_containers_get_a_fixed_dns_server(self) -> None:
+        group_vars = (
+            PROJECT_ROOT / "ansible/inventory/group_vars/all/main.yml"
+        ).read_text(encoding="utf-8")
+
+        config = group_vars.split("docker_daemon_config:", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("dns:", config)
+        self.assertIn("- 192.168.178.1", config)
+
+    def test_retired_wait_for_nameserver_dropin_is_removed(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        dropin_task = tasks.split(
-            "Make Docker wait for a nameserver in resolv.conf", 1
+        removal_task = tasks.split(
+            "Remove retired wait-for-nameserver drop-in", 1
         )[1].split("- name:", 1)[0]
-        self.assertIn("dest: /etc/systemd/system/docker.service.d/", dropin_task)
-        # The leading "-" lets Docker start even if the wait times out.
-        self.assertIn("ExecStartPre=-/usr/bin/timeout", dropin_task)
-        self.assertIn('grep -q "^nameserver" /etc/resolv.conf', dropin_task)
-
-    def test_dropin_change_reloads_systemd_without_restarting_docker(self) -> None:
-        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
-
-        reload_task = tasks.split(
-            "Reload systemd after Docker drop-in change", 1
-        )[1].split("- name:", 1)[0]
-        self.assertIn("daemon_reload: true", reload_task)
-        service_task = tasks.split(
-            "Ensure Docker service is enabled and running", 1
-        )[1]
-        self.assertNotIn("docker_wait_for_nameserver_dropin", service_task)
+        self.assertIn("wait-for-nameserver.conf", removal_task)
+        self.assertIn("state: absent", removal_task)
+        self.assertNotIn("ExecStartPre", tasks)
 
 
 if __name__ == "__main__":

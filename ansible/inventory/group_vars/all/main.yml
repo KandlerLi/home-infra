@@ -1,4 +1,9 @@
 ---
+# The FRITZ!Box, so containers restored at boot never start without DNS: see the docker role's README.
+docker_daemon_config:
+  dns:
+    - 192.168.178.1
+
 nextcloud_aio_reverse_proxy_enabled: true
 
 # The homeserver's address on the k3s network, so k3s reaches Apache.
