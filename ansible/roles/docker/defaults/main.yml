@@ -12,5 +12,8 @@ docker_packages:
 
 docker_service_name: docker
 
+# Docker starts anyway after this, so a missing DHCP lease never blocks it for good.
+docker_resolv_conf_wait_seconds: 120
+
 # Empty keeps Docker's own defaults.
 docker_daemon_config: {}
