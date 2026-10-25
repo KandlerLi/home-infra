@@ -8,6 +8,12 @@ applied when included -- only used by `ansible/playbooks/k3s.yml`, not
   running.
 - Fails fast, with a clear message, if `/dev/kvm` doesn't exist -- usually
   means hardware virtualization is disabled in the BIOS/UEFI.
+- Sets `PARALLEL_SHUTDOWN` in `/etc/default/libvirt-guests`
+  (`libvirt_host_parallel_shutdown`, default 2), so a host shutdown stops
+  both k3s VMs at once instead of one after the other; on 2026-10-25 the
+  sequential shutdown took 3 + 3.5 minutes. `libvirt-guests.sh` sources
+  that file on every run, so this needs no restart of `libvirt-guests`
+  (which would shut the VMs down).
 - Verifies the QEMU runtime user/group exist via `ansible.builtin.getent`
   (which fails the task itself on a missing key -- no separate assert
   needed) and creates the cloud image cache directory.

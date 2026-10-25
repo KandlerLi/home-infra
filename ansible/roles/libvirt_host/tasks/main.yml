@@ -12,6 +12,13 @@
     enabled: true
     state: started
 
+# libvirt-guests.sh sources this file on every run, so the next shutdown picks it up without a restart.
+- name: Shut the VMs down in parallel at host shutdown
+  ansible.builtin.lineinfile:
+    path: /etc/default/libvirt-guests
+    regexp: '^#?PARALLEL_SHUTDOWN='
+    line: "PARALLEL_SHUTDOWN={{ libvirt_host_parallel_shutdown }}"
+
 - name: Check whether KVM is available
   ansible.builtin.stat:
     path: /dev/kvm

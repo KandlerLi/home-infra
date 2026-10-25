@@ -27,6 +27,23 @@ class LibvirtHostRoleTests(unittest.TestCase):
         ):
             self.assertIn(package, defaults)
 
+    def test_vms_shut_down_in_parallel_without_restarting_libvirt_guests(
+        self,
+    ) -> None:
+        # Restarting libvirt-guests would shut the running VMs down.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(
+            encoding="utf-8"
+        )
+
+        task = tasks.split("Shut the VMs down in parallel at host shutdown", 1)[
+            1
+        ].split("- name:", 1)[0]
+        self.assertIn("path: /etc/default/libvirt-guests", task)
+        self.assertIn("regexp: '^#?PARALLEL_SHUTDOWN='", task)
+        self.assertNotIn("libvirt-guests\n    state: restarted", tasks)
+        self.assertIn("libvirt_host_parallel_shutdown: 2", defaults)
+
     def test_libvirtd_is_enabled_and_started(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 

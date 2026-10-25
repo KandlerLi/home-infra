@@ -14,3 +14,6 @@ libvirt_host_service: libvirtd
 libvirt_host_qemu_user: libvirt-qemu
 libvirt_host_qemu_group: kvm
 libvirt_host_image_cache_dir: /var/lib/libvirt/cloud-images
+
+# Both k3s VMs at once: sequential shutdown added their times (3 + 3.5 min on 2026-10-25).
+libvirt_host_parallel_shutdown: 2
