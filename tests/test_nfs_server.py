@@ -35,6 +35,31 @@ class NfsServerRoleTests(unittest.TestCase):
         install_index = tasks.index("Install NFS exports")
         self.assertLess(create_dir_index, install_index)
 
+    def test_nfs_server_stops_only_after_the_vms(self) -> None:
+        # systemd stops units in reverse start order, so Before= at start means after at shutdown.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        dropin_task = tasks.split(
+            "Stop the NFS server only after the VMs at shutdown", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("Before=libvirt-guests.service", dropin_task)
+        self.assertIn(
+            "dest: /etc/systemd/system/nfs-server.service.d/", dropin_task
+        )
+        self.assertLess(
+            tasks.index("Create NFS server drop-in directory"),
+            tasks.index("Stop the NFS server only after the VMs at shutdown"),
+        )
+
+    def test_dropin_change_only_reloads_systemd(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        reload_task = tasks.split(
+            "Reload systemd after NFS server drop-in change", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("daemon_reload: true", reload_task)
+        self.assertIn("when: nfs_server_ordering_dropin.changed", reload_task)
+
     def test_exports_reload_only_when_the_file_actually_changed(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
