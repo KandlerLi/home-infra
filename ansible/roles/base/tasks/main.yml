@@ -80,16 +80,16 @@
     base_eee_result.rc != 0
     and 'Operation not supported' not in base_eee_result.stderr
 
-# ethtool changes live state only; an ifupdown post-up hook reapplies it.
-- name: Persist the NIC offload/EEE settings via an ifupdown post-up hook
+# pre-up, not post-up: changing EEE resets the link, which after ifup cost a carrier flap and the DHCP state.
+- name: Persist the NIC offload/EEE settings via an ifupdown pre-up hook
   ansible.builtin.blockinfile:
     path: /etc/network/interfaces
     insertafter: '^iface {{ base_e1000e_interface }} inet dhcp$'
     marker: "# {mark} ANSIBLE MANAGED BLOCK -- e1000e watchdog-hang fix"
-    # Flush-left is fine: ifupdown ignores the indentation.
+    # Flush-left is fine: ifupdown ignores the indentation. "|| true": a failing pre-up aborts the whole ifup.
     content: |
-      post-up /sbin/ethtool -K {{ base_e1000e_interface }} tso off gso off gro off
-      post-up /sbin/ethtool --set-eee {{ base_e1000e_interface }} eee off || true
+      pre-up /sbin/ethtool -K {{ base_e1000e_interface }} tso off gso off gro off || true
+      pre-up /sbin/ethtool --set-eee {{ base_e1000e_interface }} eee off || true
 
 # A safety net: rebinds the NIC on a NETDEV WATCHDOG event. See the runbook.
 - name: Create e1000e watchdog recovery install directory
