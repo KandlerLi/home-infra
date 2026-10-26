@@ -217,14 +217,6 @@
     group: "{{ k3s_node_libvirt_group }}"
     mode: "0750"
 
-# The owner already is the libvirt user; this entry only raised the ACL mask against mode 0750. Delete once it has run.
-- name: Remove redundant libvirt ACL entry from k3s node VM storage
-  ansible.posix.acl:
-    path: "{{ k3s_node_vm_storage_dir }}"
-    entity: "{{ k3s_node_libvirt_user }}"
-    etype: user
-    state: absent
-
 - name: Create k3s node cloud-init build directory
   ansible.builtin.file:
     path: "{{ k3s_node_cloud_init_dir }}"
