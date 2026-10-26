@@ -197,15 +197,29 @@
     mode: "0644"
   register: k3s_node_logind_dropin
 
-# SIGHUP reloads logind's config without ending sessions; kubelet reads the cap when it (re)starts below.
-- name: Reload logind after its drop-in changed
+# Live value, not the file: a SIGHUP reload left it at 30 s on 2026-10-26 and kubelet gave up.
+- name: Read logind's live InhibitDelayMaxSec
   ansible.builtin.command:
     argv:
-      - systemctl
-      - kill
-      - --signal=SIGHUP
-      - systemd-logind
-  when: k3s_node_logind_dropin.changed
+      - busctl
+      - get-property
+      - org.freedesktop.login1
+      - /org/freedesktop/login1
+      - org.freedesktop.login1.Manager
+      - InhibitDelayMaxUSec
+  register: k3s_node_logind_inhibit_live
+  changed_when: false
+  check_mode: false
+
+# Output is "t <microseconds>"; sessions survive a logind restart on systemd 257.
+- name: Restart logind when its live inhibitor cap is below the configured one
+  ansible.builtin.systemd_service:
+    name: systemd-logind
+    state: restarted
+  register: k3s_node_logind_restart
+  when: >-
+    (k3s_node_logind_inhibit_live.stdout.split()[1] | int)
+    < (k3s_node_logind_inhibit_delay_max_sec | int) * 1000000
 
 - name: Restart k3s when its binary, config, or unit changed
   ansible.builtin.systemd_service:
@@ -217,7 +231,7 @@
     or k3s_node_agent_env_file.changed | default(false)
     or k3s_node_unit_file.changed
     or k3s_node_kubelet_shutdown_dropin.changed
-    or k3s_node_logind_dropin.changed
+    or k3s_node_logind_restart is changed
 
 - name: Ensure k3s is enabled and running
   ansible.builtin.systemd_service:

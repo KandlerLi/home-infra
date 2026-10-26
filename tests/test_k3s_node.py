@@ -628,11 +628,30 @@ class K3sNodeTests(unittest.TestCase):
 
         restart = tasks.split("Restart k3s when its binary, config, or unit changed", 1)[1]
         self.assertIn("k3s_node_kubelet_shutdown_dropin.changed", restart)
-        self.assertIn("k3s_node_logind_dropin.changed", restart)
+        self.assertIn("k3s_node_logind_restart is changed", restart)
         self.assertLess(
-            tasks.index("Reload logind after its drop-in changed"),
+            tasks.index("Restart logind when its live inhibitor cap is below"),
             tasks.index("Restart k3s when its binary, config, or unit changed"),
         )
+
+    def test_logind_is_restarted_on_its_live_cap_not_reloaded(self) -> None:
+        # logind kept 30 s across a SIGHUP reload, so kubelet disabled graceful shutdown.
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn("--signal=SIGHUP", tasks)
+        probe = tasks.split("Read logind's live InhibitDelayMaxSec", 1)[1].split(
+            "- name:", 1
+        )[0]
+        self.assertIn("InhibitDelayMaxUSec", probe)
+        self.assertIn("check_mode: false", probe)
+        restart = tasks.split(
+            "Restart logind when its live inhibitor cap is below", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("name: systemd-logind", restart)
+        self.assertIn("state: restarted", restart)
+        self.assertIn("k3s_node_logind_inhibit_delay_max_sec | int) * 1000000", restart)
 
 if __name__ == "__main__":
     unittest.main()
