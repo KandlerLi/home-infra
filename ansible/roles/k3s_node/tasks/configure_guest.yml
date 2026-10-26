@@ -156,6 +156,57 @@
     daemon_reload: true
   when: k3s_node_unit_file.changed
 
+# k3s starts kubelet with --config-dir here and only rewrites its own 00-k3s-defaults.conf.
+- name: Create kubelet config drop-in directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Enable kubelet graceful node shutdown
+  ansible.builtin.copy:
+    dest: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/50-graceful-node-shutdown.conf
+    content: |
+      apiVersion: kubelet.config.k8s.io/v1beta1
+      kind: KubeletConfiguration
+      shutdownGracePeriod: {{ k3s_node_shutdown_grace_period }}
+      shutdownGracePeriodCriticalPods: {{ k3s_node_shutdown_grace_period_critical_pods }}
+    owner: root
+    group: root
+    mode: "0600"
+  register: k3s_node_kubelet_shutdown_dropin
+
+- name: Create logind drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Let kubelet's shutdown inhibitor hold the VM shutdown long enough
+  ansible.builtin.copy:
+    dest: /etc/systemd/logind.conf.d/kubelet-graceful-shutdown.conf
+    content: |
+      [Login]
+      InhibitDelayMaxSec={{ k3s_node_logind_inhibit_delay_max_sec }}
+    owner: root
+    group: root
+    mode: "0644"
+  register: k3s_node_logind_dropin
+
+# SIGHUP reloads logind's config without ending sessions; kubelet reads the cap when it (re)starts below.
+- name: Reload logind after its drop-in changed
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - kill
+      - --signal=SIGHUP
+      - systemd-logind
+  when: k3s_node_logind_dropin.changed
+
 - name: Restart k3s when its binary, config, or unit changed
   ansible.builtin.systemd_service:
     name: "{{ k3s_node_systemd_unit_name }}"
@@ -165,6 +216,8 @@
     or k3s_node_config_file.changed | default(false)
     or k3s_node_agent_env_file.changed | default(false)
     or k3s_node_unit_file.changed
+    or k3s_node_kubelet_shutdown_dropin.changed
+    or k3s_node_logind_dropin.changed
 
 - name: Ensure k3s is enabled and running
   ansible.builtin.systemd_service:

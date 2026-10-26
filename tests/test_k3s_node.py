@@ -602,5 +602,37 @@ class K3sNodeTests(unittest.TestCase):
         )
 
 
+    def test_kubelet_stops_pods_itself_at_vm_shutdown(self) -> None:
+        # Without it, systemd unmounted NFS under running Pods and node-1 hung until SIGKILL.
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        dropin = tasks.split("Enable kubelet graceful node shutdown", 1)[1].split(
+            "- name:", 1
+        )[0]
+        self.assertIn("kubelet.conf.d/50-graceful-node-shutdown.conf", dropin)
+        self.assertIn("kind: KubeletConfiguration", dropin)
+        self.assertIn("shutdownGracePeriod:", dropin)
+        self.assertIn("shutdownGracePeriodCriticalPods:", dropin)
+        self.assertIn("InhibitDelayMaxSec=", tasks)
+
+        grace = int(
+            defaults.split("k3s_node_shutdown_grace_period: ", 1)[1].split("s", 1)[0]
+        )
+        inhibit = int(
+            defaults.split("k3s_node_logind_inhibit_delay_max_sec: ", 1)[1].split()[0]
+        )
+        self.assertGreater(inhibit, grace)
+
+        restart = tasks.split("Restart k3s when its binary, config, or unit changed", 1)[1]
+        self.assertIn("k3s_node_kubelet_shutdown_dropin.changed", restart)
+        self.assertIn("k3s_node_logind_dropin.changed", restart)
+        self.assertLess(
+            tasks.index("Reload logind after its drop-in changed"),
+            tasks.index("Restart k3s when its binary, config, or unit changed"),
+        )
+
 if __name__ == "__main__":
     unittest.main()
