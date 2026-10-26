@@ -23,6 +23,18 @@ class K3sNodeTests(unittest.TestCase):
         ):
             task = tasks.split(name, 1)[1].split("- name:", 1)[0]
             self.assertIn("check_mode: false", task, name)
+    def test_storage_dir_mode_is_not_fought_by_a_named_user_acl(self) -> None:
+        # A named-user rwx entry raises the ACL mask, which chmod 0750 lowers again on every run.
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(
+            encoding="utf-8"
+        )
+
+        acl_task = tasks.split(
+            "Remove redundant libvirt ACL entry from k3s node VM storage", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("state: absent", acl_task)
+        self.assertNotIn("permissions: rwx", tasks)
+
     def test_disk_path_is_pinned_to_dedicated_directory(self) -> None:
         # Persistent state on /mnt/black-hdd, derived from the VM name so it holds for both nodes.
         tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
