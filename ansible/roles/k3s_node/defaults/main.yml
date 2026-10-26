@@ -40,6 +40,8 @@ k3s_node_vm_mac: "52:54:00:00:00:20"
 
 k3s_node_libvirt_user: libvirt-qemu
 k3s_node_libvirt_group: kvm
+# libvirt's dynamic ownership sets this group on the disk and seed ISO at every VM start.
+k3s_node_vm_file_group: libvirt-qemu
 
 # Control-plane and agent nodes land in different groups.
 k3s_node_inventory_group: k3s_nodes
