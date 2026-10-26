@@ -78,3 +78,17 @@ ext4 filesystem (`resize2fs`) so the space is actually usable. A disk
 is only ever grown: a smaller `k3s_node_vm_disk_size_gb` than the
 existing image makes the play fail before anything is shut down. Run
 `scripts/roll-out-k3s.sh dry-run` first.
+
+**Graceful node shutdown** (both join modes): a kubelet config drop-in
+in `/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/` (k3s starts kubelet
+with `--config-dir` there and only rewrites its own `00-k3s-defaults.conf`)
+sets `shutdownGracePeriod`/`shutdownGracePeriodCriticalPods`
+(`k3s_node_shutdown_grace_period`, default 60 s / 10 s), and a logind
+drop-in raises `InhibitDelayMaxSec` (30 s on these VMs) above it. kubelet
+then holds the VM's shutdown with a logind inhibitor and stops every
+Pod through the runtime first. Without it, k3s (`KillMode=process`) left
+the Pods running, systemd unmounted their NFS volumes underneath them,
+and Open WebUI's process hung unkillable on its SQLite file, so the
+homeserver's `libvirt-guests` SIGKILLed `k3s-node-1` after 300 s
+(2026-10-25 and -26). A change to either drop-in restarts k3s; Pods keep
+running across that restart.

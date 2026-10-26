@@ -70,6 +70,12 @@ k3s_node_kubeconfig_path: "{{ k3s_node_config_dir }}/k3s.yaml"
 # 0644 is fine: only the sudo-capable ansible account reaches this VM.
 k3s_node_kubeconfig_mode: "0644"
 
+# kubelet stops Pods itself at VM shutdown, before systemd unmounts their NFS volumes: see the README.
+k3s_node_shutdown_grace_period: 60s
+k3s_node_shutdown_grace_period_critical_pods: 10s
+# logind's inhibitor cap must exceed the grace period, or kubelet gets cut off (30 s on these VMs).
+k3s_node_logind_inhibit_delay_max_sec: 75
+
 # Terraform on the VM, installed reproducibly like k3s.
 k3s_node_terraform_version: "1.16.0"
 k3s_node_terraform_zip_url: >-
