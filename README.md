@@ -221,6 +221,22 @@ where that list now gets synced to changed (see
 `scripts/sync_github_runner_repositories.py`, which now emits only
 [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own Terraform variable, not an Ansible one).
 
+## Backup restore drill
+
+`scripts/verify-backups.sh` checks from the laptop that every backup on
+`/mnt/red-hdd` can actually be restored: the newest Deluge and Open WebUI
+tarballs extract (Open WebUI's `webui.db` passes `PRAGMA integrity_check`),
+the newest Authelia backup is a sound SQLite database that the current
+storage key decrypts, every Paperless export original matches its manifest
+checksum, and the Borg passphrase from `pass` (`nc/backup`, or
+`BORG_PASS_ENTRY`) opens Nextcloud AIO's repository and gets a file back out
+of the newest archive. It runs `scripts/verify-backups-remote.sh` as root on
+the homeserver in a scratch directory under `/mnt/red-hdd` that it deletes
+afterwards; the passphrase, the Authelia key (one key from Secrets Manager,
+skipped without an AWS session) and the sudo password travel on stdin only,
+and the output is PASS/FAIL lines, never contents. Restore procedures:
+[`home-infra-docs`](https://github.com/KandlerLi/home-infra-docs)' `runbooks/verify-backups.md`.
+
 ## Hardware maintenance shutdown
 
 The guarded shutdown helper shuts down the running libvirt VMs (`k3s-node-2`
