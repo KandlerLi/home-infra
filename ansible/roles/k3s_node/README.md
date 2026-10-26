@@ -84,9 +84,12 @@ in `/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/` (k3s starts kubelet
 with `--config-dir` there and only rewrites its own `00-k3s-defaults.conf`)
 sets `shutdownGracePeriod`/`shutdownGracePeriodCriticalPods`
 (`k3s_node_shutdown_grace_period`, default 60 s / 10 s), and a logind
-drop-in raises `InhibitDelayMaxSec` (30 s on these VMs) above it; logind
-is restarted whenever its live value is lower, since a reload doesn't
-apply it (kubelet then disables the feature). kubelet
+drop-in raises `InhibitDelayMaxSec` above it. That drop-in is named
+`zz-…`: systemd applies logind drop-ins sorted by file name across
+`/etc` and `/usr/lib`, and `unattended-upgrades` ships
+`unattended-upgrades-logind-maxdelay.conf` with 30 s, which otherwise
+sorts last and wins (kubelet then disables the feature). logind is
+restarted whenever its live value is lower than configured. kubelet
 then holds the VM's shutdown with a logind inhibitor and stops every
 Pod through the runtime first. Without it, k3s (`KillMode=process`) left
 the Pods running, systemd unmounted their NFS volumes underneath them,
