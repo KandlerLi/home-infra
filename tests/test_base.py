@@ -60,19 +60,24 @@ class BaseRoleTests(unittest.TestCase):
         self.assertIn("Operation not supported", eee_task)
         self.assertIn("base_eee_result.rc != 0", eee_task)
 
-    def test_nic_offload_and_eee_settings_persist_via_ifupdown_post_up(
+    def test_nic_offload_and_eee_settings_persist_via_ifupdown_pre_up(
         self,
     ) -> None:
-        # ethtool settings are live only, so a post-up hook reapplies them.
+        # pre-up so the EEE link reset happens before DHCP; post-up flapped the link after ifup.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
         persist_task = tasks.split(
             "Persist the NIC offload/EEE settings", 1
         )[1].split("- name:", 1)[0]
         self.assertIn("path: /etc/network/interfaces", persist_task)
-        self.assertIn("post-up /sbin/ethtool -K", persist_task)
+        self.assertIn("pre-up /sbin/ethtool -K", persist_task)
         self.assertIn("tso off gso off gro off", persist_task)
-        self.assertIn("post-up /sbin/ethtool --set-eee", persist_task)
+        self.assertIn("pre-up /sbin/ethtool --set-eee", persist_task)
+        self.assertNotIn("post-up", persist_task)
+        # A failing pre-up command aborts ifup and leaves the headless host offline.
+        for line in persist_task.splitlines():
+            if line.strip().startswith("pre-up"):
+                self.assertTrue(line.rstrip().endswith("|| true"), line)
 
     def test_installs_and_enables_the_e1000e_watchdog_recovery_service(
         self,
