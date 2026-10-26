@@ -659,5 +659,29 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("state: restarted", restart)
         self.assertIn("k3s_node_logind_inhibit_delay_max_sec | int) * 1000000", restart)
 
+    def test_vm_files_use_the_group_libvirt_sets_at_vm_start(self) -> None:
+        # libvirt chowns disk and seed ISO to libvirt-qemu on every VM start; kvm here meant a "changed" after each reboot.
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("k3s_node_vm_file_group: libvirt-qemu", defaults)
+        for name in (
+            "Set k3s node cloud-init seed image permissions",
+            "Set k3s node system disk permissions",
+        ):
+            task = tasks.split(name, 1)[1].split("- name:", 1)[0]
+            self.assertIn('group: "{{ k3s_node_vm_file_group }}"', task, name)
+        storage_dir = tasks.split(
+            "Create dedicated k3s node VM storage directory", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn('group: "{{ k3s_node_libvirt_group }}"', storage_dir)
+
+    def test_ran_one_time_logind_cleanup_is_gone(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn("logind.conf.d/kubelet-graceful-shutdown.conf", tasks)
+
 if __name__ == "__main__":
     unittest.main()

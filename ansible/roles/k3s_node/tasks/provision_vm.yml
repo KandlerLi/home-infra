@@ -391,7 +391,7 @@
     path: "{{ k3s_node_cloud_init_iso_path }}"
     state: file
     owner: "{{ k3s_node_libvirt_user }}"
-    group: "{{ k3s_node_libvirt_group }}"
+    group: "{{ k3s_node_vm_file_group }}"
     mode: "0640"
   when: >-
     not ansible_check_mode
@@ -434,7 +434,7 @@
     path: "{{ k3s_node_vm_disk_path }}"
     state: file
     owner: "{{ k3s_node_libvirt_user }}"
-    group: "{{ k3s_node_libvirt_group }}"
+    group: "{{ k3s_node_vm_file_group }}"
     mode: "0640"
   when: >-
     not ansible_check_mode

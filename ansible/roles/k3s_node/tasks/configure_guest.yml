@@ -198,12 +198,6 @@
     mode: "0644"
   register: k3s_node_logind_dropin
 
-# Superseded by the zz- name above, which sorts after unattended-upgrades' file. Delete once it has run.
-- name: Remove the logind drop-in that sorted before unattended-upgrades' cap
-  ansible.builtin.file:
-    path: /etc/systemd/logind.conf.d/kubelet-graceful-shutdown.conf
-    state: absent
-
 # Live value, not the file: on 2026-10-26 the cap stayed at 30 s and kubelet gave up.
 - name: Read logind's live InhibitDelayMaxSec
   ansible.builtin.command:
