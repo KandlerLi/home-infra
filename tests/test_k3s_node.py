@@ -617,6 +617,12 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("shutdownGracePeriod:", dropin)
         self.assertIn("shutdownGracePeriodCriticalPods:", dropin)
         self.assertIn("InhibitDelayMaxSec=", tasks)
+        # Must sort after unattended-upgrades-logind-maxdelay.conf (30 s), or that file wins.
+        logind = tasks.split(
+            "Let kubelet's shutdown inhibitor hold the VM shutdown long enough", 1
+        )[1].split("- name:", 1)[0]
+        dest = logind.split("dest: /etc/systemd/logind.conf.d/", 1)[1].split()[0]
+        self.assertGreater(dest, "unattended-upgrades-logind-maxdelay.conf")
 
         grace = int(
             defaults.split("k3s_node_shutdown_grace_period: ", 1)[1].split("s", 1)[0]

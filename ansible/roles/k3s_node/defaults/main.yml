@@ -73,7 +73,7 @@ k3s_node_kubeconfig_mode: "0644"
 # kubelet stops Pods itself at VM shutdown, before systemd unmounts their NFS volumes: see the README.
 k3s_node_shutdown_grace_period: 60s
 k3s_node_shutdown_grace_period_critical_pods: 10s
-# logind's inhibitor cap must exceed the grace period, or kubelet gets cut off (30 s on these VMs).
+# logind's inhibitor cap must exceed the grace period, or kubelet disables graceful shutdown.
 k3s_node_logind_inhibit_delay_max_sec: 75
 
 # Terraform on the VM, installed reproducibly like k3s.

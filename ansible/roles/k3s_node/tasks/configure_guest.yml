@@ -186,9 +186,10 @@
     group: root
     mode: "0755"
 
+# Drop-ins apply sorted by file name across /etc and /usr/lib: "zz-" beats unattended-upgrades' 30 s file.
 - name: Let kubelet's shutdown inhibitor hold the VM shutdown long enough
   ansible.builtin.copy:
-    dest: /etc/systemd/logind.conf.d/kubelet-graceful-shutdown.conf
+    dest: /etc/systemd/logind.conf.d/zz-kubelet-graceful-shutdown.conf
     content: |
       [Login]
       InhibitDelayMaxSec={{ k3s_node_logind_inhibit_delay_max_sec }}
@@ -197,7 +198,13 @@
     mode: "0644"
   register: k3s_node_logind_dropin
 
-# Live value, not the file: a SIGHUP reload left it at 30 s on 2026-10-26 and kubelet gave up.
+# Superseded by the zz- name above, which sorts after unattended-upgrades' file. Delete once it has run.
+- name: Remove the logind drop-in that sorted before unattended-upgrades' cap
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d/kubelet-graceful-shutdown.conf
+    state: absent
+
+# Live value, not the file: on 2026-10-26 the cap stayed at 30 s and kubelet gave up.
 - name: Read logind's live InhibitDelayMaxSec
   ansible.builtin.command:
     argv:
