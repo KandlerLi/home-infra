@@ -571,10 +571,12 @@ class K3sNodeTests(unittest.TestCase):
             "stub listener is still active",
             1,
         )[0]
-        self.assertIn("host: 127.0.0.53", probe_task)
-        self.assertIn("port: 53", probe_task)
+        # A TCP connect is no proof on node-1: Blocky's hostPort DNAT answers it.
+        self.assertIn("- ss", probe_task)
+        self.assertIn('"sport = :53"', probe_task)
+        self.assertNotIn("wait_for", probe_task)
         self.assertIn("register: k3s_node_resolved_stub_probe", probe_task)
-        self.assertIn("ignore_errors: true", probe_task)
+        self.assertIn("check_mode: false", probe_task)
 
         restart_task = tasks.split(
             "Restart systemd-resolved when its config changed or its "
@@ -586,7 +588,7 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("k3s_node_resolved_stub_config.changed", restart_task)
         self.assertIn("k3s_node_resolv_conf_link.changed", restart_task)
         self.assertIn(
-            "k3s_node_resolved_stub_probe is succeeded", restart_task
+            "'127.0.0.53' in k3s_node_resolved_stub_probe.stdout", restart_task
         )
 
 

@@ -57,16 +57,16 @@
     force: true
   register: k3s_node_resolv_conf_link
 
-# Checks the live listener, not only this run's changes: see history.md.
+# Live listener via ss, not a TCP connect: Blocky's hostPort DNAT answers any :53 connect on node-1 (see history.md).
 - name: Check whether systemd-resolved's stub listener is still active
-  ansible.builtin.wait_for:
-    host: 127.0.0.53
-    port: 53
-    timeout: 2
-    state: started
+  ansible.builtin.command:
+    argv:
+      - ss
+      - -Hltn
+      - "sport = :53"
   register: k3s_node_resolved_stub_probe
-  ignore_errors: true
   changed_when: false
+  check_mode: false
 
 - name: Restart systemd-resolved when its config changed or its stub listener is still active
   ansible.builtin.systemd_service:
@@ -75,7 +75,7 @@
   when: >-
     k3s_node_resolved_stub_config.changed
     or k3s_node_resolv_conf_link.changed
-    or k3s_node_resolved_stub_probe is succeeded
+    or '127.0.0.53' in k3s_node_resolved_stub_probe.stdout
 
 - name: Validate k3s agent join configuration
   ansible.builtin.assert:
