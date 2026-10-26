@@ -144,15 +144,6 @@
       {{ item.public_port }} -> {{ item.target_port }}
   register: k3s_ingress_forward_dnat_result
 
-# One-time catch-up of stale saved rules; delete once every host has run it.
-- name: Force-persist once to catch the saved state up to 2026-09-01's live fix
-  ansible.builtin.command:
-    argv:
-      - netfilter-persistent
-      - save
-  changed_when: true
-  when: k3s_ingress_forward_enabled | bool
-
 - name: Persist iptables rules across reboots
   ansible.builtin.command:
     argv:
