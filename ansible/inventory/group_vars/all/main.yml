@@ -59,6 +59,8 @@ monitoring_alertmanager_upstream: 192.168.101.10:9093
 
 # Scrapes the k3s nodes' node-exporter and kube-state-metrics (k3s-apps' node_exporter module).
 monitoring_k3s_node_health_enabled: true
+# Per-Pod CPU/memory from kubelet; token from k3s-bootstrap via Secrets Manager.
+monitoring_k3s_kubelet_metrics_enabled: true
 
 # Blocky runs in k3s (ADR 0020); its Postgres password lives in Secrets Manager for k3s-apps.
 monitoring_blocky_upstream: 192.168.101.10:4000

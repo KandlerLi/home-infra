@@ -24,6 +24,8 @@
             monitoring_ntfy_topic: "{{ _aws_secrets_monitoring.monitoring_ntfy_topic }}"
             monitoring_ses_smtp_username: "{{ _aws_secrets_monitoring.monitoring_ses_smtp_username }}"
             monitoring_ses_smtp_password: "{{ _aws_secrets_monitoring.monitoring_ses_smtp_password }}"
+            # default(''): the role's own assert names the missing key.
+            monitoring_k3s_kubelet_token: "{{ _aws_secrets_monitoring.monitoring_k3s_kubelet_token | default('') }}"
           when: monitoring_enabled | bool
 
         - name: Expose Nextcloud's own Authelia OIDC client secret under its existing variable name

@@ -587,6 +587,161 @@
     },
     {
       "type": "row",
+      "title": "Per container (kubelet cAdvisor)",
+      "collapsed": false,
+      "panels": [],
+      "id": 22,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      }
+    },
+    {
+      "title": "CPU by repo and container",
+      "type": "timeseries",
+      "description": "Cores, 5m rate, summed over a repo's runner pods.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (repo, container) (label_replace(rate(container_cpu_usage_seconds_total{job=\"k3s_kubelet_cadvisor\", pod=~\"github-runner-.+\", container!=\"\"}[5m]), \"repo\", \"$1\", \"pod\", \"github-runner-(.+)-[0-9]+-[a-z0-9]+-[a-z0-9]+\"))",
+          "legendFormat": "{{repo}} {{container}}",
+          "refId": "A"
+        }
+      ],
+      "id": 23,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 27
+      }
+    },
+    {
+      "title": "Memory by repo and container",
+      "type": "timeseries",
+      "description": "Working set, the value the OOM killer compares against the limit.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (repo, container) (label_replace(container_memory_working_set_bytes{job=\"k3s_kubelet_cadvisor\", pod=~\"github-runner-.+\", container!=\"\"}, \"repo\", \"$1\", \"pod\", \"github-runner-(.+)-[0-9]+-[a-z0-9]+-[a-z0-9]+\"))",
+          "legendFormat": "{{repo}} {{container}}",
+          "refId": "A"
+        }
+      ],
+      "id": 24,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 27
+      }
+    },
+    {
+      "title": "Memory vs. limit (highest pod)",
+      "type": "timeseries",
+      "description": "Working set over the container's memory limit; near 100% the next allocation is an OOM kill.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 10
+          },
+          "max": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (container) (container_memory_working_set_bytes{job=\"k3s_kubelet_cadvisor\", pod=~\"github-runner-.+\", container!=\"\"} / on (pod, container) (container_spec_memory_limit_bytes{job=\"k3s_kubelet_cadvisor\", pod=~\"github-runner-.+\", container!=\"\"} > 0))",
+          "legendFormat": "{{container}}",
+          "refId": "A"
+        }
+      ],
+      "id": 25,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 27
+      }
+    },
+    {
+      "title": "OOM kills per hour",
+      "type": "timeseries",
+      "description": "Rolling 1h window, by container.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (container) (increase(container_oom_events_total{job=\"k3s_kubelet_cadvisor\", pod=~\"github-runner-.+\", container!=\"\"}[1h]))",
+          "legendFormat": "{{container}}",
+          "refId": "A"
+        }
+      ],
+      "id": 26,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 27
+      }
+    },
+    {
+      "type": "row",
       "title": "k3s-node-2 (runner node)",
       "collapsed": false,
       "panels": [],
@@ -595,7 +750,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 35
       }
     },
     {
@@ -632,7 +787,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 27
+        "y": 36
       }
     },
     {
@@ -663,7 +818,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 27
+        "y": 36
       }
     },
     {
@@ -703,7 +858,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 27
+        "y": 36
       }
     },
     {
@@ -742,7 +897,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 35
+        "y": 44
       }
     },
     {
@@ -781,7 +936,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 35
+        "y": 44
       }
     },
     {
@@ -846,7 +1001,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 35
+        "y": 44
       }
     },
     {
@@ -859,7 +1014,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 43
+        "y": 52
       }
     },
     {
@@ -890,7 +1045,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 53
       }
     }
   ]

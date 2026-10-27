@@ -41,6 +41,16 @@
           KandlerLi/k3s-apps' one, never both.
       no_log: true
 
+    - name: Validate kubelet scrape token
+      ansible.builtin.assert:
+        that:
+          - monitoring_k3s_kubelet_token | trim | length > 0
+        fail_msg: >-
+          Copy monitoring_k3s_kubelet_token into home-infra/monitoring
+          first: see secrets-manager's runbook for that secret.
+      no_log: true
+      when: monitoring_k3s_kubelet_metrics_enabled | bool
+
     - name: Create monitoring service accounts
       ansible.builtin.user:
         name: "{{ item }}"
@@ -89,6 +99,8 @@
         - path: "{{ monitoring_config_dir }}/blackbox"
           owner: root
         - path: "{{ monitoring_data_dir }}/prometheus"
+          owner: "{{ monitoring_prometheus_container_user }}"
+        - path: "{{ monitoring_k3s_kubelet_dir }}"
           owner: "{{ monitoring_prometheus_container_user }}"
         - path: "{{ monitoring_data_dir }}/ntfy-relay"
           owner: "{{ monitoring_ntfy_relay_service_user }}"
@@ -205,6 +217,31 @@
         name: backup-freshness.timer
         enabled: true
         state: started
+
+    - name: Install kubelet scrape token for Prometheus
+      ansible.builtin.copy:
+        content: "{{ monitoring_k3s_kubelet_token | trim }}"
+        dest: "{{ monitoring_k3s_kubelet_dir }}/kubelet-token"
+        owner: "{{ monitoring_prometheus_container_user }}"
+        group: "{{ monitoring_prometheus_container_user }}"
+        mode: "0400"
+      no_log: true
+      when: monitoring_k3s_kubelet_metrics_enabled | bool
+
+    - name: Remove kubelet scrape token when the scrape is off
+      ansible.builtin.file:
+        path: "{{ monitoring_k3s_kubelet_dir }}/kubelet-token"
+        state: absent
+      when: not monitoring_k3s_kubelet_metrics_enabled | bool
+
+    # Public certificate; it signs every kubelet's serving certificate.
+    - name: Install k3s server CA for the kubelet scrape
+      ansible.builtin.copy:
+        src: k3s-server-ca.crt
+        dest: "{{ monitoring_k3s_kubelet_dir }}/server-ca.crt"
+        owner: root
+        group: root
+        mode: "0644"
 
     - name: Install Prometheus scrape configuration
       ansible.builtin.template:
@@ -369,6 +406,7 @@
           - "{{ monitoring_config_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
           - "{{ monitoring_config_dir }}/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro"
           - "{{ monitoring_data_dir }}/prometheus:/prometheus"
+          - "{{ monitoring_k3s_kubelet_dir }}:/etc/prometheus/k3s:ro"
         tmpfs:
           - /tmp:rw,noexec,nosuid,nodev,size=32m
         comparisons:
