@@ -508,6 +508,177 @@
     },
     {
       "type": "row",
+      "title": "GitHub's view (API)",
+      "collapsed": false,
+      "panels": [],
+      "id": 27,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      }
+    },
+    {
+      "title": "Online runners per repo",
+      "type": "bargauge",
+      "description": "Runners GitHub reports as online, idle or busy. A repo at 0 can't run jobs, even if its Pods are ready.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (repo) (github_runners{state=~\"online_.+\"})",
+          "legendFormat": "{{repo}}",
+          "refId": "A"
+        }
+      ],
+      "id": 28,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 18
+      }
+    },
+    {
+      "title": "Runners by GitHub status",
+      "type": "timeseries",
+      "description": "All runner repos together.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 30
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (state) (github_runners)",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "id": 29,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 18
+      }
+    },
+    {
+      "title": "Queued runs by repo",
+      "type": "timeseries",
+      "description": "Workflow runs waiting for a runner. Normally gone within seconds; a flat line above 0 means no runner takes them.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (repo) (github_actions_queued_runs)",
+          "legendFormat": "{{repo}}",
+          "refId": "A"
+        }
+      ],
+      "id": 30,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 18
+      }
+    },
+    {
+      "title": "Repos the exporter can't poll",
+      "type": "stat",
+      "description": "Usually an expired token or a runner repo missing from the token's repository list.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(github_runner_exporter_up == 0) or vector(0)",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "id": 31,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 18
+      }
+    },
+    {
+      "type": "row",
       "title": "Activity",
       "collapsed": false,
       "panels": [],
@@ -516,7 +687,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 26
       }
     },
     {
@@ -552,7 +723,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 27
       }
     },
     {
@@ -582,7 +753,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 27
       }
     },
     {
@@ -595,7 +766,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 35
       }
     },
     {
@@ -631,7 +802,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 27
+        "y": 36
       }
     },
     {
@@ -667,7 +838,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 27
+        "y": 36
       }
     },
     {
@@ -701,7 +872,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 27
+        "y": 36
       }
     },
     {
@@ -737,7 +908,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 27
+        "y": 36
       }
     },
     {
@@ -750,7 +921,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 44
       }
     },
     {
@@ -787,7 +958,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 36
+        "y": 45
       }
     },
     {
@@ -818,7 +989,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 36
+        "y": 45
       }
     },
     {
@@ -858,7 +1029,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 36
+        "y": 45
       }
     },
     {
@@ -897,7 +1068,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 44
+        "y": 53
       }
     },
     {
@@ -936,7 +1107,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 44
+        "y": 53
       }
     },
     {
@@ -1001,7 +1172,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 44
+        "y": 53
       }
     },
     {
@@ -1014,7 +1185,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 52
+        "y": 61
       }
     },
     {
@@ -1045,7 +1216,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 53
+        "y": 62
       }
     }
   ]

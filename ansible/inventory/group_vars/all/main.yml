@@ -61,6 +61,8 @@ monitoring_alertmanager_upstream: 192.168.101.10:9093
 monitoring_k3s_node_health_enabled: true
 # Per-Pod CPU/memory from kubelet; token from k3s-bootstrap via Secrets Manager.
 monitoring_k3s_kubelet_metrics_enabled: true
+# GitHub's view of the runners; PAT from Secrets Manager, repos in github_runner_repositories.yml.
+monitoring_github_runner_exporter_enabled: true
 
 # Blocky runs in k3s (ADR 0020); its Postgres password lives in Secrets Manager for k3s-apps.
 monitoring_blocky_upstream: 192.168.101.10:4000

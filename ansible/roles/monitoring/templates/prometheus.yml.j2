@@ -58,6 +58,13 @@ scrape_configs:
           - {{ monitoring_k3s_kube_state_metrics_upstream }}
 {% endif %}
 
+{% if monitoring_github_runner_exporter_enabled | bool %}
+  - job_name: github_runner_exporter
+    static_configs:
+      - targets:
+          - 127.0.0.1:{{ monitoring_github_runner_exporter_port }}
+{% endif %}
+
 {% if monitoring_k3s_kubelet_metrics_enabled | bool %}
   # Same metric names as the cadvisor job above: queries must filter on job.
   - job_name: k3s_kubelet_cadvisor

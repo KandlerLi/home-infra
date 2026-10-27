@@ -14,6 +14,12 @@
             _aws_secrets_monitoring: "{{ lookup('amazon.aws.secretsmanager_secret', 'home-infra/monitoring', region='eu-central-1') | from_json }}"
           when: monitoring_enabled | bool
 
+        # Ansible-only, unlike home-infra/monitoring, which k3s-apps reads in full.
+        - name: Fetch the home-infra/prometheus secret group
+          ansible.builtin.set_fact:
+            _aws_secrets_prometheus: "{{ lookup('amazon.aws.secretsmanager_secret', 'home-infra/prometheus', region='eu-central-1') | from_json }}"
+          when: monitoring_enabled | bool
+
         - name: Fetch the home-infra/nextcloud secret group
           ansible.builtin.set_fact:
             _aws_secrets_nextcloud: "{{ lookup('amazon.aws.secretsmanager_secret', 'home-infra/nextcloud', region='eu-central-1') | from_json }}"
@@ -24,8 +30,9 @@
             monitoring_ntfy_topic: "{{ _aws_secrets_monitoring.monitoring_ntfy_topic }}"
             monitoring_ses_smtp_username: "{{ _aws_secrets_monitoring.monitoring_ses_smtp_username }}"
             monitoring_ses_smtp_password: "{{ _aws_secrets_monitoring.monitoring_ses_smtp_password }}"
-            # default(''): the role's own assert names the missing key.
-            monitoring_k3s_kubelet_token: "{{ _aws_secrets_monitoring.monitoring_k3s_kubelet_token | default('') }}"
+            # default(''): the role's own asserts name a missing key.
+            monitoring_k3s_kubelet_token: "{{ _aws_secrets_prometheus.monitoring_k3s_kubelet_token | default('') }}"
+            monitoring_github_runner_exporter_token: "{{ _aws_secrets_prometheus.monitoring_github_runner_exporter_token | default('') }}"
           when: monitoring_enabled | bool
 
         - name: Expose Nextcloud's own Authelia OIDC client secret under its existing variable name

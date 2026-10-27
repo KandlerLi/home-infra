@@ -58,15 +58,27 @@ specifically, since that job's metrics share names with this host's own
 `github-runners.json` builds on the same two jobs: the CI runner pods'
 state from kube-state-metrics, `k3s-node-2`'s disk and IO pressure, and
 this host's HDD busy time, plus CPU, memory, memory against the limit
-and OOM kills per runner container from `k3s_kubelet_cadvisor`. It has
-no GitHub-side online/busy status, since that isn't scraped.
+and OOM kills per runner container from `k3s_kubelet_cadvisor`, and
+GitHub's own view from `github_runner_exporter`.
+
+`monitoring_github_runner_exporter_enabled` runs `files/github_runner_exporter.py`
+as a systemd service on loopback: every 60 s it asks the GitHub API, per
+runner repo, how many runners are online, busy or offline and how many
+runs are queued (`github_runners`, `github_actions_queued_runs`,
+`github_runner_exporter_up`). It runs here, not in k3s, so it still
+reports the runners offline when the cluster is down. It reads with a
+fine-grained PAT limited to the runner repos with Administration and
+Actions read-only, from `home-infra/prometheus` in Secrets Manager. The
+repo list is `group_vars/all/github_runner_repositories.yml`, generated
+by `scripts/sync_github_runner_repositories.py` from `repo-infra`'s
+`config.yml`; a new runner repo also has to be added to the token.
 
 `monitoring_k3s_kubelet_metrics_enabled` adds the `k3s_kubelet_cadvisor`
 job: each kubelet's `/metrics/cadvisor` over HTTPS, verified against the
 k3s server CA (`files/k3s-server-ca.crt`, public, valid until 2036), with
 a ServiceAccount token that may only `get` `nodes/metrics`
 ([`k3s-bootstrap`](https://github.com/KandlerLi/k3s-bootstrap)'s `kubelet_metrics_rbac.tf`). The token comes from
-`home-infra/monitoring` in Secrets Manager (`monitoring_k3s_kubelet_token`)
+`home-infra/prometheus` in Secrets Manager (`monitoring_k3s_kubelet_token`)
 into a `0400` file only Prometheus reads. Its metric names match this
 host's own `cadvisor` job, so every query filters on `job`, and an
 allowlist keeps only the series the dashboards use (no

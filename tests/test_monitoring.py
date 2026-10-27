@@ -706,5 +706,40 @@ class K3sKubeletMetricsTests(unittest.TestCase):
         self.assertNotIn('container_memory_working_set_bytes{name', dashboard)
 
 
+class GithubRunnerExporterRoleTests(unittest.TestCase):
+    def test_scrape_job_only_when_enabled(self) -> None:
+        def job_names(**overrides: object) -> set[str]:
+            parsed = yaml.safe_load(render("prometheus.yml.j2", **overrides))
+            return {j["job_name"] for j in parsed["scrape_configs"]}
+
+        self.assertNotIn("github_runner_exporter", job_names())
+        self.assertIn(
+            "github_runner_exporter", job_names(monitoring_github_runner_exporter_enabled=True)
+        )
+
+    def test_unit_is_hardened_and_reads_the_token_from_a_file(self) -> None:
+        unit = render(
+            "github-runner-exporter.service.j2",
+            monitoring_github_runner_exporter_repositories=["dyndns", "website"],
+        )
+
+        self.assertIn('Environment="GITHUB_REPOSITORIES=dyndns,website"', unit)
+        self.assertIn("GITHUB_TOKEN_FILE=/var/lib/monitoring/github-runner-exporter/token", unit)
+        self.assertIn("User=monitoring-github-runner-exporter", unit)
+        self.assertIn("ProtectSystem=strict", unit)
+        self.assertIn("CapabilityBoundingSet=\n", unit)
+
+    def test_token_is_required_and_written_owner_only(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn('monitoring_github_runner_exporter_token: ""', defaults)
+        self.assertIn("monitoring_github_runner_exporter_token | trim | length > 0", tasks)
+        token_task = tasks[tasks.index("- name: Install GitHub runner exporter token") :]
+        token_task = token_task[: token_task.index("- name:", 10)]
+        self.assertIn('mode: "0400"', token_task)
+        self.assertIn("no_log: true", token_task)
+
+
 if __name__ == "__main__":
     unittest.main()

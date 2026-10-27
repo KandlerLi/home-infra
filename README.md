@@ -218,8 +218,9 @@ itself included, before the old VM was deregistered and torn down.
 [`repo-infra/config.yml`](https://github.com/KandlerLi/repo-infra/blob/main/config.yml)'s `runner: true` flag on a repository
 entry is still the source of truth for which repositories get one; only
 where that list now gets synced to changed (see
-`scripts/sync_github_runner_repositories.py`, which now emits only
-[`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own Terraform variable, not an Ansible one).
+`scripts/sync_github_runner_repositories.py`, which emits
+[`k3s-bootstrap`](https://github.com/KandlerLi/k3s-bootstrap)'s Terraform variable and the monitoring role's
+exporter repo list).
 
 ## Backup restore drill
 
