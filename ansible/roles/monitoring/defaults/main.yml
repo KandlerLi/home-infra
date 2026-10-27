@@ -96,6 +96,18 @@ monitoring_ntfy_relay_install_dir: /usr/local/lib/monitoring/ntfy-relay
 # Additional listener for the k3s-native Alertmanager; only 192.168.101.1 passes validation.
 monitoring_ntfy_relay_k3s_bind_address: ""
 
+# GitHub's view of the self-hosted runners; needs a read-only PAT from Secrets Manager.
+monitoring_github_runner_exporter_enabled: false
+monitoring_github_runner_exporter_token: ""
+monitoring_github_runner_exporter_owner: KandlerLi
+# Generated into group_vars by scripts/sync_github_runner_repositories.py.
+monitoring_github_runner_exporter_repositories: []
+monitoring_github_runner_exporter_port: 9097
+# 8 repos x 2 calls per poll stays far below the API's 5000 requests per hour.
+monitoring_github_runner_exporter_poll_seconds: 60
+monitoring_github_runner_exporter_service_user: monitoring-github-runner-exporter
+monitoring_github_runner_exporter_install_dir: /usr/local/lib/monitoring/github-runner-exporter
+
 # Credentials from ses-relay's Terraform outputs, stored in Secrets Manager.
 monitoring_ses_smtp_host: email-smtp.eu-central-1.amazonaws.com
 monitoring_ses_smtp_port: 587
