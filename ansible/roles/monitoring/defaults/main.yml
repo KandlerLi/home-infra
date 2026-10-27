@@ -128,6 +128,17 @@ monitoring_k3s_node_exporter_targets:
     node: k3s-node-2
 monitoring_k3s_kube_state_metrics_upstream: 192.168.101.10:8080
 
+# Per-Pod CPU/memory from each kubelet's cAdvisor; the token comes from Secrets Manager.
+monitoring_k3s_kubelet_metrics_enabled: false
+monitoring_k3s_kubelet_token: ""
+monitoring_k3s_kubelet_targets:
+  - address: 192.168.101.10:10250
+    node: k3s-node-1
+  - address: 192.168.101.11:10250
+    node: k3s-node-2
+# Token and k3s server CA, mounted read-only into Prometheus.
+monitoring_k3s_kubelet_dir: "{{ monitoring_data_dir }}/prometheus-k3s"
+
 # Backup freshness: each marker file is only written on success. See backup-freshness.sh.j2.
 monitoring_backup_markers:
   # Borg rewrites index.N on every committed transaction only.

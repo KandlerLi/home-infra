@@ -58,6 +58,30 @@ scrape_configs:
           - {{ monitoring_k3s_kube_state_metrics_upstream }}
 {% endif %}
 
+{% if monitoring_k3s_kubelet_metrics_enabled | bool %}
+  # Same metric names as the cadvisor job above: queries must filter on job.
+  - job_name: k3s_kubelet_cadvisor
+    scheme: https
+    metrics_path: /metrics/cadvisor
+    authorization:
+      credentials_file: /etc/prometheus/k3s/kubelet-token
+    tls_config:
+      ca_file: /etc/prometheus/k3s/server-ca.crt
+    static_configs:
+{% for target in monitoring_k3s_kubelet_targets %}
+      - targets:
+          - {{ target.address }}
+        labels:
+          node: {{ target.node }}
+{% endfor %}
+    # Allowlist: kubelet's cAdvisor exports far more series than the dashboards use.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: >-
+          container_(cpu_usage_seconds_total|cpu_cfs_periods_total|cpu_cfs_throttled_periods_total|memory_working_set_bytes|spec_memory_limit_bytes|oom_events_total|network_receive_bytes_total|network_transmit_bytes_total|fs_reads_bytes_total|fs_writes_bytes_total)
+        action: keep
+{% endif %}
+
   # blackbox's multi-target pattern: each target is a query param on /probe.
   - job_name: blackbox_http
     metrics_path: /probe

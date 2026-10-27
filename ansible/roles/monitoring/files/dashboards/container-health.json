@@ -17,7 +17,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name!=\"\"}[5m])) * 100",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{job=\"cadvisor\", name!=\"\"}[5m])) * 100",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -32,7 +32,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (name) (container_memory_working_set_bytes{name!=\"\"})",
+          "expr": "sum by (name) (container_memory_working_set_bytes{job=\"cadvisor\", name!=\"\"})",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -47,7 +47,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "count(count by (name) (container_last_seen{name!=\"\"}))",
+          "expr": "count(count by (name) (container_last_seen{job=\"cadvisor\", name!=\"\"}))",
           "legendFormat": "Containers",
           "refId": "A"
         }

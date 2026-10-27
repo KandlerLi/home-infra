@@ -57,8 +57,20 @@ specifically, since that job's metrics share names with this host's own
 `node_exporter` job above but must never be aggregated together.
 `github-runners.json` builds on the same two jobs: the CI runner pods'
 state from kube-state-metrics, `k3s-node-2`'s disk and IO pressure, and
-this host's HDD busy time. It has no GitHub-side online/busy status and
-no per-pod CPU/memory, since neither is scraped.
+this host's HDD busy time, plus CPU, memory, memory against the limit
+and OOM kills per runner container from `k3s_kubelet_cadvisor`. It has
+no GitHub-side online/busy status, since that isn't scraped.
+
+`monitoring_k3s_kubelet_metrics_enabled` adds the `k3s_kubelet_cadvisor`
+job: each kubelet's `/metrics/cadvisor` over HTTPS, verified against the
+k3s server CA (`files/k3s-server-ca.crt`, public, valid until 2036), with
+a ServiceAccount token that may only `get` `nodes/metrics`
+([`k3s-bootstrap`](https://github.com/KandlerLi/k3s-bootstrap)'s `kubelet_metrics_rbac.tf`). The token comes from
+`home-infra/monitoring` in Secrets Manager (`monitoring_k3s_kubelet_token`)
+into a `0400` file only Prometheus reads. Its metric names match this
+host's own `cadvisor` job, so every query filters on `job`, and an
+allowlist keeps only the series the dashboards use (no
+`container_last_seen`, which `ContainerDown` reads).
 
 **Backup freshness** (`backups` alert group, `backups.json`): every
 backup becomes one `backup:last_success_timestamp_seconds{backup=...}`

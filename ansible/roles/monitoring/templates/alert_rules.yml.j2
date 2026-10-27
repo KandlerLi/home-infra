@@ -31,16 +31,16 @@ groups:
       # 1 during Nextcloud AIO's Borg backup and 15 minutes after.
       - record: nextcloud_aio:backup_window
         expr: >-
-          count(max_over_time(container_last_seen{name="nextcloud-aio-borgbackup"}[15m])) > 0
+          count(max_over_time(container_last_seen{job="cadvisor", name="nextcloud-aio-borgbackup"}[15m])) > 0
 
       - alert: ContainerDown
         # By the stable name label, not cAdvisor's churning id; one-shot AIO containers excluded. See ADR 0019.
         expr: >-
-          absent(container_last_seen{name!=""})
+          absent(container_last_seen{job="cadvisor", name!=""})
           or (
-            (time() - max by (name) (container_last_seen{name!="", name!~"nextcloud-aio-(borgbackup|watchtower)"})) > 120
+            (time() - max by (name) (container_last_seen{job="cadvisor", name!="", name!~"nextcloud-aio-(borgbackup|watchtower)"})) > 120
             unless on (name) (
-              max by (name) (container_last_seen{name=~"nextcloud-aio-.+"})
+              max by (name) (container_last_seen{job="cadvisor", name=~"nextcloud-aio-.+"})
               and on () nextcloud_aio:backup_window
             )
           )

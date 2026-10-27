@@ -264,7 +264,7 @@ class MonitoringRoleTests(unittest.TestCase):
         }
 
         self.assertIn(
-            'container_last_seen{name="nextcloud-aio-borgbackup"}[15m]',
+            'container_last_seen{job="cadvisor", name="nextcloud-aio-borgbackup"}[15m]',
             rules["nextcloud_aio:backup_window"]["expr"],
         )
         container_down = rules["ContainerDown"]["expr"]
@@ -648,6 +648,62 @@ class NtfyRelayServiceTests(unittest.TestCase):
 
         self.assertIn("Verify ntfy relay is ready on host loopback", tasks)
         self.assertIn("/healthz", tasks)
+
+
+class K3sKubeletMetricsTests(unittest.TestCase):
+    def kubelet_job(self, **overrides: object) -> dict | None:
+        parsed = yaml.safe_load(render("prometheus.yml.j2", **overrides))
+        return next(
+            (j for j in parsed["scrape_configs"] if j["job_name"] == "k3s_kubelet_cadvisor"),
+            None,
+        )
+
+    def test_scrape_job_is_off_by_default(self) -> None:
+        self.assertIsNone(self.kubelet_job())
+
+    def test_scrape_verifies_tls_and_reads_the_token_from_a_file(self) -> None:
+        job = self.kubelet_job(monitoring_k3s_kubelet_metrics_enabled=True)
+
+        self.assertEqual(job["scheme"], "https")
+        self.assertEqual(job["metrics_path"], "/metrics/cadvisor")
+        self.assertEqual(
+            job["authorization"]["credentials_file"], "/etc/prometheus/k3s/kubelet-token"
+        )
+        self.assertEqual(job["tls_config"]["ca_file"], "/etc/prometheus/k3s/server-ca.crt")
+        self.assertNotIn("insecure_skip_verify", job["tls_config"])
+        self.assertEqual(
+            [c["labels"]["node"] for c in job["static_configs"]], ["k3s-node-1", "k3s-node-2"]
+        )
+
+    def test_allowlist_keeps_container_last_seen_out(self) -> None:
+        # ContainerDown is the homeserver's alert; k3s Pods come and go by design.
+        job = self.kubelet_job(monitoring_k3s_kubelet_metrics_enabled=True)
+        relabel = job["metric_relabel_configs"][0]
+
+        self.assertEqual(relabel["action"], "keep")
+        self.assertIn("memory_working_set_bytes", relabel["regex"])
+        self.assertNotIn("last_seen", relabel["regex"])
+
+    def test_token_is_required_and_written_owner_only(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn('monitoring_k3s_kubelet_token: ""', defaults)
+        self.assertIn("monitoring_k3s_kubelet_token | trim | length > 0", tasks)
+        self.assertIn('dest: "{{ monitoring_k3s_kubelet_dir }}/kubelet-token"\n', tasks)
+        self.assertIn('"{{ monitoring_k3s_kubelet_dir }}:/etc/prometheus/k3s:ro"', tasks)
+
+    def test_homeserver_container_queries_filter_on_their_own_job(self) -> None:
+        # Both cAdvisor jobs share metric names.
+        alerts = render("alert_rules.yml.j2")
+        dashboard = (ROLE_ROOT / "files/dashboards/container-health.json").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn("container_last_seen{name", alerts)
+        self.assertEqual(alerts.count('container_last_seen{job="cadvisor", '), 4)
+        self.assertNotIn('container_cpu_usage_seconds_total{name', dashboard)
+        self.assertNotIn('container_memory_working_set_bytes{name', dashboard)
 
 
 if __name__ == "__main__":
