@@ -311,9 +311,9 @@ class MonitoringRoleTests(unittest.TestCase):
 
         rules = backup_rules(monitoring_k3s_node_health_enabled=True)
         recorded = rules["backup:last_success_timestamp_seconds"]["expr"]
-        self.assertIn('cronjob=~"authelia-backup|paperless-export"', recorded)
+        self.assertIn('cronjob=~"authelia-backup|paperless-export|stalwart-backup"', recorded)
         self.assertIn("> 26 * 3600", rules["BackupStale"]["expr"])
-        for name in ("nextcloud-borg", "aux-backup", "authelia-backup", "paperless-export"):
+        for name in ("nextcloud-borg", "aux-backup", "authelia-backup", "paperless-export", "stalwart-backup"):
             with self.subTest(backup=name):
                 self.assertIn(f'{{backup="{name}"}}', rules["BackupMissing"]["expr"])
 
@@ -739,6 +739,27 @@ class GithubRunnerExporterRoleTests(unittest.TestCase):
         token_task = token_task[: token_task.index("- name:", 10)]
         self.assertIn('mode: "0400"', token_task)
         self.assertIn("no_log: true", token_task)
+
+
+class StalwartBackupTests(unittest.TestCase):
+    def test_stalwart_down_alert_needs_kube_state_metrics(self) -> None:
+        def alerts(**overrides: object) -> dict[str, dict]:
+            parsed = yaml.safe_load(render("alert_rules.yml.j2", **overrides))
+            return {r["alert"]: r for g in parsed["groups"] for r in g["rules"] if "alert" in r}
+
+        rule = alerts(monitoring_k3s_node_health_enabled=True)["StalwartDown"]
+        self.assertIn('deployment="stalwart"', rule["expr"])
+        self.assertIn("absent(", rule["expr"])
+        self.assertEqual(rule["for"], "15m")
+        self.assertNotIn("StalwartDown", alerts(monitoring_k3s_node_health_enabled=False))
+
+    def test_role_pins_the_ids_the_cronjob_runs_as(self) -> None:
+        defaults = yaml.safe_load(
+            (PROJECT_ROOT / "ansible/roles/stalwart_backup/defaults/main.yml").read_text()
+        )
+
+        self.assertEqual((defaults["stalwart_backup_uid"], defaults["stalwart_backup_gid"]), (982, 977))
+        self.assertFalse(defaults["stalwart_backup_enabled"])
 
 
 if __name__ == "__main__":
