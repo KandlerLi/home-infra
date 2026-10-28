@@ -13,6 +13,12 @@ k3s_node_root_partition: 1
 k3s_node_storage_mount: /mnt/black-hdd
 k3s_node_vm_storage_dir: /mnt/black-hdd/k3s
 k3s_node_vm_disk_path: /mnt/black-hdd/k3s/k3s-node-1.qcow2
+# The HDD, or the root filesystem once it lives on the SSD (tracker #40).
+k3s_node_allowed_storage_mounts:
+  - /mnt/black-hdd
+  - /
+# Set only while moving an existing VM's disk to k3s_node_vm_disk_path: see the README, "Moving a VM disk".
+k3s_node_vm_previous_disk_path: ""
 
 k3s_node_image_cache_dir: /var/lib/libvirt/cloud-images
 # Cached cloud image, downloaded once.
