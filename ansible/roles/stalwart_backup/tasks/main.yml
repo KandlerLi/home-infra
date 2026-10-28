@@ -1,0 +1,26 @@
+---
+- name: Configure Stalwart backup destination
+  when: stalwart_backup_enabled | bool
+  block:
+    - name: Create Stalwart backup group
+      ansible.builtin.group:
+        name: "{{ stalwart_backup_user }}"
+        gid: "{{ stalwart_backup_gid }}"
+        system: true
+
+    - name: Create Stalwart backup service account
+      ansible.builtin.user:
+        name: "{{ stalwart_backup_user }}"
+        uid: "{{ stalwart_backup_uid }}"
+        group: "{{ stalwart_backup_user }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Create Stalwart backup destination directory
+      ansible.builtin.file:
+        path: "{{ stalwart_backup_dir }}"
+        state: directory
+        owner: "{{ stalwart_backup_user }}"
+        group: "{{ stalwart_backup_user }}"
+        mode: "0700"

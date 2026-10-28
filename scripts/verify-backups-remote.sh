@@ -121,6 +121,23 @@ else
   fail paperless "${paperless_out:-manifest.json missing or unreadable}"
 fi
 
+# Stalwart: the newest tarball extracts and holds RocksDB's CURRENT file and the generated config.
+tarball="$(ls -1t "${red_hdd}"/stalwart-backup/stalwart-*.tar.gz 2>/dev/null | head -1)"
+if [ -z "${tarball}" ]; then
+  fail stalwart "no backup in ${red_hdd}/stalwart-backup"
+else
+  dest="${scratch}/stalwart"
+  mkdir -p "${dest}"
+  detail="$(basename "${tarball}"), $(age_hours "${tarball}") h old"
+  if ! tar -xzf "${tarball}" -C "${dest}"; then
+    fail stalwart "${detail}, doesn't extract"
+  elif [ -s "${dest}/stalwart/data/CURRENT" ] && [ -s "${dest}/stalwart/etc/config.json" ]; then
+    pass stalwart "${detail}, $(find "${dest}" -type f | wc -l) files, RocksDB CURRENT and config present"
+  else
+    fail stalwart "${detail}, extracts but data/CURRENT or etc/config.json is missing"
+  fi
+fi
+
 # Nextcloud AIO Borg: the passphrase opens the repo, and one small file comes back out of the newest archive.
 if [ -z "${BORG_PASSPHRASE}" ]; then
   skip borg "no passphrase given"

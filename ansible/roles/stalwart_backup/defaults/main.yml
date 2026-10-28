@@ -1,0 +1,10 @@
+# Opt-in. Destination side only: k3s-apps' CronJob tars Stalwart's data here. See the README.
+stalwart_backup_enabled: false
+
+# Same disk as authelia_backup, its own subdirectory.
+stalwart_backup_dir: /mnt/red-hdd/stalwart-backup
+
+stalwart_backup_user: stalwart-backup
+# Fixed, since k3s-apps' CronJob runs as exactly these: root_squash writes need the directory owner's ids.
+stalwart_backup_uid: 982
+stalwart_backup_gid: 977

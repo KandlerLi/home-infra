@@ -45,6 +45,7 @@
     - storage
     # Before nfs_server: exportfs -ra fails while an export's directory doesn't exist yet.
     - authelia_backup
+    - stalwart_backup
     - paperless_storage
     - nfs_server
     - docker

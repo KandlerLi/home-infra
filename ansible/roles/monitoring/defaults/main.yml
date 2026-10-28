@@ -162,6 +162,7 @@ monitoring_backup_markers:
 monitoring_backup_k3s_cronjobs:
   - authelia-backup
   - paperless-export
+  - stalwart-backup
 monitoring_backup_max_age_hours: 26
 monitoring_backup_textfile_dir: "{{ monitoring_data_dir }}/node-exporter-textfile"
 monitoring_backup_freshness_script: /usr/local/lib/monitoring/backup-freshness.sh

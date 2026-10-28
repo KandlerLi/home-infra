@@ -165,6 +165,22 @@ groups:
             node-exporter DaemonSet Pod -- the node itself may be down,
             or kubelet may have stopped scheduling Pods on it.
 
+      # Nothing probes mail; also catches the nightly backup failing to scale Stalwart back up.
+      - alert: StalwartDown
+        expr: >-
+          max(kube_deployment_status_replicas_available{namespace="apps", deployment="stalwart"}) < 1
+          or absent(kube_deployment_status_replicas_available{namespace="apps", deployment="stalwart"})
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Stalwart (mail) has had no running Pod for 15+ minutes"
+          description: >-
+            No mail is accepted or delivered. The nightly
+            stalwart-backup CronJob stops Stalwart for about a minute;
+            if it failed before scaling back up, `kubectl -n apps scale
+            deploy/stalwart --replicas=1` restores it.
+
       # Real, sustained usage only; request-vs-actual gaps are a dashboard concern.
       - alert: K3sNodeCPUHigh
         expr: >-
