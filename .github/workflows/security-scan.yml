@@ -32,7 +32,7 @@ jobs:
           # Built here, so scanned here: a repo-scoped token can only pull this repo's private packages.
           # Keep in sync with home_agent_image in k3s-apps' terraform.tfvars (the deployed digest).
           - name: home-agent
-            ref: ghcr.io/kandlerli/home-agent@sha256:21e3928fb4e763ee754f73d2214af043e6ab146e480b930d389dd3b1d6e0b194
+            ref: ghcr.io/kandlerli/home-agent@sha256:0c26c979ff786b14c5044a3d70ea10526ac06253f5fb424596db4072e989013d
     uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.15
     with:
       image_name: ${{ matrix.name }}
