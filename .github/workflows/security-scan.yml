@@ -7,8 +7,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Weekly: new CVEs in unchanged images, see trivy-image below.
+  schedule:
+    - cron: "23 5 * * 1"
 
 jobs:
+  # Informational on PR/push; the weekly run fails on fixable CRITICALs, which GitHub emails about.
   trivy-image:
     strategy:
       fail-fast: false
@@ -26,12 +30,14 @@ jobs:
           - name: nextcloud-aio
             ref: ghcr.io/nextcloud-releases/all-in-one:latest
           # Built here, so scanned here: a repo-scoped token can only pull this repo's private packages.
+          # Keep in sync with home_agent_image in k3s-apps' terraform.tfvars (the deployed digest).
           - name: home-agent
-            ref: ghcr.io/kandlerli/home-agent@sha256:a8d7507b05cedee9d339166472ad3cfb5ec4c26b6e7e5797d0c22613b3c37b60
-    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.10
+            ref: ghcr.io/kandlerli/home-agent@sha256:21e3928fb4e763ee754f73d2214af043e6ab146e480b930d389dd3b1d6e0b194
+    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.15
     with:
       image_name: ${{ matrix.name }}
       image_ref: ${{ matrix.ref }}
+      fail_on_severity: ${{ github.event_name == 'schedule' && 'CRITICAL' || '' }}
       # GitHub-hosted: the scan needs no AWS or homeserver access.
       runs_on: '["ubuntu-latest"]'
     permissions:
