@@ -75,6 +75,15 @@
       k3s_node_agent_node_taint: "ci=github-runner:NoSchedule"
       k3s_node_agent_node_label: "role=github-runner"
 
+# The VMs exist as hosts only after the provision plays above added them.
+- name: Security updates on the k3s nodes
+  hosts: k3s_nodes:k3s_agent_nodes
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: unattended_upgrades
+
 # Runs on the homeserver, which owns the forwarded ports: see the k3s_ingress_forward README.
 - name: Forward ingress traffic to k3s's own Traefik
   hosts: home_servers

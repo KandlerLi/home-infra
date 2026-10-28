@@ -1,0 +1,4 @@
+---
+# Debian security updates only: point releases and third-party repos (Docker, speedtest) stay manual.
+unattended_upgrades_origins_patterns:
+  - "origin=Debian,codename=${distro_codename}-security,label=Debian-Security"
