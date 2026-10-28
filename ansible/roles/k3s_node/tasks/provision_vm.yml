@@ -104,6 +104,7 @@
       when: k3s_node_vm_move_pending | bool
 
     # A copy, not a move: the previous disk stays as the rollback until it is deleted by hand.
+    # Via .partial, so an interrupted copy is redone instead of being taken for finished.
     - name: Copy the k3s node disk to its new path
       ansible.builtin.command:
         argv:
@@ -111,6 +112,15 @@
           - --sparse=always
           - --preserve=mode,ownership,timestamps
           - "{{ k3s_node_vm_previous_disk_path }}"
+          - "{{ k3s_node_vm_disk_path }}.partial"
+        creates: "{{ k3s_node_vm_disk_path }}"
+      when: not ansible_check_mode and k3s_node_vm_move_pending | bool
+
+    - name: Put the copied k3s node disk in place
+      ansible.builtin.command:
+        argv:
+          - mv
+          - "{{ k3s_node_vm_disk_path }}.partial"
           - "{{ k3s_node_vm_disk_path }}"
         creates: "{{ k3s_node_vm_disk_path }}"
       when: not ansible_check_mode and k3s_node_vm_move_pending | bool

@@ -72,7 +72,9 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn('creates: "{{ k3s_node_vm_disk_path }}"', move)
         # Never deletes or moves the previous disk.
         self.assertNotIn("state: absent", move)
-        self.assertNotIn("- mv", move)
+        # Only the .partial copy is ever renamed, never the previous disk.
+        self.assertIn('- "{{ k3s_node_vm_disk_path }}.partial"', move)
+        self.assertNotIn('- mv\n          - "{{ k3s_node_vm_previous_disk_path }}"', move)
         # Shutdown is confirmed before copying.
         self.assertLess(move.index("Wait for the k3s node VM to stop"), move.index("Copy the k3s node disk"))
         # It runs before the disk/domain consistency check, which then sees the new path.
