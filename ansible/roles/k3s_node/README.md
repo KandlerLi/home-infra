@@ -79,6 +79,20 @@ is only ever grown: a smaller `k3s_node_vm_disk_size_gb` than the
 existing image makes the play fail before anything is shut down. Run
 `scripts/roll-out-k3s.sh dry-run` first.
 
+**Moving a VM disk** (tracker #40, HDD to SSD): point
+`k3s_node_storage_mount`, `k3s_node_vm_storage_dir` and
+`k3s_node_vm_disk_path` at the new place (`k3s_node_allowed_storage_mounts`
+lists where a disk may live; `/` is allowed for when the root filesystem
+is the SSD) and set `k3s_node_vm_previous_disk_path` to the disk the
+domain uses today. While the domain still references that previous path,
+the play shuts the VM down, copies the disk with `cp --sparse=always`
+(a 100 GB image with 44 GB used copies as 44 GB), redefines the domain
+on the new path, rebuilds the cloud-init seed there and starts the VM.
+The previous disk is never touched: it is the rollback (domain back to
+the old variables, start) until it is deleted by hand. Once the domain
+uses the new path, `k3s_node_vm_previous_disk_path` does nothing and
+can be removed.
+
 **Graceful node shutdown** (both join modes): a kubelet config drop-in
 in `/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/` (k3s starts kubelet
 with `--config-dir` there and only rewrites its own `00-k3s-defaults.conf`)

@@ -8,10 +8,14 @@
         k3s_node_vm_disk_path
         == (k3s_node_vm_storage_dir ~ '/' ~ k3s_node_vm_name ~ '.qcow2')
       - k3s_node_vm_storage_dir == (k3s_node_vm_disk_path | dirname)
-      - k3s_node_storage_mount == "/mnt/black-hdd"
+      - k3s_node_storage_mount in k3s_node_allowed_storage_mounts
+      - >-
+        k3s_node_storage_mount == "/"
+        or k3s_node_vm_storage_dir.startswith(k3s_node_storage_mount ~ "/")
     fail_msg: >-
-      The k3s node disk must remain at
-      {{ k3s_node_vm_storage_dir }}/{{ k3s_node_vm_name }}.qcow2.
+      The k3s node disk must be
+      {{ k3s_node_vm_storage_dir }}/{{ k3s_node_vm_name }}.qcow2, inside
+      one of {{ k3s_node_allowed_storage_mounts }}.
 
 - name: Verify k3s node storage is a mounted filesystem
   ansible.builtin.command:
@@ -38,6 +42,95 @@
     command: list_vms
   register: k3s_node_defined_vms
   changed_when: false
+
+# Opt-in: only with k3s_node_vm_previous_disk_path set, and only while the domain still uses it.
+- name: Move the k3s node disk to its new path
+  when: >-
+    k3s_node_vm_previous_disk_path | length > 0
+    and k3s_node_vm_name in k3s_node_defined_vms.list_vms
+  block:
+    - name: Read the domain definition before the disk move
+      community.libvirt.virt:
+        name: "{{ k3s_node_vm_name }}"
+        command: get_xml
+      register: k3s_node_premove_vm_xml
+      changed_when: false
+
+    - name: Work out whether the domain still uses the previous disk
+      ansible.builtin.set_fact:
+        k3s_node_vm_move_pending: >-
+          {{ k3s_node_vm_previous_disk_path in k3s_node_premove_vm_xml.get_xml }}
+
+    - name: Check the previous k3s node disk
+      ansible.builtin.stat:
+        path: "{{ k3s_node_vm_previous_disk_path }}"
+        get_checksum: false
+      register: k3s_node_previous_vm_disk
+      when: k3s_node_vm_move_pending | bool
+
+    - name: Validate the disk move
+      ansible.builtin.assert:
+        that:
+          - k3s_node_vm_previous_disk_path != k3s_node_vm_disk_path
+          - k3s_node_previous_vm_disk.stat.exists
+        fail_msg: >-
+          {{ k3s_node_vm_name }} still uses {{ k3s_node_vm_previous_disk_path }},
+          which must exist and differ from {{ k3s_node_vm_disk_path }}.
+      when: k3s_node_vm_move_pending | bool
+
+    - name: Stop the k3s node VM for the disk move
+      community.libvirt.virt:
+        name: "{{ k3s_node_vm_name }}"
+        state: shutdown
+      when: k3s_node_vm_move_pending | bool
+
+    - name: Wait for the k3s node VM to stop for the disk move
+      community.libvirt.virt:
+        command: status
+        name: "{{ k3s_node_vm_name }}"
+      register: k3s_node_vm_move_shutdown_status
+      until: k3s_node_vm_move_shutdown_status.status == "shutdown"
+      retries: 90
+      delay: 10
+      when: not ansible_check_mode and k3s_node_vm_move_pending | bool
+
+    - name: Create the new k3s node VM storage directory
+      ansible.builtin.file:
+        path: "{{ k3s_node_vm_storage_dir }}"
+        state: directory
+        owner: "{{ k3s_node_libvirt_user }}"
+        group: "{{ k3s_node_libvirt_group }}"
+        mode: "0750"
+      when: k3s_node_vm_move_pending | bool
+
+    # A copy, not a move: the previous disk stays as the rollback until it is deleted by hand.
+    # Via .partial, so an interrupted copy is redone instead of being taken for finished.
+    - name: Copy the k3s node disk to its new path
+      ansible.builtin.command:
+        argv:
+          - cp
+          - --sparse=always
+          - --preserve=mode,ownership,timestamps
+          - "{{ k3s_node_vm_previous_disk_path }}"
+          - "{{ k3s_node_vm_disk_path }}.partial"
+        creates: "{{ k3s_node_vm_disk_path }}"
+      when: not ansible_check_mode and k3s_node_vm_move_pending | bool
+
+    - name: Put the copied k3s node disk in place
+      ansible.builtin.command:
+        argv:
+          - mv
+          - "{{ k3s_node_vm_disk_path }}.partial"
+          - "{{ k3s_node_vm_disk_path }}"
+        creates: "{{ k3s_node_vm_disk_path }}"
+      when: not ansible_check_mode and k3s_node_vm_move_pending | bool
+
+    # The cloud-init seed is rebuilt at its new path further down, before the VM starts.
+    - name: Redefine the k3s node VM with its new disk path
+      community.libvirt.virt:
+        command: define
+        xml: "{{ lookup('template', 'k3s-node-domain.xml.j2') }}"
+      when: not ansible_check_mode and k3s_node_vm_move_pending | bool
 
 - name: Check k3s node disk
   ansible.builtin.stat:
@@ -208,6 +301,8 @@
     etype: user
     permissions: x
     state: present
+  # / is world-traversable already.
+  when: k3s_node_storage_mount != "/"
 
 - name: Create dedicated k3s node VM storage directory
   ansible.builtin.file:

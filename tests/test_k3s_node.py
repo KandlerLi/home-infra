@@ -50,6 +50,39 @@ class K3sNodeTests(unittest.TestCase):
             defaults,
         )
 
+    def test_storage_mount_is_an_allowlist_including_root_for_the_ssd(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
+        defaults = yaml.safe_load((ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8"))
+
+        self.assertEqual(defaults["k3s_node_allowed_storage_mounts"], ["/mnt/black-hdd", "/"])
+        self.assertIn("k3s_node_storage_mount in k3s_node_allowed_storage_mounts", tasks)
+        self.assertNotIn('k3s_node_storage_mount == "/mnt/black-hdd"', tasks)
+        acl = tasks.split("- name: Allow libvirt to traverse the HDD mount", 1)[1].split("\n- name:", 1)[0]
+        self.assertIn('when: k3s_node_storage_mount != "/"', acl)
+
+    def test_disk_move_is_opt_in_copies_sparse_and_keeps_the_previous_disk(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
+        defaults = yaml.safe_load((ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8"))
+        move = tasks.split("- name: Move the k3s node disk to its new path", 1)[1].split("\n- name: Check k3s node disk", 1)[0]
+
+        self.assertEqual(defaults["k3s_node_vm_previous_disk_path"], "")
+        self.assertIn("k3s_node_vm_previous_disk_path | length > 0", move)
+        self.assertIn("k3s_node_vm_previous_disk_path in k3s_node_premove_vm_xml.get_xml", move)
+        self.assertIn("--sparse=always", move)
+        self.assertIn('creates: "{{ k3s_node_vm_disk_path }}"', move)
+        # Never deletes or moves the previous disk.
+        self.assertNotIn("state: absent", move)
+        # Only the .partial copy is ever renamed, never the previous disk.
+        self.assertIn('- "{{ k3s_node_vm_disk_path }}.partial"', move)
+        self.assertNotIn('- mv\n          - "{{ k3s_node_vm_previous_disk_path }}"', move)
+        # Shutdown is confirmed before copying.
+        self.assertLess(move.index("Wait for the k3s node VM to stop"), move.index("Copy the k3s node disk"))
+        # It runs before the disk/domain consistency check, which then sees the new path.
+        self.assertLess(
+            tasks.index("Move the k3s node disk to its new path"),
+            tasks.index("Validate VM and disk recovery state"),
+        )
+
     def test_disk_existence_check_skips_hashing_the_whole_qcow2_file(
         self,
     ) -> None:
