@@ -2,7 +2,7 @@
   "title": "Overview",
   "uid": "monitoring-overview",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "refresh": "30s",
   "time": {
@@ -31,11 +31,15 @@
           ],
           "fields": ""
         },
-        "orientation": "horizontal",
+        "orientation": "auto",
         "textMode": "value",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "wideLayout": true,
+        "text": {
+          "valueSize": 48
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -93,11 +97,16 @@
           ],
           "fields": ""
         },
-        "orientation": "horizontal",
+        "orientation": "auto",
         "textMode": "value_and_name",
         "colorMode": "none",
         "graphMode": "none",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14,
+          "valueSize": 22
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -161,11 +170,15 @@
           ],
           "fields": ""
         },
-        "orientation": "horizontal",
+        "orientation": "auto",
         "textMode": "name",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "wideLayout": true,
+        "text": {
+          "valueSize": 18
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -275,11 +288,15 @@
           ],
           "fields": ""
         },
-        "orientation": "horizontal",
+        "orientation": "auto",
         "textMode": "name",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "wideLayout": true,
+        "text": {
+          "valueSize": 18
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -349,11 +366,15 @@
           ],
           "fields": ""
         },
-        "orientation": "horizontal",
+        "orientation": "auto",
         "textMode": "name",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "wideLayout": true,
+        "text": {
+          "valueSize": 18
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -410,7 +431,7 @@
       "title": "Cluster services (k3s)",
       "type": "stat",
       "gridPos": {
-        "h": 4,
+        "h": 5,
         "w": 24,
         "x": 0,
         "y": 17
@@ -423,11 +444,15 @@
           ],
           "fields": ""
         },
-        "orientation": "horizontal",
+        "orientation": "auto",
         "textMode": "name",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "wideLayout": true,
+        "text": {
+          "valueSize": 18
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -496,7 +521,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 22
       },
       "options": {
         "reduceOptions": {
@@ -506,11 +531,16 @@
           ],
           "fields": ""
         },
-        "orientation": "horizontal",
+        "orientation": "auto",
         "textMode": "value_and_name",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "center"
+        "justifyMode": "center",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14,
+          "valueSize": 22
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -558,7 +588,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 26
       },
       "options": {
         "showHeader": true
