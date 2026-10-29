@@ -28,6 +28,9 @@ modules:
     timeout: 10s
     tcp:
       preferred_ip_protocol: ip4
+      # Reached as the MX host, but Stalwart's certificate names only this.
+      tls_config:
+        server_name: stalwart.jkandler.de
       query_response:
         - expect: "^220"
         - send: "EHLO blackbox.jkandler.de\r"
