@@ -124,3 +124,23 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: 127.0.0.1:{{ monitoring_blackbox_exporter_port }}
+
+  # Per-target module, carried as a label into the module param.
+  - job_name: blackbox_tcp
+    metrics_path: /probe
+    static_configs:
+{% for probe in monitoring_probe_targets_tcp %}
+      - targets:
+          - {{ probe.target }}
+        labels:
+          module: {{ probe.module }}
+{% endfor %}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [module]
+        target_label: __param_module
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 127.0.0.1:{{ monitoring_blackbox_exporter_port }}

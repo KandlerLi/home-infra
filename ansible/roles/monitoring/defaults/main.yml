@@ -53,11 +53,22 @@ monitoring_probe_targets:
   - http://jkandler.de/
   # Paperless-ngx (ADR 0023): public login page.
   - https://docs.jkandler.de/accounts/login/
+  # Authelia's own health endpoint: every forward_auth route and OIDC login depends on it.
+  - https://auth.jkandler.de/api/health
 
 # Behind Authelia forward-auth, so probed with http_2xx_or_401. See ADR 0019.
 monitoring_probe_targets_authenticated:
   - https://ai.jkandler.de/healthz
   - https://torrent.jkandler.de/
+
+# Stalwart's mail ports, each with the blackbox module that speaks its protocol up to a verified TLS handshake.
+monitoring_probe_targets_tcp:
+  - target: mail.jkandler.de:25
+    module: smtp_starttls
+  - target: mail.jkandler.de:465
+    module: smtps
+  - target: mail.jkandler.de:993
+    module: imaps
 
 monitoring_prometheus_container_name: prometheus
 monitoring_prometheus_image_name: prom/prometheus

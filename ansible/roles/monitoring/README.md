@@ -10,6 +10,9 @@ not published anywhere.
   public services (`monitoring_probe_targets` /
   `_targets_authenticated`) -- its HTTPS probe reports certificate
   expiry for free, so no separate exporter is needed for that.
+  Stalwart's mail ports (`monitoring_probe_targets_tcp`) get TCP probes
+  that speak SMTP/IMAP up to a verified TLS handshake, which reports
+  their certificate expiry too.
 - Every container uses `network_mode: host` uniformly, even where not
   strictly required, so Prometheus can scrape everything as a plain
   `127.0.0.1:<port>` without a host/bridge networking mismatch.

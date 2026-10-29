@@ -21,3 +21,40 @@ modules:
       preferred_ip_protocol: ip4
       tls_config:
         insecure_skip_verify: false
+
+  # Mail: the server greeting, and on port 25 the upgrade to TLS, so a TLS or certificate problem fails the probe.
+  smtp_starttls:
+    prober: tcp
+    timeout: 10s
+    tcp:
+      preferred_ip_protocol: ip4
+      query_response:
+        - expect: "^220"
+        - send: "EHLO blackbox.jkandler.de\r"
+        - expect: "^250[ -]STARTTLS"
+        - send: "STARTTLS\r"
+        - expect: "^220"
+        - starttls: true
+        - send: "EHLO blackbox.jkandler.de\r"
+        - expect: "^250 "
+        - send: "QUIT\r"
+
+  smtps:
+    prober: tcp
+    timeout: 10s
+    tcp:
+      preferred_ip_protocol: ip4
+      tls: true
+      query_response:
+        - expect: "^220"
+        - send: "QUIT\r"
+
+  imaps:
+    prober: tcp
+    timeout: 10s
+    tcp:
+      preferred_ip_protocol: ip4
+      tls: true
+      query_response:
+        - expect: "^\\* OK"
+        - send: "a1 LOGOUT\r"

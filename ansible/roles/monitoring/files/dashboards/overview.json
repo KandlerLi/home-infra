@@ -340,7 +340,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "label_replace(probe_success, \"service\", \"$1\", \"instance\", \"https?://([^/]+)/.*\")",
+          "expr": "label_replace(probe_success, \"service\", \"$1\", \"instance\", \"(?:https?://)?([^/]+).*\")",
           "legendFormat": "{{service}}",
           "instant": true,
           "refId": "A"

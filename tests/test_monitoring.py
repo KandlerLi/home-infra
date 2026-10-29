@@ -146,9 +146,40 @@ class MonitoringRoleTests(unittest.TestCase):
             "https://torrent.jkandler.de/",
             "https://www.jkandler.de/",
             "http://jkandler.de/",
+            "https://auth.jkandler.de/api/health",
+            "mail.jkandler.de:25",
+            "mail.jkandler.de:465",
+            "mail.jkandler.de:993",
         ]:
             with self.subTest(target=target):
                 self.assertIn(target, defaults)
+
+    def test_mail_ports_are_probed_with_their_own_protocol_module(self) -> None:
+        parsed_prometheus = yaml.safe_load(render("prometheus.yml.j2"))
+        modules = yaml.safe_load(render("blackbox.yml.j2"))["modules"]
+
+        tcp_job = next(
+            job for job in parsed_prometheus["scrape_configs"] if job["job_name"] == "blackbox_tcp"
+        )
+        probed = {
+            config["targets"][0]: config["labels"]["module"] for config in tcp_job["static_configs"]
+        }
+        self.assertEqual(
+            probed,
+            {
+                "mail.jkandler.de:25": "smtp_starttls",
+                "mail.jkandler.de:465": "smtps",
+                "mail.jkandler.de:993": "imaps",
+            },
+        )
+        self.assertIn(
+            {"source_labels": ["module"], "target_label": "__param_module"},
+            tcp_job["relabel_configs"],
+        )
+        # A TLS failure has to fail the probe, not just a closed port.
+        self.assertIn({"starttls": True}, modules["smtp_starttls"]["tcp"]["query_response"])
+        self.assertTrue(modules["smtps"]["tcp"]["tls"])
+        self.assertTrue(modules["imaps"]["tcp"]["tls"])
 
     def test_stale_shared_ingress_ping_probe_is_gone(self) -> None:
         # The retired shared_ingress ping probe kept firing a false alarm.
