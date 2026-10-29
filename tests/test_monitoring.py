@@ -147,9 +147,9 @@ class MonitoringRoleTests(unittest.TestCase):
             "https://www.jkandler.de/",
             "http://jkandler.de/",
             "https://auth.jkandler.de/api/health",
-            "mail.jkandler.de:25",
-            "mail.jkandler.de:465",
-            "mail.jkandler.de:993",
+            "jkandler.de:25",
+            "stalwart.jkandler.de:465",
+            "stalwart.jkandler.de:993",
         ]:
             with self.subTest(target=target):
                 self.assertIn(target, defaults)
@@ -167,9 +167,9 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertEqual(
             probed,
             {
-                "mail.jkandler.de:25": "smtp_starttls",
-                "mail.jkandler.de:465": "smtps",
-                "mail.jkandler.de:993": "imaps",
+                "jkandler.de:25": "smtp_starttls",
+                "stalwart.jkandler.de:465": "smtps",
+                "stalwart.jkandler.de:993": "imaps",
             },
         )
         self.assertIn(

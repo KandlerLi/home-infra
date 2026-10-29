@@ -62,12 +62,13 @@ monitoring_probe_targets_authenticated:
   - https://torrent.jkandler.de/
 
 # Stalwart's mail ports, each with the blackbox module that speaks its protocol up to a verified TLS handshake.
+# Clients use stalwart.jkandler.de (its certificate's only name); port 25 is probed via the MX host jkandler.de.
 monitoring_probe_targets_tcp:
-  - target: mail.jkandler.de:25
+  - target: jkandler.de:25
     module: smtp_starttls
-  - target: mail.jkandler.de:465
+  - target: stalwart.jkandler.de:465
     module: smtps
-  - target: mail.jkandler.de:993
+  - target: stalwart.jkandler.de:993
     module: imaps
 
 monitoring_prometheus_container_name: prometheus
