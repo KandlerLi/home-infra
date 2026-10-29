@@ -359,6 +359,7 @@ class MonitoringRoleTests(unittest.TestCase):
             "service-status.json",
             "backups.json",
             "github-runners.json",
+            "overview.json",
         }
 
         for name in expected:

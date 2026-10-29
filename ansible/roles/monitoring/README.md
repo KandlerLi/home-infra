@@ -84,6 +84,12 @@ host's own `cadvisor` job, so every query filters on `job`, and an
 allowlist keeps only the series the dashboards use (no
 `container_last_seen`, which `ContainerDown` reads).
 
+`overview.json` is the high-level status page and Grafana's home
+dashboard: availability only (host, k3s nodes, host containers, public
+probes, k3s Deployments/DaemonSets, CI runners, backup age, firing
+alerts), so one look after a reboot shows whether everything came back.
+Details stay in the other dashboards.
+
 **Backup freshness** (`backups` alert group, `backups.json`): every
 backup becomes one `backup:last_success_timestamp_seconds{backup=...}`
 series. Host-side backups (`monitoring_backup_markers`) are the mtime of
