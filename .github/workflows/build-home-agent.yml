@@ -36,10 +36,14 @@ jobs:
         run: >-
           docker build
           -t ghcr.io/kandlerli/home-agent:${{ github.sha }}
+          -t ghcr.io/kandlerli/home-agent:main
           ansible/roles/home_agent/files/agent
 
+      # :main is what Renovate follows to propose the new digest to k3s-apps.
       - name: Push home-agent image
-        run: docker push ghcr.io/kandlerli/home-agent:${{ github.sha }}
+        run: |
+          docker push ghcr.io/kandlerli/home-agent:${{ github.sha }}
+          docker push ghcr.io/kandlerli/home-agent:main
 
       # The immutable digest is what k3s-apps pins.
       - name: Print pushed image digest

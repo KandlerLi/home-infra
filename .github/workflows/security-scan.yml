@@ -30,9 +30,9 @@ jobs:
           - name: nextcloud-aio
             ref: ghcr.io/nextcloud-releases/all-in-one:latest
           # Built here, so scanned here: a repo-scoped token can only pull this repo's private packages.
-          # Keep in sync with home_agent_image in k3s-apps' terraform.tfvars (the deployed digest).
+          # Renovate keeps this and home_agent_image in k3s-apps' terraform.tfvars on the newest build.
           - name: home-agent
-            ref: ghcr.io/kandlerli/home-agent@sha256:0c26c979ff786b14c5044a3d70ea10526ac06253f5fb424596db4072e989013d
+            ref: ghcr.io/kandlerli/home-agent:main@sha256:0c26c979ff786b14c5044a3d70ea10526ac06253f5fb424596db4072e989013d
     uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.15
     with:
       image_name: ${{ matrix.name }}
