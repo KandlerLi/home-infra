@@ -1,0 +1,12 @@
+name: Rollout acknowledgement
+
+# Merging means rolling out by hand: the PR's rollout checkbox must be ticked. See gha-common's README.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  rollout-ack:
+    uses: KandlerLi/gha-common/.github/workflows/rollout-ack.yml@v0.0.16
+    permissions: {}
