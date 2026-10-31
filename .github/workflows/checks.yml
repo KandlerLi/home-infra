@@ -16,6 +16,7 @@ jobs:
       contents: read
       packages: write
     outputs:
+      image: ${{ steps.tag.outputs.image }}
       uid: ${{ steps.whoami.outputs.uid }}
       gid: ${{ steps.whoami.outputs.gid }}
 
@@ -23,16 +24,32 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # Hash of the build inputs plus the ISO week: rebuilt when they change, and weekly for Debian's security updates.
+      - name: Determine image tag
+        id: tag
+        run: >-
+          echo "image=ghcr.io/kandlerli/home-infra-ci:$(cat .github/ci/Dockerfile requirements.txt requirements.yml | sha256sum | cut -c1-12)-$(date -u +%G-w%V)"
+          >> "$GITHUB_OUTPUT"
+
       - name: Log in to GHCR
         run: >-
           echo "${{ secrets.GITHUB_TOKEN }}"
           | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      - name: Check for an existing image
+        id: existing
+        run: |
+          if docker manifest inspect "${{ steps.tag.outputs.image }}" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build CI image
-        run: docker build -t ghcr.io/kandlerli/home-infra-ci:latest -f .github/ci/Dockerfile .
+        if: steps.existing.outputs.found != 'true'
+        run: docker build -t "${{ steps.tag.outputs.image }}" -f .github/ci/Dockerfile .
 
       - name: Push CI image
-        run: docker push ghcr.io/kandlerli/home-infra-ci:latest
+        if: steps.existing.outputs.found != 'true'
+        run: docker push "${{ steps.tag.outputs.image }}"
 
       - name: Determine service account identity
         id: whoami
@@ -49,7 +66,7 @@ jobs:
       contents: read
       packages: read
     container:
-      image: ghcr.io/kandlerli/home-infra-ci:latest
+      image: ${{ needs.build-image.outputs.image }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
