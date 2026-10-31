@@ -227,6 +227,9 @@ printf '%s\n' \
   'After the next boot the VMs start by themselves (autostart). Start the AIO' \
   'containers through the AIO interface if needed:' \
   '  https://192.168.178.100:8080'
+printf '%s\n' \
+  'Wake-on-LAN may power the host back on within a minute: disconnect power' \
+  'as soon as it is off, before touching any hardware.'
 printf 'Flushing filesystem buffers and powering off now...\n'
 sync
 systemctl poweroff
