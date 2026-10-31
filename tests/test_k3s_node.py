@@ -725,5 +725,19 @@ class K3sNodeTests(unittest.TestCase):
 
         self.assertNotIn("logind.conf.d/kubelet-graceful-shutdown.conf", tasks)
 
+    def test_non_root_host_path_dirs_are_pre_owned_on_node1(self) -> None:
+        # Restricted Pods can't chown their hostPath, so Ansible owns that job (tracker #50).
+        plays = yaml.safe_load((PROJECT_ROOT / "ansible/playbooks/k3s.yml").read_text(encoding="utf-8"))
+        node1 = next(p for p in plays if p["name"] == "Install k3s on the learning node")
+        dirs = {d["path"]: d for d in node1["roles"][0]["k3s_node_host_path_dirs"]}
+        defaults = yaml.safe_load((ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8"))
+
+        self.assertEqual(defaults["k3s_node_host_path_dirs"], [])
+        self.assertEqual(dirs["/var/lib/k3s-sankey-export"]["owner"], 10010)
+        for name in ("blocky-postgres", "paperless-postgres"):
+            d = dirs[f"/var/lib/k3s-apps-data/{name}"]
+            self.assertEqual((d["owner"], d["group"], d["mode"]), (70, 70, "0700"))
+
+
 if __name__ == "__main__":
     unittest.main()

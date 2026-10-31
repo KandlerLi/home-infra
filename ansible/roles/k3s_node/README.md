@@ -67,6 +67,9 @@ Two modes, run as two separate plays in `ansible/playbooks/k3s.yml`:
   Ready-wait polls its systemd unit's own `ActiveState` rather than
   `kubectl get nodes` -- the real Ready check happens from
   `k3s-node-1`'s own side instead.
+  `k3s_node_host_path_dirs` pre-creates `k3s-bootstrap`'s hostPath PV
+  directories with their workload's uid/gid, since a Pod under
+  PodSecurity `restricted` can't chown its own volume.
 
 **Resizing an existing node** (`k3s_node_vm_vcpus`, `_memory_mb`,
 `_disk_size_gb`): none has a live path here, so raising any of them for an
