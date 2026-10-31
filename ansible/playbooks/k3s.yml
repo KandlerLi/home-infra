@@ -49,6 +49,11 @@
   roles:
     - role: k3s_node
       k3s_node_role_mode: configure_guest
+      # k3s-bootstrap's hostPath PVs whose workloads run as non-root (PodSecurity restricted, tracker #50).
+      k3s_node_host_path_dirs:
+        - { path: /var/lib/k3s-sankey-export, owner: 10010, group: 10010, mode: "0750" }
+        - { path: /var/lib/k3s-apps-data/blocky-postgres, owner: 70, group: 70, mode: "0700" }
+        - { path: /var/lib/k3s-apps-data/paperless-postgres, owner: 70, group: 70, mode: "0700" }
 
 # Read off node-1 into a hostvar, never written to disk.
 - name: Retrieve k3s cluster join token

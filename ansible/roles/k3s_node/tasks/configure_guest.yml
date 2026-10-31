@@ -285,6 +285,17 @@
     name: nfs-common
     state: present
 
+- name: Create hostPath PV directories owned by their workload
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ k3s_node_host_path_dirs }}"
+  loop_control:
+    label: "{{ item.path }}"
+
 # Server mode only: agents have no local kubeconfig; k3s.yml checks them from the server.
 - name: Wait for the k3s node to report Ready
   ansible.builtin.command:

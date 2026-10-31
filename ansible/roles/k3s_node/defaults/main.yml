@@ -93,3 +93,6 @@ k3s_node_terraform_checksum_url: >-
 k3s_node_terraform_zip_path: >-
   /var/cache/terraform/terraform_{{ k3s_node_terraform_version }}_linux_amd64.zip
 k3s_node_terraform_binary_path: /usr/local/bin/terraform
+
+# hostPath PV directories pre-created with their workload's uid, so no Pod needs root to chown them.
+k3s_node_host_path_dirs: []
