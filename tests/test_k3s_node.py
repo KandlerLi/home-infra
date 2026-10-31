@@ -551,7 +551,7 @@ class K3sNodeTests(unittest.TestCase):
 
         self.assertIn("k3s_node_vm_name: k3s-node-2", playbook)
         self.assertIn(
-            "k3s_node_vm_disk_path: /mnt/black-hdd/k3s/k3s-node-2.qcow2",
+            "k3s_node_vm_disk_path: /var/lib/libvirt/k3s/k3s-node-2.qcow2",
             playbook,
         )
         self.assertIn("k3s_node_vm_ip: 192.168.101.11", playbook)

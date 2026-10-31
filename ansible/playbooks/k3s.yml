@@ -13,6 +13,11 @@
       k3s_node_vm_vcpus: 3
       # Sized for Paperless-ngx OCR peaks (ADR 0023).
       k3s_node_vm_memory_mb: 10240
+      # On the SSD (tracker #40); the previous path drives the one-time move off the HDD.
+      k3s_node_storage_mount: /
+      k3s_node_vm_storage_dir: /var/lib/libvirt/k3s
+      k3s_node_vm_disk_path: /var/lib/libvirt/k3s/k3s-node-1.qcow2
+      k3s_node_vm_previous_disk_path: /mnt/black-hdd/k3s/k3s-node-1.qcow2
 
 # Runner node: tainted for CI, in k3s_agent_nodes so the server-unit play below skips it.
 - name: Provision k3s runner node
@@ -27,7 +32,10 @@
       k3s_node_vm_memory_mb: 8192
       # The runner caches outgrew 40 GiB; the qcow2 is sparse.
       k3s_node_vm_disk_size_gb: 100
-      k3s_node_vm_disk_path: /mnt/black-hdd/k3s/k3s-node-2.qcow2
+      k3s_node_storage_mount: /
+      k3s_node_vm_storage_dir: /var/lib/libvirt/k3s
+      k3s_node_vm_disk_path: /var/lib/libvirt/k3s/k3s-node-2.qcow2
+      k3s_node_vm_previous_disk_path: /mnt/black-hdd/k3s/k3s-node-2.qcow2
       k3s_node_vm_ip: 192.168.101.11
       k3s_node_vm_mac: "52:54:00:00:00:21"
       k3s_node_ssh_host_key_alias: k3s-node-2-via-homeserver
