@@ -82,6 +82,15 @@ class K3sNodeTests(unittest.TestCase):
             tasks.index("Move the k3s node disk to its new path"),
             tasks.index("Validate VM and disk recovery state"),
         )
+        # The long copy is polled instead of holding one SSH channel open.
+        copy = move.split("- name: Copy the k3s node disk to its new path", 1)[1].split("\n    - name:", 1)[0]
+        self.assertIn("async:", copy)
+        self.assertIn("poll:", copy)
+        # A dry run stops at the move instead of failing on the not-yet-copied disk.
+        end = move.split("- name: End the dry run for this node at the pending disk move", 1)[1]
+        self.assertIn("ansible.builtin.meta: end_role", end)
+        self.assertIn("when: ansible_check_mode and k3s_node_vm_move_pending | bool", end)
+        self.assertLess(move.index("Redefine the k3s node VM with its new disk path"), move.index("End the dry run"))
 
     def test_disk_existence_check_skips_hashing_the_whole_qcow2_file(
         self,

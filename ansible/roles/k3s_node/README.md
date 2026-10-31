@@ -88,6 +88,10 @@ domain uses today. While the domain still references that previous path,
 the play shuts the VM down, copies the disk with `cp --sparse=always`
 (a 100 GB image with 44 GB used copies as 44 GB), redefines the domain
 on the new path, rebuilds the cloud-init seed there and starts the VM.
+The copy runs as a polled `async` job, so a long copy does not depend
+on one SSH channel staying open. A dry run shows the move up to the copy
+and then ends the role for that node: without the copied disk, the
+checks after it cannot be simulated, so the guest plays skip that node.
 The previous disk is never touched: it is the rollback (domain back to
 the old variables, start) until it is deleted by hand. Once the domain
 uses the new path, `k3s_node_vm_previous_disk_path` does nothing and
