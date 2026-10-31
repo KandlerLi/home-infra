@@ -114,6 +114,9 @@
           - "{{ k3s_node_vm_previous_disk_path }}"
           - "{{ k3s_node_vm_disk_path }}.partial"
         creates: "{{ k3s_node_vm_disk_path }}"
+      # Polled, so no single SSH channel stays open for the whole copy (one lost a 65 G copy's result).
+      async: 7200
+      poll: 30
       when: not ansible_check_mode and k3s_node_vm_move_pending | bool
 
     - name: Put the copied k3s node disk in place
@@ -131,6 +134,11 @@
         command: define
         xml: "{{ lookup('template', 'k3s-node-domain.xml.j2') }}"
       when: not ansible_check_mode and k3s_node_vm_move_pending | bool
+
+    # A dry run skipped the copy, so every check below would fail on the missing new disk.
+    - name: End the dry run for this node at the pending disk move
+      ansible.builtin.meta: end_role
+      when: ansible_check_mode and k3s_node_vm_move_pending | bool
 
 - name: Check k3s node disk
   ansible.builtin.stat:
