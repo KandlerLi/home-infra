@@ -170,6 +170,16 @@ class BaseRoleTests(unittest.TestCase):
         )
         self.assertIn("version: v1.20.0", clone_task)
 
+    def test_generates_the_locale_the_laptop_forwards_over_ssh(self) -> None:
+        # sshd's AcceptEnv LC_* takes the laptop's de_DE.UTF-8; a missing locale warns on every login.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        enable = tasks.split("Enable the German UTF-8 locale", 1)[1].split("- name:", 1)[0]
+        self.assertIn("line: de_DE.UTF-8 UTF-8", enable)
+        generate = tasks.split("Generate the enabled locales", 1)[1].split("- name:", 1)[0]
+        self.assertIn("locale-gen", generate)
+        self.assertIn("when: base_locale_gen is changed", generate)
+
 
 if __name__ == "__main__":
     unittest.main()
