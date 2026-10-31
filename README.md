@@ -266,7 +266,11 @@ ssh -t julian@192.168.178.100 \
   'sudo bash /tmp/shutdown-homeserver-for-maintenance.sh'
 ```
 
-Wait for the host to turn off completely before disconnecting power. After the
+Wait for the host to turn off completely, then disconnect power at once:
+Wake-on-LAN stays enabled on purpose, and on 2026-10-31 the host powered
+itself back on 40–50 s after each poweroff (most likely the FRITZ!Box waking
+it for traffic to its port forwardings; tracker #49). Hardware must never be
+changed while it can come back up. After the
 hardware work, the VMs start by themselves (autostart), but the AIO
 application containers may remain stopped. Start them
 through the AIO interface at `https://192.168.178.100:8080`, then verify the
