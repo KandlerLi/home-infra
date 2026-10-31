@@ -21,6 +21,7 @@
       - curl
       - git
       - htop
+      - locales
       - tree
       - unzip
       - vim
@@ -30,6 +31,20 @@
     state: present
     update_cache: true
     cache_valid_time: 86400
+
+# The laptop forwards LC_* (de_DE.UTF-8) over SSH and sshd accepts them; without this locale every shell warns.
+- name: Enable the German UTF-8 locale
+  ansible.builtin.lineinfile:
+    path: /etc/locale.gen
+    regexp: '^#?\s*de_DE\.UTF-8 UTF-8$'
+    line: de_DE.UTF-8 UTF-8
+  register: base_locale_gen
+
+- name: Generate the enabled locales
+  ansible.builtin.command:
+    cmd: locale-gen
+  when: base_locale_gen is changed
+  changed_when: true
 
 # Intel 82579LM PCIe ASPM bug: see the homeserver-e1000e-nic-watchdog-hang runbook.
 - name: Disable PCIe ASPM in the kernel command line (e1000e watchdog-hang fix)
