@@ -94,7 +94,6 @@
       ansible.builtin.file:
         path: /var/lib/k3s-github-runner-cache
         state: absent
-      tags: [runner-cache-cleanup]
 
 # The VMs exist as hosts only after the provision plays above added them.
 - name: Security updates on the k3s nodes
