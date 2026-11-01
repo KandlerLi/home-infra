@@ -27,9 +27,9 @@
       }
     },
     {
-      "title": "Runners ready",
+      "title": "Runner Pods ready",
       "type": "stat",
-      "description": "Runner pods with every container ready (runner, dind, pruner).",
+      "description": "ARC creates one runner Pod per job, so this is jobs starting or running right now. 0 when idle.",
       "options": {
         "reduceOptions": {
           "values": false,
@@ -74,7 +74,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(kube_deployment_status_replicas_ready{deployment=~\"github-runner-.+\"})",
+          "expr": "sum(kube_pod_status_ready{namespace=\"ci\", condition=\"true\"}) or vector(0)",
           "legendFormat": "",
           "refId": "A"
         }
@@ -88,9 +88,9 @@
       }
     },
     {
-      "title": "Runners not ready",
+      "title": "Runner Pods pending (node-2 full)",
       "type": "stat",
-      "description": "Expected minus ready. After a homeserver reboot this stays high for a while: see the seeding panel.",
+      "description": "Runner Pods whose requests don't fit on k3s-node-2 yet; their jobs wait in GitHub's queue. Briefly non-zero while a Pod starts.",
       "options": {
         "reduceOptions": {
           "values": false,
@@ -135,7 +135,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(kube_deployment_spec_replicas{deployment=~\"github-runner-.+\"}) - sum(kube_deployment_status_replicas_ready{deployment=~\"github-runner-.+\"})",
+          "expr": "sum(kube_pod_status_phase{namespace=\"ci\", phase=\"Pending\"}) or vector(0)",
           "legendFormat": "",
           "refId": "A"
         }
@@ -149,9 +149,9 @@
       }
     },
     {
-      "title": "Seeding runner install",
+      "title": "ARC listeners ready",
       "type": "stat",
-      "description": "Pods still copying the runner install into their emptyDir. All 16 at once saturate the HDD-backed VM disk.",
+      "description": "One listener per repository's scale set. Below the number of runner repos, that repo's jobs are never picked up.",
       "options": {
         "reduceOptions": {
           "values": false,
@@ -196,7 +196,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(kube_pod_init_container_status_running{container=\"seed-runner-install\", pod=~\"github-runner-.+\"}) or vector(0)",
+          "expr": "sum(kube_pod_status_ready{namespace=\"arc-system\", condition=\"true\", pod=~\".+-listener\"}) or vector(0)",
           "legendFormat": "",
           "refId": "A"
         }
@@ -210,9 +210,9 @@
       }
     },
     {
-      "title": "Runner restarts (24h)",
+      "title": "ARC controller/listener restarts (24h)",
       "type": "stat",
-      "description": "Runners are ephemeral: every finished job restarts the runner container, so this is roughly jobs run. A reboot adds one per pod.",
+      "description": "Should stay 0; a reboot restarts each once.",
       "options": {
         "reduceOptions": {
           "values": false,
@@ -253,7 +253,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(kube_pod_container_status_restarts_total{container=\"runner\", pod=~\"github-runner-.+\"}[24h]))",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"arc-system\"}[24h])) or vector(0)",
           "legendFormat": "",
           "refId": "A"
         }
@@ -267,9 +267,9 @@
       }
     },
     {
-      "title": "dind/pruner restarts (24h)",
+      "title": "dind restarts (24h)",
       "type": "stat",
-      "description": "These sidecars should not restart on their own; a reboot restarts each once.",
+      "description": "dockerd exits are retried inside the container, so a restart means the sidecar itself failed.",
       "options": {
         "reduceOptions": {
           "values": false,
@@ -314,7 +314,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(kube_pod_container_status_restarts_total{container=~\"dind|pruner\", pod=~\"github-runner-.+\"}[24h]))",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"ci\", container=\"dind\"}[24h])) or vector(0)",
           "legendFormat": "",
           "refId": "A"
         }
@@ -393,9 +393,9 @@
       }
     },
     {
-      "title": "Runner pod ready",
+      "title": "Runner Pods ready by repo",
       "type": "state-timeline",
-      "description": "Per runner slot: green when the pod and all its containers are ready.",
+      "description": "Green while a runner Pod of that repo is ready, i.e. running a job.",
       "options": {
         "showValue": "never",
         "rowHeight": 0.8,
@@ -442,8 +442,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (runner) (label_replace(kube_pod_status_ready{condition=\"true\", pod=~\"github-runner-.+\"}, \"runner\", \"$1\", \"pod\", \"github-runner-(.+)-[a-z0-9]+-[a-z0-9]+\"))",
-          "legendFormat": "{{runner}}",
+          "expr": "max by (repo) (label_replace(kube_pod_status_ready{namespace=\"ci\", condition=\"true\"}, \"repo\", \"$1\", \"pod\", \"(.+)-runner-[a-z0-9]+\"))",
+          "legendFormat": "{{repo}}",
           "refId": "A"
         }
       ],
@@ -458,7 +458,7 @@
     {
       "title": "Containers waiting right now",
       "type": "table",
-      "description": "Empty is good. Shows each runner container stuck in a waiting state and why (CrashLoopBackOff, ContainerCreating, ...).",
+      "description": "Empty is good. Shows each runner Pod container stuck in a waiting state and why (ErrImagePull, ContainerCreating, ...).",
       "options": {
         "showHeader": true
       },
@@ -490,7 +490,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (runner, container, reason) (label_replace(kube_pod_container_status_waiting_reason{pod=~\"github-runner-.+\"}, \"runner\", \"$1\", \"pod\", \"github-runner-(.+)-[a-z0-9]+-[a-z0-9]+\")) > 0",
+          "expr": "sum by (repo, container, reason) (label_replace(kube_pod_container_status_waiting_reason{namespace=\"ci\"}, \"repo\", \"$1\", \"pod\", \"(.+)-runner-[a-z0-9]+\")) > 0",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -691,9 +691,9 @@
       }
     },
     {
-      "title": "Runner restarts per hour by repo (\u2248 jobs)",
+      "title": "Runner Pods per hour by repo (= jobs)",
       "type": "timeseries",
-      "description": "Rolling 1h window. Ephemeral runners restart after every job; a reboot shows up as one restart per pod.",
+      "description": "One Pod per job, so this counts jobs that ran in the last hour.",
       "fieldConfig": {
         "defaults": {
           "unit": "none",
@@ -713,7 +713,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (repo) (label_replace(increase(kube_pod_container_status_restarts_total{container=\"runner\", pod=~\"github-runner-.+\"}[1h]), \"repo\", \"$1\", \"pod\", \"github-runner-(.+)-[0-9]+-[a-z0-9]+-[a-z0-9]+\"))",
+          "expr": "count by (repo) (label_replace(max_over_time(kube_pod_created{namespace=\"ci\"}[1h]), \"repo\", \"$1\", \"pod\", \"(.+)-runner-[a-z0-9]+\"))",
           "legendFormat": "{{repo}}",
           "refId": "A"
         }
@@ -727,7 +727,7 @@
       }
     },
     {
-      "title": "dind/pruner restarts per hour",
+      "title": "dind restarts per hour",
       "type": "timeseries",
       "description": "Anything here outside a reboot means a sidecar is crashing.",
       "fieldConfig": {
@@ -743,8 +743,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (runner, container) (label_replace(increase(kube_pod_container_status_restarts_total{container=~\"dind|pruner\", pod=~\"github-runner-.+\"}[1h]), \"runner\", \"$1\", \"pod\", \"github-runner-(.+)-[a-z0-9]+-[a-z0-9]+\")) > 0",
-          "legendFormat": "{{runner}} {{container}}",
+          "expr": "sum by (repo) (label_replace(increase(kube_pod_container_status_restarts_total{namespace=\"ci\", container=\"dind\"}[1h]), \"repo\", \"$1\", \"pod\", \"(.+)-runner-[a-z0-9]+\")) > 0",
+          "legendFormat": "{{repo}}",
           "refId": "A"
         }
       ],
@@ -792,7 +792,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (repo, container) (label_replace(rate(container_cpu_usage_seconds_total{job=\"k3s_kubelet_cadvisor\", pod=~\"github-runner-.+\", container!=\"\"}[5m]), \"repo\", \"$1\", \"pod\", \"github-runner-(.+)-[0-9]+-[a-z0-9]+-[a-z0-9]+\"))",
+          "expr": "sum by (repo, container) (label_replace(rate(container_cpu_usage_seconds_total{job=\"k3s_kubelet_cadvisor\", namespace=\"ci\", container!=\"\"}[5m]), \"repo\", \"$1\", \"pod\", \"(.+)-runner-[a-z0-9]+\"))",
           "legendFormat": "{{repo}} {{container}}",
           "refId": "A"
         }
@@ -828,7 +828,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (repo, container) (label_replace(container_memory_working_set_bytes{job=\"k3s_kubelet_cadvisor\", pod=~\"github-runner-.+\", container!=\"\"}, \"repo\", \"$1\", \"pod\", \"github-runner-(.+)-[0-9]+-[a-z0-9]+-[a-z0-9]+\"))",
+          "expr": "sum by (repo, container) (label_replace(container_memory_working_set_bytes{job=\"k3s_kubelet_cadvisor\", namespace=\"ci\", container!=\"\"}, \"repo\", \"$1\", \"pod\", \"(.+)-runner-[a-z0-9]+\"))",
           "legendFormat": "{{repo}} {{container}}",
           "refId": "A"
         }
@@ -862,7 +862,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (container) (container_memory_working_set_bytes{job=\"k3s_kubelet_cadvisor\", pod=~\"github-runner-.+\", container!=\"\"} / on (pod, container) (container_spec_memory_limit_bytes{job=\"k3s_kubelet_cadvisor\", pod=~\"github-runner-.+\", container!=\"\"} > 0))",
+          "expr": "max by (container) (container_memory_working_set_bytes{job=\"k3s_kubelet_cadvisor\", namespace=\"ci\", container!=\"\"} / on (pod, container) (container_spec_memory_limit_bytes{job=\"k3s_kubelet_cadvisor\", namespace=\"ci\", container!=\"\"} > 0))",
           "legendFormat": "{{container}}",
           "refId": "A"
         }
@@ -898,7 +898,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (container) (increase(container_oom_events_total{job=\"k3s_kubelet_cadvisor\", pod=~\"github-runner-.+\", container!=\"\"}[1h]))",
+          "expr": "sum by (container) (increase(container_oom_events_total{job=\"k3s_kubelet_cadvisor\", namespace=\"ci\", container!=\"\"}[1h]))",
           "legendFormat": "{{container}}",
           "refId": "A"
         }
@@ -995,7 +995,7 @@
     {
       "title": "IO pressure",
       "type": "timeseries",
-      "description": "Share of time tasks wait on IO (PSI). 'All tasks stalled' near 100 is the post-reboot seeding storm.",
+      "description": "Share of time tasks wait on IO (PSI). 'All tasks stalled' near 100 means CI waits on the disk.",
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
