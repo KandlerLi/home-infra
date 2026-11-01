@@ -88,6 +88,13 @@
       k3s_node_agent_node_taint: "ci=github-runner:NoSchedule"
       k3s_node_agent_node_label: "role=github-runner"
 
+  post_tasks:
+    # The slot runners' hostPath caches; ARC runner Pods use emptyDir only (tracker #53).
+    - name: Remove the retired runner slot caches
+      ansible.builtin.file:
+        path: /var/lib/k3s-github-runner-cache
+        state: absent
+
 # The VMs exist as hosts only after the provision plays above added them.
 - name: Security updates on the k3s nodes
   hosts: k3s_nodes:k3s_agent_nodes

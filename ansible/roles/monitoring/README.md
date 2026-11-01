@@ -58,8 +58,9 @@ interval alerting on a target that doesn't exist yet. `k3s-node-health.json`
 group (`alert_rules.yml.j2`) both filter on `job="k3s_node_exporter"`
 specifically, since that job's metrics share names with this host's own
 `node_exporter` job above but must never be aggregated together.
-`github-runners.json` builds on the same two jobs: the CI runner pods'
-state from kube-state-metrics, `k3s-node-2`'s disk and IO pressure, and
+`github-runners.json` builds on the same two jobs: the state of the CI
+runner Pods (ARC, one Pod per job in `ci`) and listeners (`arc-system`)
+from kube-state-metrics, `k3s-node-2`'s disk and IO pressure, and
 this host's HDD busy time, plus CPU, memory, memory against the limit
 and OOM kills per runner container from `k3s_kubelet_cadvisor`, and
 GitHub's own view from `github_runner_exporter`.
