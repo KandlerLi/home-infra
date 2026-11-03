@@ -1,4 +1,4 @@
-ansible==14.3.0
+ansible==14.5.0
 # Required by amazon.aws.secretsmanager_secret (requirements.yml), used
 # by site.yml's own pre_tasks -- part of the SOPS-to-Secrets-Manager
 # cutover. Minimums per that lookup's own documented
@@ -13,7 +13,7 @@ botocore[crt]>=1.35.0
 # Only needed to run tests/test_tool_clients.py, which imports
 # ansible/roles/home_agent/files/agent/home_agent/{home_tools,nextcloud_tools}.py
 # directly. Must match agent/requirements.txt's pin.
-httpx2==2.12.0
+httpx2==2.16.0
 # Only needed to run tests/test_sankey_export.py, which imports
 # ansible/roles/sankey_export/files/finanzfluss_export.py directly. Must
 # match that role's own requirements.txt pins. plotly builds the Sankey
@@ -23,5 +23,5 @@ httpx2==2.12.0
 # function that actually renders, which the tests never call. Same
 # reasoning that kept playwright out of this file before it.
 openpyxl==3.1.5
-plotly==7.0.0
+plotly==7.1.0
 requests==2.34.2

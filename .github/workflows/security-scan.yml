@@ -23,9 +23,9 @@ jobs:
           - name: cadvisor
             ref: ghcr.io/google/cadvisor:v0.60.5@sha256:763aecf1c32c2be8a1a75f9abfc2fc461005c9dbbaa39cb356b354aac1296dbe
           - name: blackbox-exporter
-            ref: prom/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc
+            ref: prom/blackbox-exporter:v0.29.1@sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
           - name: prometheus
-            ref: prom/prometheus:v3.14.0@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
+            ref: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
           # Not digest-pinned (AIO recommends :latest), so this entry drifts with :latest.
           - name: nextcloud-aio
             ref: ghcr.io/nextcloud-releases/all-in-one:latest
@@ -33,7 +33,7 @@ jobs:
           # Renovate keeps this and home_agent_image in k3s-apps' terraform.tfvars on the newest build.
           - name: home-agent
             ref: ghcr.io/kandlerli/home-agent:main@sha256:4ed81690c46095f6730be6d5a1629314583f614b8f2ef17d0ba7b6bf8d06689e
-    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.15
+    uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.17
     with:
       image_name: ${{ matrix.name }}
       image_ref: ${{ matrix.ref }}
@@ -45,6 +45,6 @@ jobs:
       packages: read
 
   gitleaks:
-    uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.12
+    uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.17
     permissions:
       contents: read

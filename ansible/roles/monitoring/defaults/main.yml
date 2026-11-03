@@ -36,9 +36,9 @@ monitoring_cadvisor_pids_limit: 128
 # blackbox_exporter covers reachability and certificate expiry in one tool.
 monitoring_blackbox_exporter_container_name: blackbox-exporter
 monitoring_blackbox_exporter_image_name: prom/blackbox-exporter
-monitoring_blackbox_exporter_image_tag: v0.28.0
+monitoring_blackbox_exporter_image_tag: v0.29.1
 monitoring_blackbox_exporter_image_digest: >-
-  sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc
+  sha256:ea1c7aa3ef3f307cd03e85f34abb604478ccb90b567fc690da0cd9776da76b13
 monitoring_blackbox_exporter_image: >-
   {{ monitoring_blackbox_exporter_image_name }}:{{ monitoring_blackbox_exporter_image_tag }}@{{ monitoring_blackbox_exporter_image_digest }}
 monitoring_blackbox_exporter_port: 9115
@@ -73,9 +73,9 @@ monitoring_probe_targets_tcp:
 
 monitoring_prometheus_container_name: prometheus
 monitoring_prometheus_image_name: prom/prometheus
-monitoring_prometheus_image_tag: v3.14.0
+monitoring_prometheus_image_tag: v3.15.1
 monitoring_prometheus_image_digest: >-
-  sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
+  sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
 monitoring_prometheus_image: >-
   {{ monitoring_prometheus_image_name }}:{{ monitoring_prometheus_image_tag }}@{{ monitoring_prometheus_image_digest }}
 monitoring_prometheus_port: 9090
