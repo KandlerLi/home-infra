@@ -1,14 +1,14 @@
 ---
 collections:
   - name: community.docker
-    version: "5.2.2"
+    version: "5.4.0"
 
   - name: community.libvirt
-    version: "2.3.0"
+    version: "2.4.0"
 
   - name: ansible.posix
     version: "2.2.2"
 
   # For site.yml's Secrets Manager lookups.
   - name: amazon.aws
-    version: "11.4.0"
+    version: "11.5.0"

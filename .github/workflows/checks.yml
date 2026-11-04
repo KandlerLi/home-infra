@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       # Hash of the build inputs plus the ISO week: rebuilt when they change, and weekly for Debian's security updates.
       - name: Determine image tag
@@ -74,7 +74,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       # The reused workspace may be world-writable from an old run, which makes Ansible ignore ansible.cfg.
       - name: Ensure the workspace isn't world-writable
