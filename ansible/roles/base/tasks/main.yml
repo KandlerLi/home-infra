@@ -203,12 +203,12 @@
     shell: /usr/bin/zsh
 
 # Pinned to a commit; updates are deliberate SHA bumps.
+# No depth on these two: ansible-core 2.21.6's git module crashes on a rerun of a detached checkout without origin/HEAD.
 - name: Install Oh My Zsh
   ansible.builtin.git:
     repo: https://github.com/ohmyzsh/ohmyzsh.git
     dest: "/home/{{ admin_user }}/.oh-my-zsh"
     version: 146461f7c6d95f4ba1220559d66eb113418b40a8
-    depth: 1
 
 # The version Homebrew had installed, so the prompt looks the same.
 - name: Install Powerlevel10k theme
@@ -216,7 +216,6 @@
     repo: https://github.com/romkatv/powerlevel10k.git
     dest: "/home/{{ admin_user }}/.oh-my-zsh/custom/themes/powerlevel10k"
     version: v1.20.0
-    depth: 1
 
 - name: Reclaim ownership of the Oh My Zsh installation
   ansible.builtin.file:
