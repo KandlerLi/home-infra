@@ -75,6 +75,11 @@ Or `scripts/roll-out.sh dry-run`/`apply`, which runs the test suite and
 `--check --diff`). `--ask-become-pass` still prompts interactively either
 way -- sudo password entry stays a manual step on purpose.
 
+After merging a PR, `scripts/update.sh dry-run`/`apply` switches to a fresh
+`main`, refusing a dirty tree, installs `requirements.txt` and
+`requirements.yml` into the local venv, and runs `roll-out.sh`. Add `k3s`
+(`scripts/update.sh apply k3s`) to run `roll-out-k3s.sh` instead.
+
 `ansible/playbooks/k3s.yml` (the k3s learning cluster's own VM
 provisioning/resizing -- deliberately not part of `site.yml`, see that
 playbook's own header comment) has its own equivalent,
