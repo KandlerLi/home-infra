@@ -1,0 +1,81 @@
+---
+- name: Validate tang_server configuration
+  ansible.builtin.assert:
+    that:
+      - tang_server_allowed_ipv4_clients | length > 0
+      - tang_server_allowed_ipv4_clients | select('search', '/') | list | length == 0
+    fail_msg: >-
+      tang_server_allowed_ipv4_clients must list at least one client,
+      as single addresses without a CIDR range.
+
+- name: Preseed iptables-persistent to skip its install-time prompts
+  ansible.builtin.debconf:
+    name: iptables-persistent
+    question: "iptables-persistent/autosave_{{ item }}"
+    value: "false"
+    vtype: boolean
+  loop:
+    - v4
+    - v6
+
+- name: Install iptables-persistent
+  ansible.builtin.apt:
+    name: iptables-persistent
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+# insert, not append: a client added later must land before the DROP rules.
+- name: Allow Tang's clients through iptables
+  ansible.builtin.iptables:
+    action: insert
+    chain: INPUT
+    protocol: tcp
+    destination_port: "80"
+    source: "{{ item }}"
+    jump: ACCEPT
+    comment: "tang_server: allow {{ item }}"
+  loop: "{{ tang_server_allowed_ipv4_clients }}"
+  register: tang_server_firewall_allow
+
+# Not on loopback: the role's own health check below comes from there.
+- name: Drop every other client of Tang's port
+  ansible.builtin.iptables:
+    ip_version: "{{ item }}"
+    chain: INPUT
+    in_interface: "!lo"
+    protocol: tcp
+    destination_port: "80"
+    jump: DROP
+    comment: "tang_server: drop other clients"
+  loop:
+    - ipv4
+    - ipv6
+  register: tang_server_firewall_drop
+
+- name: Persist the Tang firewall rules across reboots
+  ansible.builtin.command:
+    argv:
+      - netfilter-persistent
+      - save
+  changed_when: true
+  when: tang_server_firewall_allow is changed or tang_server_firewall_drop is changed
+
+# After the firewall: the package starts listening as soon as it is installed.
+- name: Install Tang
+  ansible.builtin.apt:
+    name: tang
+    state: present
+
+- name: Ensure Tang's socket is enabled and started
+  ansible.builtin.systemd_service:
+    name: tangd.socket
+    enabled: true
+    state: started
+
+# The first request also makes tangd generate its signing keys.
+- name: Check that Tang serves its advertisement
+  ansible.builtin.uri:
+    url: http://127.0.0.1/adv
+    status_code: 200
+  when: not ansible_check_mode

@@ -1,0 +1,10 @@
+---
+# Separate from site.yml, so a routine homeserver rollout never reaches the Pi.
+- name: Configure the Raspberry Pi
+  hosts: rasp_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - unattended_upgrades
+    - tang_server

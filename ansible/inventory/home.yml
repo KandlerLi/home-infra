@@ -7,3 +7,9 @@ all:
           ansible_host: 192.168.178.100
           ansible_user: julian
           ansible_python_interpreter: /usr/bin/python3
+    rasp_servers:
+      hosts:
+        rasp:
+          ansible_host: 192.168.178.110
+          ansible_user: julian
+          ansible_python_interpreter: /usr/bin/python3
