@@ -1,0 +1,8 @@
+---
+tang_server_allowed_ipv4_clients:
+  - "{{ hostvars['homeserver'].ansible_host }}"
+
+# Raspbian has no separate -security suite, and kernel updates come from the Raspberry Pi archive.
+unattended_upgrades_origins_patterns:
+  - "origin=Raspbian,codename=${distro_codename},label=Raspbian"
+  - "origin=Raspberry Pi Foundation,codename=${distro_codename},label=Raspberry Pi Foundation"

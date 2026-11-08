@@ -1,0 +1,3 @@
+---
+# Single IPv4 addresses that may reach Tang; everything else on port 80 is dropped.
+tang_server_allowed_ipv4_clients: []
