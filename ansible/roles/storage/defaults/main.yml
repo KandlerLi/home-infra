@@ -2,7 +2,8 @@
 black_hdd_device_uuid: "17580dad-fb3c-417d-bfb2-38bfc18b5ff6"
 black_hdd_mount_point: "/mnt/black-hdd"
 black_hdd_filesystem: "ext4"
-black_hdd_mount_options: "defaults"
+# nofail: a missing or locked disk must not stop the boot before SSH is up.
+black_hdd_mount_options: "defaults,nofail"
 
 black_hdd_owner: "www-data"
 black_hdd_group: "www-data"
@@ -12,8 +13,14 @@ black_hdd_mode: "02770"
 red_hdd_device_uuid: "5ab85a44-1ed0-409e-bf52-340ad025e398"
 red_hdd_mount_point: "/mnt/red-hdd"
 red_hdd_filesystem: "ext4"
-red_hdd_mount_options: "defaults"
+red_hdd_mount_options: "defaults,nofail"
 
 red_hdd_owner: "root"
 red_hdd_group: "root"
 red_hdd_mode: "0755"
+
+# Not nfs-server: systemd's nfs generator already ties it to every exported path.
+storage_hdd_dependent_services:
+  - docker.service
+  - home-tools.service
+  - aux-backup.service

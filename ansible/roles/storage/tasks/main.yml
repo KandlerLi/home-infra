@@ -34,3 +34,32 @@
     dump: "0"
     passno: "2"
     state: mounted
+
+- name: Create drop-in directories for the services using the HDDs
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ storage_hdd_dependent_services }}"
+
+# With nofail, a service not tied to the mount would write into the empty mount point on the SSD.
+- name: Make the services using the HDDs wait for both mounts
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item }}.d/requires-hdd-mounts.conf"
+    content: |
+      # Managed by Ansible (home-infra, storage role).
+      [Unit]
+      RequiresMountsFor={{ black_hdd_mount_point }} {{ red_hdd_mount_point }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ storage_hdd_dependent_services }}"
+  register: storage_hdd_dropins
+
+# Reload only: the dependency counts from the next start, and restarting Docker would interrupt Nextcloud.
+- name: Reload systemd for the HDD drop-ins
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: storage_hdd_dropins is changed

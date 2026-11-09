@@ -1,8 +1,15 @@
 # storage
 
-Mounts the secondary data drive at `/mnt/black-hdd`. Always applied (no
-enable flag) -- runs early in `site.yml`, before any role that stores data
-there.
+Mounts the data drives at `/mnt/black-hdd` and `/mnt/red-hdd`. Always
+applied (no enable flag) -- runs early in `site.yml`, before any role that
+stores data there.
+
+- Both mounts are `nofail`, so a missing or locked disk can't drop the
+  boot into emergency mode before SSH is up. The services in
+  `storage_hdd_dependent_services` get a `RequiresMountsFor` drop-in in
+  exchange: without either disk they stay down instead of writing into
+  the empty mount point on the SSD. Applying this only reloads systemd;
+  the dependency takes effect the next time a service starts.
 
 - Mounts the filesystem by UUID (`black_hdd_device_uuid`), not device path
   -- device names like `/dev/sdb` aren't stable across reboots.
