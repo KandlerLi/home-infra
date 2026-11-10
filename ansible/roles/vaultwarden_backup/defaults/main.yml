@@ -1,0 +1,10 @@
+# Opt-in. Destination side only: k3s-apps' CronJob writes SQLite snapshots here. See the README.
+vaultwarden_backup_enabled: false
+
+# Same disk as authelia_backup, its own subdirectory.
+vaultwarden_backup_dir: /mnt/red-hdd/vaultwarden-backup
+
+vaultwarden_backup_user: vaultwarden-backup
+# Fixed, since k3s-apps' CronJob runs as exactly these: root_squash writes need the directory owner's ids.
+vaultwarden_backup_uid: 981
+vaultwarden_backup_gid: 976

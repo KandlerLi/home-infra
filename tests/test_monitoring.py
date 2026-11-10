@@ -342,9 +342,16 @@ class MonitoringRoleTests(unittest.TestCase):
 
         rules = backup_rules(monitoring_k3s_node_health_enabled=True)
         recorded = rules["backup:last_success_timestamp_seconds"]["expr"]
-        self.assertIn('cronjob=~"authelia-backup|paperless-export|stalwart-backup"', recorded)
+        self.assertIn('cronjob=~"authelia-backup|paperless-export|stalwart-backup|vaultwarden-backup"', recorded)
         self.assertIn("> 26 * 3600", rules["BackupStale"]["expr"])
-        for name in ("nextcloud-borg", "aux-backup", "authelia-backup", "paperless-export", "stalwart-backup"):
+        for name in (
+            "nextcloud-borg",
+            "aux-backup",
+            "authelia-backup",
+            "paperless-export",
+            "stalwart-backup",
+            "vaultwarden-backup",
+        ):
             with self.subTest(backup=name):
                 self.assertIn(f'{{backup="{name}"}}', rules["BackupMissing"]["expr"])
 
