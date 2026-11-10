@@ -1,0 +1,26 @@
+---
+- name: Configure Vaultwarden backup destination
+  when: vaultwarden_backup_enabled | bool
+  block:
+    - name: Create Vaultwarden backup group
+      ansible.builtin.group:
+        name: "{{ vaultwarden_backup_user }}"
+        gid: "{{ vaultwarden_backup_gid }}"
+        system: true
+
+    - name: Create Vaultwarden backup service account
+      ansible.builtin.user:
+        name: "{{ vaultwarden_backup_user }}"
+        uid: "{{ vaultwarden_backup_uid }}"
+        group: "{{ vaultwarden_backup_user }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Create Vaultwarden backup destination directory
+      ansible.builtin.file:
+        path: "{{ vaultwarden_backup_dir }}"
+        state: directory
+        owner: "{{ vaultwarden_backup_user }}"
+        group: "{{ vaultwarden_backup_user }}"
+        mode: "0700"

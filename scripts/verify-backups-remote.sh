@@ -138,6 +138,25 @@ else
   fi
 fi
 
+# Vaultwarden: newest gzipped SQLite snapshot passes the integrity check and holds at least one user.
+backup="$(ls -1t "${red_hdd}"/vaultwarden-backup/vaultwarden-db-*.sqlite3.gz 2>/dev/null | head -1)"
+if [ -z "${backup}" ]; then
+  fail vaultwarden "no backup in ${red_hdd}/vaultwarden-backup"
+else
+  dest="${scratch}/vaultwarden"
+  mkdir -p "${dest}"
+  gunzip -c "${backup}" > "${dest}/db.sqlite3"
+  detail="$(basename "${backup}"), $(age_hours "${backup}") h old"
+  users="$(python3 -c 'import sqlite3, sys; print(sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True).execute("SELECT count(*) FROM users").fetchone()[0])' "${dest}/db.sqlite3" 2>/dev/null || echo 0)"
+  if ! sqlite_out="$(sqlite_ok "${dest}/db.sqlite3")"; then
+    fail vaultwarden "${detail}, not ok: ${sqlite_out}"
+  elif [ "${users}" -gt 0 ]; then
+    pass vaultwarden "${detail}, ${sqlite_out}, ${users} user(s)"
+  else
+    fail vaultwarden "${detail}, ${sqlite_out}, but no users"
+  fi
+fi
+
 # Nextcloud AIO Borg: the passphrase opens the repo, and one small file comes back out of the newest archive.
 if [ -z "${BORG_PASSPHRASE}" ]; then
   skip borg "no passphrase given"
