@@ -11,4 +11,4 @@ collections:
 
   # For site.yml's Secrets Manager lookups.
   - name: amazon.aws
-    version: "11.5.0"
+    version: "11.5.1"
