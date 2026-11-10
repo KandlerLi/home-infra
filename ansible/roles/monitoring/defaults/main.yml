@@ -22,9 +22,9 @@ monitoring_node_exporter_pids_limit: 64
 # cAdvisor runs as root in its container: it reads /var/lib/docker and the cgroup tree.
 monitoring_cadvisor_container_name: cadvisor
 monitoring_cadvisor_image_name: ghcr.io/google/cadvisor
-monitoring_cadvisor_image_tag: v0.60.5
+monitoring_cadvisor_image_tag: v0.60.6
 monitoring_cadvisor_image_digest: >-
-  sha256:763aecf1c32c2be8a1a75f9abfc2fc461005c9dbbaa39cb356b354aac1296dbe
+  sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
 monitoring_cadvisor_image: >-
   {{ monitoring_cadvisor_image_name }}:{{ monitoring_cadvisor_image_tag }}@{{ monitoring_cadvisor_image_digest }}
 # Not 8080: that is Nextcloud AIO's admin interface.
@@ -73,9 +73,9 @@ monitoring_probe_targets_tcp:
 
 monitoring_prometheus_container_name: prometheus
 monitoring_prometheus_image_name: prom/prometheus
-monitoring_prometheus_image_tag: v3.15.1
+monitoring_prometheus_image_tag: v3.16.0
 monitoring_prometheus_image_digest: >-
-  sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+  sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
 monitoring_prometheus_image: >-
   {{ monitoring_prometheus_image_name }}:{{ monitoring_prometheus_image_tag }}@{{ monitoring_prometheus_image_digest }}
 monitoring_prometheus_port: 9090

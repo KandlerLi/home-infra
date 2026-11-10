@@ -1,4 +1,4 @@
-ansible==14.5.0
+ansible==14.6.0
 # Required by amazon.aws.secretsmanager_secret (requirements.yml), used
 # by site.yml's own pre_tasks -- part of the SOPS-to-Secrets-Manager
 # cutover. Minimums per that lookup's own documented
