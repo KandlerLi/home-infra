@@ -41,6 +41,34 @@ class StorageRoleTests(unittest.TestCase):
 
         self.assertIn('black_hdd_mode: "02770"', defaults)
 
+    def test_a_missing_disk_does_not_stop_the_boot(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn('black_hdd_mount_options: "defaults,nofail"', defaults)
+        self.assertIn('red_hdd_mount_options: "defaults,nofail"', defaults)
+
+    def test_services_using_the_hdds_require_both_mounts(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        for service in (
+            "docker.service",
+            "home-tools.service",
+            "aux-backup.service",
+        ):
+            self.assertIn(f"  - {service}", defaults)
+        self.assertIn(
+            "RequiresMountsFor={{ black_hdd_mount_point }} {{ red_hdd_mount_point }}",
+            tasks,
+        )
+
+    def test_applying_never_restarts_a_service(self) -> None:
+        # Restarting Docker would interrupt Nextcloud; the drop-in only needs a reload.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("daemon_reload: true", tasks)
+        self.assertNotIn("state: restarted", tasks)
+
 
 if __name__ == "__main__":
     unittest.main()

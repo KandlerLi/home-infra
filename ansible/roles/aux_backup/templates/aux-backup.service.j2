@@ -1,6 +1,6 @@
 [Unit]
 Description=Back up Deluge config and Open WebUI data to the local backup disk
-# red-hdd is a plain fstab mount, covered by local-fs.target.
+# The HDD mounts come from the storage role's RequiresMountsFor drop-in; local-fs.target doesn't cover nofail mounts.
 After=local-fs.target
 Requires=local-fs.target
 
