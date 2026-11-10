@@ -11,6 +11,10 @@ flag) -- first role in `site.yml`.
   sufficient (TSO/GSO/GRO offloading, Energy Efficient Ethernet, and a
   `e1000e-watchdog-recovery.service` PCI-level unbind/rebind all layer
   on top).
+- Has GRUB also install to the UEFI removable-media path
+  (`EFI/BOOT/BOOTX64.EFI`, Debian's `grub2/force_efi_extra_removable`), so
+  the host still boots when a BIOS update or reset wipes its NVRAM boot
+  entry, and fails the run if that file is missing.
 - **Root-cause-agnostic backstop**: enables this hardware's own
   watchdog timer via `RuntimeWatchdogSec` in `/etc/systemd/system.conf`
   (applied immediately via `systemctl daemon-reexec`). See

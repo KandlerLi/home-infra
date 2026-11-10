@@ -32,6 +32,26 @@ class BaseRoleTests(unittest.TestCase):
 
         self.assertNotIn("ansible.builtin.reboot", tasks)
 
+    def test_installs_the_uefi_removable_media_bootloader(self) -> None:
+        # A BIOS update can wipe the NVRAM boot entry; EFI/BOOT is the firmware's fallback.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        debconf_task = tasks.split("removable-media path\n", 1)[1].split(
+            "- name:", 1
+        )[0]
+        self.assertIn("grub2/force_efi_extra_removable", debconf_task)
+        self.assertIn('value: "true"', debconf_task)
+        self.assertIn("register: base_grub_removable", debconf_task)
+
+        reinstall_task = tasks.split(
+            "Reinstall GRUB so it writes the removable-media path", 1
+        )[1].split("- name:", 1)[0]
+        self.assertIn("dpkg-reconfigure", reinstall_task)
+        self.assertIn("when: base_grub_removable is changed", reinstall_task)
+
+        self.assertIn("/boot/efi/EFI/BOOT/BOOTX64.EFI", tasks)
+        self.assertIn("base_efi_fallback.stat.exists", tasks)
+
     def test_disables_nic_offloading_and_eee_for_the_e1000e_watchdog_hang_bug(
         self,
     ) -> None:

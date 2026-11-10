@@ -69,6 +69,34 @@
       that separately.
   when: grub_cmdline.changed
 
+# A firmware update can wipe the NVRAM boot entry; the firmware then still finds EFI/BOOT/BOOTX64.EFI.
+- name: Have GRUB also install to the removable-media path
+  ansible.builtin.debconf:
+    name: grub-efi-amd64
+    question: grub2/force_efi_extra_removable
+    vtype: boolean
+    value: "true"
+  register: base_grub_removable
+
+- name: Reinstall GRUB so it writes the removable-media path
+  ansible.builtin.command:
+    cmd: dpkg-reconfigure --frontend noninteractive grub-efi-amd64
+  when: base_grub_removable is changed
+  changed_when: true
+
+- name: Check for the removable-media bootloader
+  ansible.builtin.stat:
+    path: /boot/efi/EFI/BOOT/BOOTX64.EFI
+  register: base_efi_fallback
+
+- name: Verify the removable-media bootloader exists
+  ansible.builtin.assert:
+    that:
+      - base_efi_fallback.stat.exists
+    fail_msg: "/boot/efi/EFI/BOOT/BOOTX64.EFI is missing: the host won't boot if its NVRAM boot entry is lost."
+  # In check mode the reinstall above doesn't run, so the file can't exist yet.
+  when: not ansible_check_mode
+
 # ASPM off alone wasn't enough: offloading and EEE are the other usual contributors. See the runbook.
 - name: Install ethtool
   ansible.builtin.apt:
