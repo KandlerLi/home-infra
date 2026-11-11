@@ -1,0 +1,12 @@
+---
+luks_tang_test_image: /var/lib/luks-tang-test.img
+luks_tang_test_size: 64M
+luks_tang_test_name: luks-tang-test
+luks_tang_test_mount_point: /mnt/luks-tang-test
+
+luks_tang_test_tang_url: "http://{{ hostvars['rasp']['ansible_host'] }}"
+# S256 thumbprint of Tang's signing key; clevis refuses to bind if the server presents another.
+luks_tang_test_tang_thp: "Z8zzo58p4xu-nmbZfoUx17pBvrKsq74_eVQePtWT218"
+
+# Only needed to format or bind; from pass, see README.
+luks_tang_test_passphrase: "{{ lookup('ansible.builtin.env', 'LUKS_TANG_TEST_PASSPHRASE') }}"

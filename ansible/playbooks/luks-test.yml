@@ -1,0 +1,9 @@
+---
+# Separate from site.yml: a test for tracker #41, removed again once the HDDs are encrypted.
+- name: Encrypted test volume on the homeserver, unlocked through Tang
+  hosts: home_servers
+  become: true
+  gather_facts: false
+
+  roles:
+    - luks_tang_test
