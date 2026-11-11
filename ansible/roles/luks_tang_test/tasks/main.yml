@@ -3,6 +3,8 @@
   ansible.builtin.apt:
     name:
       - cryptsetup
+      # Debian 13 split it out of systemd: crypttab's generator and remote-cryptsetup.target.
+      - systemd-cryptsetup
       - clevis
       - clevis-luks
       - clevis-systemd
