@@ -20,7 +20,7 @@ class LuksTangTestRoleTests(unittest.TestCase):
 
     def test_only_formats_an_image_file_that_is_not_luks_yet(self) -> None:
         self.assertIn("luks_tang_test_image: /var/lib/", self.defaults)
-        fmt = _task(self.tasks, "Format the test image with LUKS2")
+        fmt = _task(self.tasks, "Format the test volume with LUKS2")
         self.assertIn("luks_tang_test_needs_format | bool", fmt)
         self.assertIn("luks_tang_test_needs_format: \"{{ luks_tang_test_is_luks.rc != 0 }}\"", self.tasks)
 
@@ -28,21 +28,21 @@ class LuksTangTestRoleTests(unittest.TestCase):
         self.assertIn("lookup('ansible.builtin.env', 'LUKS_TANG_TEST_PASSPHRASE')", self.defaults)
 
     def test_tasks_handling_the_passphrase_hide_it(self) -> None:
-        for name in ("Format the test image with LUKS2", "Bind the test image to Tang"):
+        for name in ("Format the test volume with LUKS2", "Bind the test volume to Tang"):
             task = _task(self.tasks, name)
             self.assertIn("no_log: true", task)
             self.assertIn("stdin: \"{{ luks_tang_test_passphrase }}\"", task)
             self.assertIn("stdin_add_newline: false", task)
 
     def test_binding_pins_the_tang_thumbprint(self) -> None:
-        bind = _task(self.tasks, "Bind the test image to Tang")
+        bind = _task(self.tasks, "Bind the test volume to Tang")
         self.assertIn("'thp': luks_tang_test_tang_thp", bind)
         self.assertRegex(self.defaults, r'luks_tang_test_tang_thp: "[A-Za-z0-9_-]{43}"')
 
     def test_a_locked_volume_does_not_stop_the_boot(self) -> None:
         crypttab = _task(self.tasks, "Unlock the test volume at boot through Tang")
         mount = _task(self.tasks, "Mount the test volume")
-        self.assertIn("none luks,_netdev,nofail", crypttab)
+        self.assertIn("luks,_netdev,nofail,x-systemd.requires={{ luks_tang_test_loop_unit }}", crypttab)
         self.assertIn('opts: "_netdev,nofail"', mount)
 
     def test_crypttab_is_read_at_boot(self) -> None:
@@ -52,6 +52,24 @@ class LuksTangTestRoleTests(unittest.TestCase):
     def test_boot_time_unlock_is_enabled(self) -> None:
         self.assertIn("- clevis-luks-askpass.path", self.tasks)
         self.assertIn("- remote-cryptsetup.target", self.tasks)
+
+    def test_crypttab_names_the_loop_device_not_the_file(self) -> None:
+        # clevis-luks-askpass skips anything that isn't a block device.
+        crypttab = _task(self.tasks, "Unlock the test volume at boot through Tang")
+        self.assertIn("{{ luks_tang_test_loop_device }} none", crypttab)
+        self.assertIn("luks_tang_test_loop_device: /dev/loop", self.defaults)
+
+    def test_loop_device_is_detached_by_its_unit_at_shutdown(self) -> None:
+        unit = (ROLE_ROOT / "templates/luks-tang-test-loop.service.j2").read_text(encoding="utf-8")
+        self.assertIn("RemainAfterExit=yes", unit)
+        self.assertIn("ExecStop=/usr/sbin/losetup -d {{ luks_tang_test_loop_device }}", unit)
+
+    def test_volume_is_only_opened_through_systemd(self) -> None:
+        # An open outside systemd left a mapping that hung the reboot on 2026-11-11.
+        self.assertNotIn("- unlock", self.tasks)
+        unlock = _task(self.tasks, "Unlock the test volume through its systemd unit")
+        self.assertIn('- "{{ luks_tang_test_cryptsetup_unit }}"', unlock)
+        self.assertIn("timeout: 120", unlock)
 
     def test_routine_rollouts_never_run_it(self) -> None:
         playbooks = PROJECT_ROOT / "ansible/playbooks"
