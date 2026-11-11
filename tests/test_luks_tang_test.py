@@ -45,6 +45,10 @@ class LuksTangTestRoleTests(unittest.TestCase):
         self.assertIn("none luks,_netdev,nofail", crypttab)
         self.assertIn('opts: "_netdev,nofail"', mount)
 
+    def test_crypttab_is_read_at_boot(self) -> None:
+        install = _task(self.tasks, "Install cryptsetup and Clevis")
+        self.assertIn("- systemd-cryptsetup", install)
+
     def test_boot_time_unlock_is_enabled(self) -> None:
         self.assertIn("- clevis-luks-askpass.path", self.tasks)
         self.assertIn("- remote-cryptsetup.target", self.tasks)
