@@ -1,0 +1,12 @@
+# Managed by Ansible (home-infra, luks_tang_test role).
+# Pulled in by the crypttab entry (x-systemd.requires); stops after it at shutdown.
+[Unit]
+Description=Loop device for the LUKS test image
+RequiresMountsFor={{ luks_tang_test_image }}
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/sbin/modprobe loop
+ExecStart=/usr/sbin/losetup {{ luks_tang_test_loop_device }} {{ luks_tang_test_image }}
+ExecStop=/usr/sbin/losetup -d {{ luks_tang_test_loop_device }}

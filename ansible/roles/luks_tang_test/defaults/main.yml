@@ -1,7 +1,11 @@
 ---
 luks_tang_test_image: /var/lib/luks-tang-test.img
 luks_tang_test_size: 64M
+# clevis-luks-askpass only answers for block devices, so the image goes through a fixed loop device.
+luks_tang_test_loop_device: /dev/loop7
+luks_tang_test_loop_unit: luks-tang-test-loop.service
 luks_tang_test_name: luks-tang-test
+luks_tang_test_cryptsetup_unit: "systemd-cryptsetup@luks\\x2dtang\\x2dtest.service"
 luks_tang_test_mount_point: /mnt/luks-tang-test
 
 luks_tang_test_tang_url: "http://{{ hostvars['rasp']['ansible_host'] }}"
