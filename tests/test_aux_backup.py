@@ -22,7 +22,7 @@ class DeploymentTests(unittest.TestCase):
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 
         self.assertIn("aux_backup_enabled: false", defaults)
-        self.assertIn("name: deluge-config", defaults)
+        self.assertIn("name: qbittorrent-config", defaults)
         self.assertIn("path: /mnt/black-hdd/deluge-config", defaults)
         self.assertIn("name: open-webui", defaults)
         self.assertIn("path: /var/lib/open-webui", defaults)
@@ -32,7 +32,17 @@ class DeploymentTests(unittest.TestCase):
         sources = {s["name"]: s for s in defaults["aux_backup_sources"]}
 
         self.assertEqual(sources["open-webui"]["sqlite_files"], ["webui.db"])
-        self.assertNotIn("sqlite_files", sources["deluge-config"])
+
+    def test_qbittorrent_snapshots_its_database_and_skips_runtime_files(self) -> None:
+        defaults = yaml.safe_load((ROLE_ROOT / "defaults/main.yml").read_text())
+        source = {s["name"]: s for s in defaults["aux_backup_sources"]}[
+            "qbittorrent-config"
+        ]
+
+        self.assertEqual(source["sqlite_files"], ["qBittorrent/torrents.db"])
+        self.assertEqual(
+            source["exclude"], ["qBittorrent/lockfile", "qBittorrent/ipc-socket"]
+        )
 
     def test_rsync_is_installed(self) -> None:
         # Not installed on this host by default.
@@ -42,7 +52,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("ansible.builtin.apt", tasks)
 
     def test_downloads_directory_is_deliberately_not_a_source(self) -> None:
-        # Large and re-downloadable, unlike deluge-config's small state.
+        # Large and re-downloadable, unlike the torrent client's small config.
         defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
 
         self.assertNotIn("/mnt/black-hdd/downloads", defaults)
@@ -86,13 +96,37 @@ class DeploymentTests(unittest.TestCase):
 
 
 class ScriptRenderingTests(unittest.TestCase):
-    def test_renders_a_plain_tar_for_a_source_with_no_sqlite_files(self) -> None:
-        rendered = render("aux-backup.sh.j2")
+    def test_renders_a_plain_tar_for_a_source_with_no_sqlite_files_or_excludes(
+        self,
+    ) -> None:
+        rendered = render(
+            "aux-backup.sh.j2",
+            aux_backup_sources=[{"name": "plain", "path": "/srv/plain"}],
+        )
 
         self.assertIn(
-            'tar -czf "${DEST_DIR}/deluge-config-${DATE}.tar.gz" '
-            '-C "$(dirname "/mnt/black-hdd/deluge-config")" '
-            '"$(basename "/mnt/black-hdd/deluge-config")"',
+            'tar -czf "${DEST_DIR}/plain-${DATE}.tar.gz" '
+            '-C "$(dirname "/srv/plain")" "$(basename "/srv/plain")"',
+            rendered,
+        )
+        self.assertNotIn("rsync", rendered)
+
+    def test_renders_a_staged_backup_with_excludes_for_qbittorrent(self) -> None:
+        rendered = render("aux-backup.sh.j2")
+
+        self.assertIn('--exclude="/qBittorrent/torrents.db"', rendered)
+        self.assertIn('--exclude="/qBittorrent/torrents.db-shm"', rendered)
+        self.assertIn('--exclude="/qBittorrent/torrents.db-wal"', rendered)
+        self.assertIn('--exclude="/qBittorrent/lockfile"', rendered)
+        self.assertIn('--exclude="/qBittorrent/ipc-socket"', rendered)
+        self.assertIn(
+            '"/mnt/black-hdd/deluge-config/qBittorrent/torrents.db" '
+            '"$STAGING_TARGET/qBittorrent/torrents.db"',
+            rendered,
+        )
+        self.assertIn(
+            'tar -czf "${DEST_DIR}/qbittorrent-config-${DATE}.tar.gz" '
+            '-C "$STAGING_DIR" "$(basename "/mnt/black-hdd/deluge-config")"',
             rendered,
         )
 
@@ -100,9 +134,9 @@ class ScriptRenderingTests(unittest.TestCase):
         rendered = render("aux-backup.sh.j2")
 
         # The live -shm file is locked by Open WebUI, so raw db files are excluded.
-        self.assertIn('--exclude="webui.db"', rendered)
-        self.assertIn('--exclude="webui.db-shm"', rendered)
-        self.assertIn('--exclude="webui.db-wal"', rendered)
+        self.assertIn('--exclude="/webui.db"', rendered)
+        self.assertIn('--exclude="/webui.db-shm"', rendered)
+        self.assertIn('--exclude="/webui.db-wal"', rendered)
         self.assertIn(
             'rsync -a', rendered
         )

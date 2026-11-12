@@ -23,18 +23,21 @@ if [ ! -d "{{ source.path }}" ] || [ -z "$(ls -A "{{ source.path }}" 2>/dev/null
   exit 1
 fi
 echo "Backing up {{ source.name }} ({{ source.path }})..."
-{% if source.sqlite_files is defined and source.sqlite_files | length > 0 %}
-# {{ source.name }} has a live WAL-mode SQLite database: snapshot it with the online backup API.
+{% if source.sqlite_files | default([]) | length > 0 or source.exclude | default([]) | length > 0 %}
+# Staged copy: live SQLite databases go through the online backup API, excludes are skipped.
 STAGING_DIR="$(mktemp -d)"
 STAGING_DIRS+=("$STAGING_DIR")
 STAGING_TARGET="$STAGING_DIR/$(basename "{{ source.path }}")"
 mkdir -p "$STAGING_TARGET"
 rsync -a \
-{% for db in source.sqlite_files %}
-  --exclude="{{ db }}" --exclude="{{ db }}-shm" --exclude="{{ db }}-wal" \
+{% for db in source.sqlite_files | default([]) %}
+  --exclude="/{{ db }}" --exclude="/{{ db }}-shm" --exclude="/{{ db }}-wal" \
+{% endfor %}
+{% for path in source.exclude | default([]) %}
+  --exclude="/{{ path }}" \
 {% endfor %}
   "{{ source.path }}/" "$STAGING_TARGET/"
-{% for db in source.sqlite_files %}
+{% for db in source.sqlite_files | default([]) %}
 echo "Snapshotting {{ db }} via SQLite's own online backup API..."
 python3 -c '
 import sqlite3
