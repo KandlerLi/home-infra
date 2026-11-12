@@ -79,7 +79,7 @@ monitoring_blocky_upstream: 192.168.101.10:4000
 blocky_ipv6_relay_enabled: true
 blocky_ipv6_relay_lan_prefix: fd71:c3c8:f74d::/64
 
-# Daily backup of Deluge config and Open WebUI data: see the aux_backup role.
+# Daily backup of qBittorrent config and Open WebUI data: see the aux_backup role.
 aux_backup_enabled: true
 
 # Destination side only; k3s-apps' CronJob does the backup. See the authelia_backup role.

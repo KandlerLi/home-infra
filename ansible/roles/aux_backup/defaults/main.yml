@@ -11,9 +11,17 @@ aux_backup_retention_days: 14
 aux_backup_schedule: "*-*-* 03:30:00"
 
 # name labels the archive and the logs; path is the real host directory.
+# sqlite_files and exclude are relative to path.
 aux_backup_sources:
-  - name: deluge-config
+  # qBittorrent's config; the directory name predates the switch from Deluge.
+  - name: qbittorrent-config
     path: /mnt/black-hdd/deluge-config
+    sqlite_files:
+      - qBittorrent/torrents.db
+    # Held locked by the running qBittorrent and meaningless after a restore.
+    exclude:
+      - qBittorrent/lockfile
+      - qBittorrent/ipc-socket
   - name: open-webui
     path: /var/lib/open-webui
     # Live WAL-mode SQLite: snapshotted with the online backup API, never copied raw.

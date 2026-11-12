@@ -2,7 +2,7 @@
 
 Opt-in (`aux_backup_enabled`, default `false`) daily backup of the
 small, real host directories Nextcloud AIO's own Borg backup was
-never going to cover: Deluge's config and Open WebUI's real data
+never going to cover: qBittorrent's config and Open WebUI's real data
 (`aux_backup_sources`, see `defaults/main.yml`). Plain dated
 `tar.gz` archives written to `aux_backup_dest_dir` (the same disk
 Nextcloud's own backup uses, a separate subdirectory) via a systemd
@@ -25,13 +25,20 @@ disproportionate.
   succeeding when it backed up nothing is worse than it failing
   loudly.
 - **Live SQLite databases get SQLite's own online backup, not a raw
-  copy** (`aux_backup_sources[].sqlite_files`, currently just Open
-  WebUI's `webui.db`) -- a raw copy of a live WAL-mode database isn't
-  guaranteed to be a consistent point-in-time snapshot. Any configured
+  copy** (`aux_backup_sources[].sqlite_files`, currently Open WebUI's
+  `webui.db` and qBittorrent's `torrents.db`) -- a raw copy of a live
+  WAL-mode database isn't guaranteed to be a consistent point-in-time
+  snapshot, and a file the running app holds can fail `tar` outright. Any configured
   `sqlite_files` entry gets excluded from the plain `rsync -a` copy
   and snapshotted separately via Python's stdlib `sqlite3` module's
   `Connection.backup()`, the same approach [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own
   `modules/authelia` uses.
+- **Runtime files are excluded, not copied**
+  (`aux_backup_sources[].exclude`, paths relative to the source):
+  qBittorrent's `lockfile` and `ipc-socket` are held by the running
+  process and worthless after a restore. A source with `sqlite_files`
+  or `exclude` is staged with `rsync` first, everything else is a
+  plain `tar` of the directory.
 - **A real toggle**: disabling this role stops the timer, not just
   skips creating it on a host that never had it. The service/timer
   units are always installed regardless of `aux_backup_enabled`, so
