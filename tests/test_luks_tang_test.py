@@ -42,7 +42,7 @@ class LuksTangTestRoleTests(unittest.TestCase):
     def test_a_locked_volume_does_not_stop_the_boot(self) -> None:
         crypttab = _task(self.tasks, "Unlock the test volume at boot through Tang")
         mount = _task(self.tasks, "Mount the test volume")
-        self.assertIn("luks,_netdev,nofail\n", crypttab)
+        self.assertIn("luks,_netdev,nofail{{", crypttab)
         self.assertIn('opts: "_netdev,nofail"', mount)
 
     def test_crypttab_is_read_at_boot(self) -> None:
@@ -90,6 +90,30 @@ class LuksTangTestRoleTests(unittest.TestCase):
         unlock = _task(self.tasks, "Unlock the test volume through its systemd unit")
         self.assertIn('- "{{ luks_tang_test_cryptsetup_unit }}"', unlock)
         self.assertIn("timeout: 120", unlock)
+
+    def test_paused_by_default(self) -> None:
+        self.assertIn("luks_tang_test_active: false", self.defaults)
+
+    def test_paused_volume_stays_closed_at_boot(self) -> None:
+        noauto = "{{ '' if luks_tang_test_active | bool else ',noauto' }}"
+        crypttab = _task(self.tasks, "Unlock the test volume at boot through Tang")
+        fstab = _task(self.tasks, "Record the test volume's mount in fstab")
+        self.assertIn(noauto, crypttab)
+        self.assertIn(noauto, fstab)
+
+    def test_pausing_closes_the_volume_before_its_loop_device(self) -> None:
+        close = _task(self.tasks, "Close the test volume while the test is paused")
+        self.assertIn("when: not luks_tang_test_active | bool", close)
+        self.assertLess(
+            close.index('- "{{ luks_tang_test_cryptsetup_unit }}"'),
+            close.index('- "{{ luks_tang_test_loop_unit }}"'),
+        )
+        self.assertLess(close.index("state: unmounted"), close.index("state: stopped"))
+
+    def test_opening_only_happens_while_active(self) -> None:
+        opening = _task(self.tasks, "Open and mount the test volume")
+        self.assertIn("when: luks_tang_test_active | bool", opening)
+        self.assertIn("Unlock the test volume through its systemd unit", opening)
 
     def test_routine_rollouts_never_run_it(self) -> None:
         playbooks = PROJECT_ROOT / "ansible/playbooks"
