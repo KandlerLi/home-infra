@@ -137,12 +137,26 @@
     regexp: "^{{ luks_tang_test_name }}\\s"
     line: >-
       {{ luks_tang_test_name }} {{ luks_tang_test_loop_device }} none
-      luks,_netdev,nofail,x-systemd.requires={{ luks_tang_test_loop_unit }}
+      luks,_netdev,nofail
     create: true
     owner: root
     group: root
     mode: "0644"
   register: luks_tang_test_crypttab
+
+# The crypttab generator ignores dependency options, so the loop unit is tied in here; also orders shutdown.
+- name: Make the test volume's unlock attach the loop device first
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ luks_tang_test_cryptsetup_unit }}.d/loop.conf"
+    content: |
+      # Managed by Ansible (home-infra, luks_tang_test role).
+      [Unit]
+      Requires={{ luks_tang_test_loop_unit }}
+      After={{ luks_tang_test_loop_unit }}
+    owner: root
+    group: root
+    mode: "0644"
+  register: luks_tang_test_dropin
 
 # A prompt left waiting by the old entry would otherwise outlive the reload.
 - name: Stop a pending unlock from the previous crypttab entry
@@ -155,7 +169,7 @@
 - name: Regenerate systemd units from crypttab
   ansible.builtin.systemd_service:
     daemon_reload: true
-  when: luks_tang_test_crypttab is changed
+  when: luks_tang_test_crypttab is changed or luks_tang_test_dropin is changed
 
 - name: Check whether the test volume is open
   ansible.builtin.stat:
