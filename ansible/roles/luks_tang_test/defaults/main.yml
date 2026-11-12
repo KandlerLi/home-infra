@@ -1,4 +1,7 @@
 ---
+# false: volume closed and noauto. Every reboot after dm-crypt was used hung (tracker #41), so paused.
+luks_tang_test_active: false
+
 luks_tang_test_image: /var/lib/luks-tang-test.img
 luks_tang_test_size: 64M
 # clevis-luks-askpass only answers for block devices, so the image goes through a fixed loop device.

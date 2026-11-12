@@ -25,6 +25,17 @@ done.
   so systemd owns the mapping and tears it down in order.
 - Mounted at `/mnt/luks-tang-test` with a `marker.txt` written on apply.
 
+## Paused
+
+`luks_tang_test_active` is `false` by default: the role closes the
+volume, detaches the loop device and marks crypttab and fstab `noauto`,
+so the volume stays closed at boot. Reason: every reboot after dm-crypt
+had been used in that boot hung after `systemd-shutdown` took over
+(three of three, 2026-11-11/12), even with the volume torn down cleanly
+before; the one reboot without dm-crypt was fine. Tracker #41.
+
+To open it again for a test, pass `-e luks_tang_test_active=true`.
+
 ## Apply
 
 The first run formats and binds, so it needs the passphrase. Create it
@@ -33,10 +44,12 @@ once, then pass it in through the environment (not as an argument):
 ```bash
 pass generate -n hosts/homeserver/luks-test 32
 LUKS_TANG_TEST_PASSPHRASE="$(pass show hosts/homeserver/luks-test)" \
-  .venv/bin/ansible-playbook ansible/playbooks/luks-test.yml --ask-become-pass
+  .venv/bin/ansible-playbook ansible/playbooks/luks-test.yml --ask-become-pass \
+  -e luks_tang_test_active=true
 ```
 
-Later runs need no passphrase unless the binding is gone.
+Later runs need no passphrase unless the binding is gone. Without
+`-e luks_tang_test_active=true` a run closes the volume again.
 
 ## Prove it
 
