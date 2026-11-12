@@ -42,7 +42,7 @@ class LuksTangTestRoleTests(unittest.TestCase):
     def test_a_locked_volume_does_not_stop_the_boot(self) -> None:
         crypttab = _task(self.tasks, "Unlock the test volume at boot through Tang")
         mount = _task(self.tasks, "Mount the test volume")
-        self.assertIn("luks,_netdev,nofail,x-systemd.requires={{ luks_tang_test_loop_unit }}", crypttab)
+        self.assertIn("luks,_netdev,nofail\n", crypttab)
         self.assertIn('opts: "_netdev,nofail"', mount)
 
     def test_crypttab_is_read_at_boot(self) -> None:
@@ -59,13 +59,26 @@ class LuksTangTestRoleTests(unittest.TestCase):
         self.assertIn("{{ luks_tang_test_loop_device }} none", crypttab)
         self.assertIn("luks_tang_test_loop_device: /dev/loop", self.defaults)
 
+    def test_loop_unit_is_pulled_in_by_a_drop_in_not_crypttab(self) -> None:
+        # The crypttab generator ignores x-systemd.requires=; at boot loop7 stayed empty.
+        crypttab = _task(self.tasks, "Unlock the test volume at boot through Tang")
+        self.assertNotIn("x-systemd.requires", crypttab)
+        dropin = _task(self.tasks, "Make the test volume's unlock attach the loop device first")
+        self.assertIn("{{ luks_tang_test_cryptsetup_unit }}.d/loop.conf", dropin)
+        self.assertIn("Requires={{ luks_tang_test_loop_unit }}", dropin)
+        self.assertIn("After={{ luks_tang_test_loop_unit }}", dropin)
+        self.assertLess(
+            self.tasks.index("Make the test volume's unlock attach the loop device first"),
+            self.tasks.index("Regenerate systemd units from crypttab"),
+        )
+
     def test_loop_device_is_detached_by_its_unit_at_shutdown(self) -> None:
         unit = (ROLE_ROOT / "templates/luks-tang-test-loop.service.j2").read_text(encoding="utf-8")
         self.assertIn("RemainAfterExit=yes", unit)
         self.assertIn("ExecStop=/usr/sbin/losetup -d {{ luks_tang_test_loop_device }}", unit)
 
     def test_volume_is_only_opened_through_systemd(self) -> None:
-        # An open outside systemd left a mapping that hung the reboot on 2026-11-11.
+        # systemd must own the mapping, so it is torn down in order at shutdown.
         self.assertNotIn("- unlock", self.tasks)
         unlock = _task(self.tasks, "Unlock the test volume through its systemd unit")
         self.assertIn('- "{{ luks_tang_test_cryptsetup_unit }}"', unlock)
