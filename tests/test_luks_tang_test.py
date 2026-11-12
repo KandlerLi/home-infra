@@ -72,6 +72,13 @@ class LuksTangTestRoleTests(unittest.TestCase):
             self.tasks.index("Regenerate systemd units from crypttab"),
         )
 
+    def test_drop_in_directory_is_created_before_the_drop_in(self) -> None:
+        # copy doesn't create parent directories; the first apply of #140 failed on that.
+        self.assertLess(
+            self.tasks.index("Create the drop-in directory for the test volume's unlock unit"),
+            self.tasks.index("Make the test volume's unlock attach the loop device first"),
+        )
+
     def test_loop_device_is_detached_by_its_unit_at_shutdown(self) -> None:
         unit = (ROLE_ROOT / "templates/luks-tang-test-loop.service.j2").read_text(encoding="utf-8")
         self.assertIn("RemainAfterExit=yes", unit)
