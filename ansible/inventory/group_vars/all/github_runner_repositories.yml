@@ -7,4 +7,5 @@ monitoring_github_runner_exporter_repositories:
 - k3s-apps
 - secrets-manager
 - ses-relay
+- stalwart-config
 - website
