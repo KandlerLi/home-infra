@@ -248,16 +248,15 @@ class K3sNodeTests(unittest.TestCase):
             tasks,
         )
 
-    def test_node1_vcpus_bumped_node2_untouched(self) -> None:
-        # Only node-1 gets the extra vCPU; node-2 (the runner node) stays on the role default.
+    def test_vcpus_fit_the_hosts_eight_threads(self) -> None:
+        # node-1 3 + node-2 4 vCPUs leave one of the i7-2600's 8 threads to the host (tracker #57).
         k3s_playbook = (
             PROJECT_ROOT / "ansible/playbooks/k3s.yml"
         ).read_text(encoding="utf-8")
-        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        node1, node2 = k3s_playbook.split("name: Provision k3s runner node", 1)
 
-        self.assertIn("k3s_node_vm_vcpus: 3", k3s_playbook)
-        self.assertIn("k3s_node_vm_vcpus: 2", defaults)
-        self.assertNotIn("k3s_node_vm_vcpus", k3s_playbook.split("name: Provision k3s runner node")[1])
+        self.assertIn("k3s_node_vm_vcpus: 3", node1)
+        self.assertIn("k3s_node_vm_vcpus: 4", node2.split("\n- name:", 1)[0])
 
     def test_disk_creation_never_overwrites_an_existing_disk(self) -> None:
         tasks = (ROLE_ROOT / "tasks/provision_vm.yml").read_text(encoding="utf-8")
