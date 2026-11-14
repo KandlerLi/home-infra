@@ -45,9 +45,9 @@ echo "roll-out.sh: syntax-checking the playbook"
 .venv/bin/ansible-playbook ansible/playbooks/site.yml --syntax-check
 
 if [ "${mode}" = "dry-run" ]; then
-  echo "roll-out.sh: dry run (--check --diff) -- will prompt for the sudo password"
-  .venv/bin/ansible-playbook ansible/playbooks/site.yml --check --diff --ask-become-pass
+  echo "roll-out.sh: dry run (--check --diff) -- sudo password from pass (hosts/homeserver/sudo)"
+  .venv/bin/ansible-playbook ansible/playbooks/site.yml --check --diff --become-password-file scripts/homeserver-become-pass.sh
 else
-  echo "roll-out.sh: applying for real -- will prompt for the sudo password"
-  .venv/bin/ansible-playbook ansible/playbooks/site.yml --ask-become-pass
+  echo "roll-out.sh: applying for real -- sudo password from pass (hosts/homeserver/sudo)"
+  .venv/bin/ansible-playbook ansible/playbooks/site.yml --become-password-file scripts/homeserver-become-pass.sh
 fi

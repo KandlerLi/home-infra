@@ -72,8 +72,9 @@ straight from AWS Secrets Manager.)
 
 Or `scripts/roll-out.sh dry-run`/`apply`, which runs the test suite and
 `--syntax-check` first, then the same command above (`dry-run` adds
-`--check --diff`). `--ask-become-pass` still prompts interactively either
-way -- sudo password entry stays a manual step on purpose.
+`--check --diff`). The scripts take the sudo password from `pass`
+(`hosts/homeserver/sudo`) through `scripts/homeserver-become-pass.sh` as
+`--become-password-file`; the raw command above still prompts.
 
 After merging a PR, `scripts/update.sh dry-run`/`apply` switches to a fresh
 `main`, refusing a dirty tree, installs `requirements.txt` and
