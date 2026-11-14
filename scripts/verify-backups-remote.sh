@@ -6,7 +6,7 @@ set -uo pipefail
 
 red_hdd=/mnt/red-hdd
 borg_image=ghcr.io/nextcloud-releases/aio-borgbackup:latest
-authelia_image=authelia/authelia:4.39.22
+authelia_image=ghcr.io/authelia/authelia:4.39.28@sha256:bd97cff4fcbf715b5ff1f9ae286afbe6033afce385302520b0368122d43a6f54
 
 IFS= read -r BORG_PASSPHRASE || BORG_PASSPHRASE=""
 IFS= read -r AUTHELIA_STORAGE_ENCRYPTION_KEY || AUTHELIA_STORAGE_ENCRYPTION_KEY=""
