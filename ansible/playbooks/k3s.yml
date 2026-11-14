@@ -27,7 +27,8 @@
   roles:
     - role: k3s_node
       k3s_node_vm_name: k3s-node-2
-      # Two runner slots per repository, each able to burst to ~1.75 GiB.
+      # Four runner Pods at 900m CPU each (tracker #57); 3 + 4 vCPUs leave one of the i7-2600's 8 threads to the host.
+      k3s_node_vm_vcpus: 4
       k3s_node_vm_memory_mb: 8192
       # The runner caches outgrew 40 GiB; the qcow2 is sparse.
       k3s_node_vm_disk_size_gb: 100
