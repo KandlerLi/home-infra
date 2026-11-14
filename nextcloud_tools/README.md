@@ -16,8 +16,8 @@ that nesting only ever existed for Ansible's own role-relative file
 lookup, which nothing here uses any more.
 
 `nextcloud_tools_service.py` stays here as the **canonical source**
-[`k3s-apps`](https://github.com/KandlerLi/k3s-apps) vendors its own copy from (`modules/
-home_agent/files/nextcloud_tools_service.py`) -- the same reason
+[`k3s-apps`](https://github.com/KandlerLi/k3s-apps) vendors its own copy from (`argocd/
+home-agent/nextcloud_tools_service.py`, deployed by Argo CD) -- the same reason
 `home_agent`'s own `files/agent/` Python package stays under that
 role in this repo even though its Docker deployment is retired too
 (the self-hosted CI runner builds `home_agent`'s image straight from
