@@ -1,5 +1,5 @@
 ---
-# Not imported into site.yml on purpose: run explicitly with --ask-become-pass.
+# Not imported into site.yml on purpose: run explicitly via scripts/roll-out-k3s.sh.
 
 - name: Provision k3s learning node
   hosts: home_servers

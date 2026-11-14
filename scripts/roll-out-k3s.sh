@@ -34,9 +34,9 @@ echo "roll-out-k3s.sh: syntax-checking the playbook"
 echo "roll-out-k3s.sh: heads up -- if a vCPU/memory change is pending for either node, applying this WILL shut down and restart that VM (and everything running on it)"
 
 if [ "${mode}" = "dry-run" ]; then
-  echo "roll-out-k3s.sh: dry run (--check --diff) -- will prompt for the sudo password"
-  .venv/bin/ansible-playbook ansible/playbooks/k3s.yml --check --diff --ask-become-pass
+  echo "roll-out-k3s.sh: dry run (--check --diff) -- sudo password from pass (hosts/homeserver/sudo)"
+  .venv/bin/ansible-playbook ansible/playbooks/k3s.yml --check --diff --become-password-file scripts/homeserver-become-pass.sh
 else
-  echo "roll-out-k3s.sh: applying for real -- will prompt for the sudo password"
-  .venv/bin/ansible-playbook ansible/playbooks/k3s.yml --ask-become-pass
+  echo "roll-out-k3s.sh: applying for real -- sudo password from pass (hosts/homeserver/sudo)"
+  .venv/bin/ansible-playbook ansible/playbooks/k3s.yml --become-password-file scripts/homeserver-become-pass.sh
 fi
