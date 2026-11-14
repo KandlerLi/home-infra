@@ -24,8 +24,8 @@ not published anywhere.
   misconfigured shouldn't mean silence.
 
 **Grafana and Alertmanager no longer run here.** Both are k3s-native
-copies instead ([`k3s-apps`](https://github.com/KandlerLi/k3s-apps), `modules/grafana` and `modules/
-alertmanager`). Grafana is reached at `grafana.jkandler.de` through
+copies instead ([`k3s-apps`](https://github.com/KandlerLi/k3s-apps), `argocd/grafana` and
+`argocd/alertmanager`, deployed by Argo CD; their Secrets stay in `modules/`). Grafana is reached at `grafana.jkandler.de` through
 [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own Traefik (`modules/ingress`); Alertmanager is
 reached by Prometheus over `monitoring_alertmanager_upstream`.
 Prometheus and the exporters stay on this host permanently -- they
@@ -33,7 +33,7 @@ report *this physical host's* own hardware/Docker daemon, so moving them
 into the k3s VM would monitor the wrong thing entirely. (Blocky moved to
 k3s on 2026-09-01 after all; Prometheus scrapes it over
 `monitoring_blocky_upstream`.) `files/dashboards/*.json` stay here as the canonical
-source [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own `modules/grafana` vendors a synced copy
+source [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' `argocd/grafana/dashboards` vendors a synced copy
 from, even though nothing here installs them any more. See
 [`home-infra-docs`](https://github.com/KandlerLi/home-infra-docs)' history.md ("k3s learning
 cluster") for the full cutover history.
