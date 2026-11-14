@@ -416,6 +416,20 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("or k3s_node_resolv_conf.changed", tasks)
         self.assertIn("deployment/coredns", tasks)
 
+    def test_public_issuer_keeps_the_in_cluster_issuer_and_audiences(self) -> None:
+        # Dropping the old issuer or audiences would invalidate every existing ServiceAccount token (ADR 0032).
+        config = (ROLE_ROOT / "templates/k3s-config.yaml.j2").read_text(encoding="utf-8")
+        playbook = (PROJECT_ROOT / "ansible/playbooks/k3s.yml").read_text(encoding="utf-8")
+        args = config.split("kube-apiserver-arg:", 1)[1].split("{% endif %}", 1)[0]
+
+        self.assertLess(
+            args.index("service-account-issuer={{ k3s_node_service_account_issuer }}"),
+            args.index("service-account-issuer=https://kubernetes.default.svc.cluster.local"),
+        )
+        self.assertIn("api-audiences=https://kubernetes.default.svc.cluster.local,k3s", args)
+        node1 = playbook.split("name: Provision k3s runner node", 1)[0]
+        self.assertIn("k3s_node_service_account_issuer: https://", node1)
+
     def test_bundled_traefik_is_disabled_in_favor_of_k3s_apps_ingress(
         self,
     ) -> None:

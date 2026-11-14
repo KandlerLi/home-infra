@@ -3,3 +3,11 @@ write-kubeconfig-mode: "{{ k3s_node_kubeconfig_mode }}"
 resolv-conf: "{{ k3s_node_resolv_conf_path }}"
 disable:
   - traefik
+{% if k3s_node_service_account_issuer %}
+# The public issuer signs new tokens; the in-cluster one stays accepted, and the audiences stay k3s' defaults (ADR 0032).
+kube-apiserver-arg:
+  - "service-account-issuer={{ k3s_node_service_account_issuer }}"
+  - "service-account-issuer=https://kubernetes.default.svc.cluster.local"
+  - "service-account-jwks-uri={{ k3s_node_service_account_issuer }}/openid/v1/jwks"
+  - "api-audiences=https://kubernetes.default.svc.cluster.local,k3s"
+{% endif %}

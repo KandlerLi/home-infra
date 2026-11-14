@@ -13,6 +13,8 @@
       k3s_node_vm_vcpus: 3
       # Sized for Paperless-ngx OCR peaks (ADR 0023).
       k3s_node_vm_memory_mb: 10240
+      # terraform-state's k3s_oidc_issuer, for the External Secrets Operator's AWS login (ADR 0032).
+      k3s_node_service_account_issuer: https://d2qu1br0nx9kep.cloudfront.net
       # On the SSD (tracker #40).
       k3s_node_storage_mount: /
       k3s_node_vm_storage_dir: /var/lib/libvirt/k3s
