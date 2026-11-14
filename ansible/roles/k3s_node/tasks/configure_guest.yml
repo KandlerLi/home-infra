@@ -104,6 +104,18 @@
     group: root
     mode: "0755"
 
+- name: Install the upstream resolv.conf k3s hands to CoreDNS
+  ansible.builtin.copy:
+    dest: "{{ k3s_node_resolv_conf_path }}"
+    content: |
+      {% for server in k3s_node_upstream_dns_servers %}
+      nameserver {{ server }}
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+  register: k3s_node_resolv_conf
+
 - name: Install k3s server config
   ansible.builtin.template:
     src: k3s-config.yaml.j2
@@ -230,6 +242,7 @@
     k3s_node_binary.changed
     or k3s_node_config_file.changed | default(false)
     or k3s_node_agent_env_file.changed | default(false)
+    or k3s_node_resolv_conf.changed
     or k3s_node_unit_file.changed
     or k3s_node_kubelet_shutdown_dropin.changed
     or k3s_node_logind_restart is changed
@@ -314,6 +327,20 @@
   retries: 60
   delay: 10
   when: k3s_node_join_mode == "server"
+
+# CoreDNS reads its pod's resolv.conf only at start, so new upstreams need fresh Pods.
+- name: Restart CoreDNS after its upstream resolv.conf changed
+  ansible.builtin.command:
+    argv:
+      - "{{ k3s_node_kubectl_symlink }}"
+      - --namespace=kube-system
+      - rollout
+      - restart
+      - deployment/coredns
+  environment:
+    KUBECONFIG: "{{ k3s_node_kubeconfig_path }}"
+  changed_when: true
+  when: k3s_node_join_mode == "server" and k3s_node_resolv_conf.changed
 
 - name: Wait for the k3s agent service to become active
   ansible.builtin.command:

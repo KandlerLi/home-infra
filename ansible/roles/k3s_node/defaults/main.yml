@@ -74,6 +74,12 @@ k3s_node_release_base_url: >-
 k3s_node_binary_path: /usr/local/bin/k3s
 k3s_node_kubectl_symlink: /usr/local/bin/kubectl
 k3s_node_config_dir: /etc/rancher/k3s
+# CoreDNS's upstreams: public resolvers, so cluster DNS never loops through the FRITZ!Box to Blocky in k3s.
+k3s_node_resolv_conf_path: "{{ k3s_node_config_dir }}/resolv.conf"
+k3s_node_upstream_dns_servers:
+  - 9.9.9.9
+  - 149.112.112.112
+  - 1.1.1.1
 k3s_node_kubeconfig_path: "{{ k3s_node_config_dir }}/k3s.yaml"
 # 0644 is fine: only the sudo-capable ansible account reaches this VM.
 k3s_node_kubeconfig_mode: "0644"

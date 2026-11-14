@@ -402,6 +402,21 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("write-kubeconfig-mode", config)
         self.assertIn('k3s_node_kubeconfig_mode: "0644"', defaults)
 
+    def test_coredns_upstreams_are_public_resolvers_not_blocky(self) -> None:
+        # Via the node's resolv.conf, cluster DNS looped through the FRITZ!Box to Blocky in k3s.
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        config = (ROLE_ROOT / "templates/k3s-config.yaml.j2").read_text(encoding="utf-8")
+        agent_env = (ROLE_ROOT / "templates/k3s-agent.env.j2").read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(encoding="utf-8")
+
+        self.assertIn("k3s_node_upstream_dns_servers:", defaults)
+        self.assertIn("- 9.9.9.9", defaults)
+        self.assertNotIn("192.168.", defaults.split("k3s_node_upstream_dns_servers:")[1].split("\n\n")[0])
+        self.assertIn('resolv-conf: "{{ k3s_node_resolv_conf_path }}"', config)
+        self.assertIn("K3S_RESOLV_CONF={{ k3s_node_resolv_conf_path }}", agent_env)
+        self.assertIn("or k3s_node_resolv_conf.changed", tasks)
+        self.assertIn("deployment/coredns", tasks)
+
     def test_bundled_traefik_is_disabled_in_favor_of_k3s_apps_ingress(
         self,
     ) -> None:

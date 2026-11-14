@@ -1,4 +1,5 @@
 # k3s server config (https://docs.k3s.io/cli/server); everything else stays at k3s's defaults.
 write-kubeconfig-mode: "{{ k3s_node_kubeconfig_mode }}"
+resolv-conf: "{{ k3s_node_resolv_conf_path }}"
 disable:
   - traefik
