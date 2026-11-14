@@ -427,8 +427,10 @@ class K3sNodeTests(unittest.TestCase):
             args.index("service-account-issuer=https://kubernetes.default.svc.cluster.local"),
         )
         self.assertIn("api-audiences=https://kubernetes.default.svc.cluster.local,k3s", args)
-        node1 = playbook.split("name: Provision k3s runner node", 1)[0]
-        self.assertIn("k3s_node_service_account_issuer: https://", node1)
+        # The server config is written by the configure_guest play, not the provision play.
+        server_play = playbook.split("name: Install k3s on the learning node", 1)[1].split("\n- name:", 1)[0]
+        self.assertIn("k3s_node_service_account_issuer: https://", server_play)
+        self.assertEqual(playbook.count("k3s_node_service_account_issuer:"), 1)
 
     def test_bundled_traefik_is_disabled_in_favor_of_k3s_apps_ingress(
         self,
