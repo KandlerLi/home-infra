@@ -47,7 +47,7 @@ Service), so it lives in that role instead of here.
   `websecure` entryPoint (443) internally, so Traefik's own config
   needs no separate test entryPoint of its own.
 - **Port 25 (inbound SMTP)** is forwarded tcp-only to [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)'
-  own `modules/stalwart/`. The FRITZ!Box's own port-forward for 25 is
+  `stalwart-smtp` Service (`argocd/stalwart`). The FRITZ!Box's own port-forward for 25 is
   manual and out-of-band, IPv4 only, targeting the homeserver's LAN IP
   -- redo it from a runbook if the router is ever reset. Only 25 is
   exposed publicly; submission and IMAP are not.
