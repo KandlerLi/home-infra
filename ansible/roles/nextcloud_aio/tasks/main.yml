@@ -101,8 +101,9 @@
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - "{{ nextcloud_aio_config_volume }}:/mnt/docker-aio-config"
+    # NEXTCLOUD_MOUNT empty, not absent: AIO keeps its stored mount until the variable overwrites it.
     env: >-
-      {{ {'NEXTCLOUD_DATADIR': nextcloud_aio_data_dir}
+      {{ {'NEXTCLOUD_DATADIR': nextcloud_aio_data_dir, 'NEXTCLOUD_MOUNT': ''}
          | combine(
              nextcloud_aio_reverse_proxy_enabled
              | ternary(
