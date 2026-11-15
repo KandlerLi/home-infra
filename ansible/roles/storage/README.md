@@ -17,8 +17,8 @@ stores data there.
   active immediately, not only after a future reboot.
 - Sets ownership to `www-data:www-data` with mode `02770` -- the setgid
   bit means every file *created* under the mount inherits the group, so
-  services that share this drive (deluge, nextcloud_aio's optional
-  mount, the GitHub runner VM's disk) stay consistently group-writable
+  services that share this drive (nextcloud_aio, the GitHub runner
+  VM's disk) stay consistently group-writable
   without each one managing permissions itself.
 
 See `tests/test_storage.py` for the invariants this role is expected to

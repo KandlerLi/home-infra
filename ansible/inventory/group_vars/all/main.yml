@@ -17,12 +17,6 @@ k3s_ingress_forward_enabled: true
 # Exports for k3s workloads on k3s-node-1 (192.168.101.10), nothing else under /mnt/black-hdd.
 nfs_server_enabled: true
 nfs_server_exports:
-  - path: /mnt/black-hdd/downloads
-    client: 192.168.101.10
-    options: rw,sync,no_subtree_check,root_squash
-  - path: /mnt/black-hdd/deluge-config
-    client: 192.168.101.10
-    options: rw,sync,no_subtree_check,root_squash
   # Open WebUI's live SQLite data: never two writers at once.
   - path: /var/lib/open-webui
     client: 192.168.101.10
@@ -46,11 +40,6 @@ nfs_server_exports:
   - path: /mnt/red-hdd/paperless-export
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
-
-# Deluge's downloads as Nextcloud external storage, for the personal account below only.
-nextcloud_aio_mount_dir: /mnt/black-hdd/downloads
-# The Authelia-provisioned (user_oidc) account; the old native admin account was migrated onto it and retired.
-nextcloud_aio_mount_applicable_user: c3d555d14a9e6f55acce409da0bf8fa03e31deff7b9d20c951aecfcf15832cd1
 
 # Needs authelia_oidc_nextcloud_client_secret in Secrets Manager: see the nextcloud_aio README.
 nextcloud_aio_oidc_enabled: true
@@ -79,7 +68,7 @@ monitoring_blocky_upstream: 192.168.101.10:4000
 blocky_ipv6_relay_enabled: true
 blocky_ipv6_relay_lan_prefix: fd71:c3c8:f74d::/64
 
-# Daily backup of qBittorrent config and Open WebUI data: see the aux_backup role.
+# Daily backup of Open WebUI data: see the aux_backup role.
 aux_backup_enabled: true
 
 # Destination side only; k3s-apps' CronJob does the backup. See the authelia_backup role.

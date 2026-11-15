@@ -79,12 +79,12 @@ class NfsServerRoleTests(unittest.TestCase):
         rendered = env.get_template("exports.j2").render(
             nfs_server_exports=[
                 {
-                    "path": "/mnt/black-hdd/downloads",
+                    "path": "/mnt/black-hdd/paperless-media",
                     "client": "192.168.101.10",
                     "options": "rw,sync,no_subtree_check,root_squash",
                 },
                 {
-                    "path": "/mnt/black-hdd/deluge-config",
+                    "path": "/var/lib/open-webui",
                     "client": "192.168.101.10",
                     "options": "rw,sync,no_subtree_check,root_squash",
                 },
@@ -92,28 +92,26 @@ class NfsServerRoleTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "/mnt/black-hdd/downloads "
+            "/mnt/black-hdd/paperless-media "
             "192.168.101.10(rw,sync,no_subtree_check,root_squash)",
             rendered,
         )
         self.assertIn(
-            "/mnt/black-hdd/deluge-config "
+            "/var/lib/open-webui "
             "192.168.101.10(rw,sync,no_subtree_check,root_squash)",
             rendered,
         )
 
-    def test_role_runs_before_docker_and_deluge(self) -> None:
+    def test_role_runs_before_docker(self) -> None:
         site_yml = (
             PROJECT_ROOT / "ansible/playbooks/site.yml"
         ).read_text(encoding="utf-8")
 
         nfs_server_index = site_yml.index("- nfs_server")
         docker_index = site_yml.index("- docker")
-        deluge_index = site_yml.index("- deluge")
         self.assertLess(nfs_server_index, docker_index)
-        self.assertLess(nfs_server_index, deluge_index)
 
-    def test_group_vars_export_deluges_and_open_webuis_own_directories(
+    def test_group_vars_export_only_named_directories(
         self,
     ) -> None:
         # Never all of /mnt/black-hdd or /var/lib, only the named directories.
@@ -121,8 +119,7 @@ class NfsServerRoleTests(unittest.TestCase):
             PROJECT_ROOT / "ansible/inventory/group_vars/all/main.yml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("path: /mnt/black-hdd/downloads", group_vars)
-        self.assertIn("path: /mnt/black-hdd/deluge-config", group_vars)
+        self.assertIn("path: /mnt/black-hdd/paperless-media", group_vars)
         self.assertIn("path: /var/lib/open-webui", group_vars)
         self.assertNotIn("path: /mnt/black-hdd\n", group_vars)
         self.assertNotIn("path: /var/lib\n", group_vars)

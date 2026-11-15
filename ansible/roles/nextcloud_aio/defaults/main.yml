@@ -7,11 +7,6 @@ nextcloud_aio_config_volume: nextcloud_aio_mastercontainer
 
 nextcloud_aio_data_dir: /mnt/black-hdd/nextcloud
 
-# Exposed via AIO's NEXTCLOUD_MOUNT for the Local external storage backend; empty disables it.
-nextcloud_aio_mount_dir: ""
-nextcloud_aio_mount_point_name: Downloads
-# No default: a wrong guess would expose the host directory to the wrong account.
-nextcloud_aio_mount_applicable_user: ""
 nextcloud_aio_nextcloud_container: >-
   {{ nextcloud_tools_nextcloud_container | default('nextcloud-aio-nextcloud') }}
 

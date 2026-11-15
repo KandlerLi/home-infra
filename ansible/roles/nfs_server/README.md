@@ -1,11 +1,8 @@
 # nfs_server
 
 Exports specific directories under `/mnt/black-hdd` over NFS to specific
-clients only -- never a whole parent directory, never a subnet. First
-use: sharing Deluge's `downloads`/`deluge-config` directories with the
-k3s learning VM, so a Kubernetes-native copy of Deluge can be a real
-drop-in replacement (Nextcloud integration included), not just a
-disconnected sandbox copy.
+clients only -- never a whole parent directory, never a subnet, so the
+k3s VM's apps work on the real host data instead of copies.
 
 Each entry in `nfs_server_exports` needs `path`, `client` (a single IP,
 validated to reject CIDR ranges and `0.0.0.0`), and `options`

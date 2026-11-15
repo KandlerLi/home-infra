@@ -33,8 +33,8 @@ sys.exit(0 if result == "ok" and tables > 0 else 1)
 EOF
 }
 
-# qBittorrent config and Open WebUI data: newest tarball of each, extracted, its SQLite snapshot checked.
-for name in qbittorrent-config open-webui; do
+# Open WebUI data: newest tarball, extracted, its SQLite snapshot checked.
+for name in open-webui; do
   tarball="$(ls -1t "${red_hdd}/aux-backups/${name}"-*.tar.gz 2>/dev/null | head -1)"
   if [ -z "${tarball}" ]; then
     fail "${name}" "no tarball in ${red_hdd}/aux-backups"
@@ -48,10 +48,7 @@ for name in qbittorrent-config open-webui; do
   fi
   files="$(find "${dest}" -type f | wc -l)"
   detail="$(basename "${tarball}"), $(age_hours "${tarball}") h old, ${files} files"
-  case "${name}" in
-    open-webui) dbname=webui.db ;;
-    qbittorrent-config) dbname=torrents.db ;;
-  esac
+  dbname=webui.db
   db="$(find "${dest}" -name "${dbname}" | head -1)"
   if [ -n "${db}" ] && sqlite_out="$(sqlite_ok "${db}")"; then
     pass "${name}" "${detail}, ${dbname} ${sqlite_out}"

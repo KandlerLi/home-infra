@@ -1,8 +1,0 @@
----
-deluge_service_user: deluge
-deluge_service_group: deluge
-deluge_downloads_dir: /mnt/black-hdd/downloads
-deluge_config_dir: /mnt/black-hdd/deluge-config
-
-# Nextcloud AIO's PHP process runs as www-data (uid 33), which gets write access via ACL.
-deluge_downloads_nextcloud_user: www-data

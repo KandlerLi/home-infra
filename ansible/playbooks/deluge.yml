@@ -1,8 +1,0 @@
----
-- name: Configure Deluge host prerequisites
-  hosts: home_servers
-  become: true
-  gather_facts: true
-
-  roles:
-    - deluge

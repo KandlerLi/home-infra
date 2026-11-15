@@ -51,7 +51,6 @@
     - paperless_storage
     - nfs_server
     - docker
-    - deluge
     - nextcloud_aio
     - home_agent
     - open_webui

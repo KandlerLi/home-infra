@@ -13,7 +13,6 @@ services.
 - Opt-in Finanzfluss Sankey budget exporter (planned for a future
   restructure away from Finanzfluss)
 - Opt-in Open WebUI chat frontend for the agent
-- Opt-in BitTorrent client (Deluge)
 - Opt-in static landing page linking the other home services
 - Opt-in shared Traefik ingress fronting the services above
 - Opt-in Prometheus monitoring stack (host health, container health,
@@ -231,8 +230,8 @@ exporter repo list).
 ## Backup restore drill
 
 `scripts/verify-backups.sh` checks from the laptop that every backup on
-`/mnt/red-hdd` can actually be restored: the newest Deluge and Open WebUI
-tarballs extract (Open WebUI's `webui.db` passes `PRAGMA integrity_check`),
+`/mnt/red-hdd` can actually be restored: the newest Open WebUI
+tarball extracts (Open WebUI's `webui.db` passes `PRAGMA integrity_check`),
 the newest Authelia backup is a sound SQLite database that the current
 storage key decrypts, every Paperless export original matches its manifest
 checksum, and the Borg passphrase from `pass` (`nc/backup`, or

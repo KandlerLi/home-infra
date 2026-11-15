@@ -59,7 +59,6 @@ monitoring_probe_targets:
 # Behind Authelia forward-auth, so probed with http_2xx_or_401. See ADR 0019.
 monitoring_probe_targets_authenticated:
   - https://ai.jkandler.de/healthz
-  - https://torrent.jkandler.de/
   - https://argo.jkandler.de/
 
 # Stalwart's mail ports, each with the blackbox module that speaks its protocol up to a verified TLS handshake.
