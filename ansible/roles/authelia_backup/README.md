@@ -9,9 +9,8 @@ for a k3s Pod that needs to write here as a specific non-root uid.
 This role does **not** run the backup itself. Authelia's real data
 lives on a `local-path` (hostPath-backed) k3s PersistentVolumeClaim,
 physically inside `k3s-node-1`'s own guest filesystem -- never visible
-to this host directly, unlike Deluge's config or Open WebUI's data
-(both plain NFS-exported directories `aux_backup` can read straight off
-disk). The actual backup logic -- SQLite's own online backup API for a
+to this host directly, unlike Open WebUI's data (a plain NFS-exported
+directory `aux_backup` can read straight off disk). The actual backup logic -- SQLite's own online backup API for a
 consistent snapshot of a live database, matching how `aux_backup`
 already handles Open WebUI's own `webui.db` -- runs inside a k3s
 CronJob instead, [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own

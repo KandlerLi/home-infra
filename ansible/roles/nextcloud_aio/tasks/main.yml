@@ -98,18 +98,9 @@
       published_ports: strict
       volumes: strict
       env: strict
-    volumes: >-
-      {{
-        [
-          "/var/run/docker.sock:/var/run/docker.sock:ro",
-          nextcloud_aio_config_volume ~ ":/mnt/docker-aio-config"
-        ]
-        + (
-            [nextcloud_aio_mount_dir ~ ":" ~ nextcloud_aio_mount_dir]
-            if nextcloud_aio_mount_dir | length > 0
-            else []
-          )
-      }}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - "{{ nextcloud_aio_config_volume }}:/mnt/docker-aio-config"
     env: >-
       {{ {'NEXTCLOUD_DATADIR': nextcloud_aio_data_dir}
          | combine(
@@ -131,107 +122,7 @@
                      {}
                    )
                )
-           )
-         | combine(
-             {'NEXTCLOUD_MOUNT': nextcloud_aio_mount_dir}
-             if nextcloud_aio_mount_dir | length > 0
-             else {}
            ) }}
-
-# occ output shapes vary by Nextcloud version; a failure here means checking the live JSON first.
-- name: Manage local external storage for the mounted downloads folder
-  when: nextcloud_aio_mount_dir | length > 0
-  block:
-    - name: List existing external storage mounts
-      community.docker.docker_container_exec:
-        container: "{{ nextcloud_aio_nextcloud_container }}"
-        user: www-data
-        argv:
-          - php
-          - occ
-          - files_external:list
-          - --output=json
-      register: nextcloud_aio_external_storage_list
-      changed_when: false
-
-    - name: Find the downloads mount, if it already exists
-      ansible.builtin.set_fact:
-        nextcloud_aio_downloads_mount: >-
-          {{
-            (nextcloud_aio_external_storage_list.stdout | from_json)
-            | selectattr(
-                'mount_point', 'search', nextcloud_aio_mount_point_name ~ '$'
-              )
-            | list
-          }}
-
-    - name: Create local external storage for the downloads folder
-      community.docker.docker_container_exec:
-        container: "{{ nextcloud_aio_nextcloud_container }}"
-        user: www-data
-        argv:
-          - php
-          - occ
-          - files_external:create
-          - "{{ nextcloud_aio_mount_point_name }}"
-          - local
-          - "null::null"
-          - --config
-          - "datadir={{ nextcloud_aio_mount_dir }}"
-      when: nextcloud_aio_downloads_mount | length == 0
-
-    - name: Re-list external storage mounts to find the mount id
-      community.docker.docker_container_exec:
-        container: "{{ nextcloud_aio_nextcloud_container }}"
-        user: www-data
-        argv:
-          - php
-          - occ
-          - files_external:list
-          - --output=json
-      register: nextcloud_aio_external_storage_list_final
-      changed_when: false
-      when: nextcloud_aio_mount_applicable_user | length > 0
-
-    - name: Record the downloads mount id
-      ansible.builtin.set_fact:
-        nextcloud_aio_downloads_mount_id: >-
-          {{
-            (nextcloud_aio_external_storage_list_final.stdout | from_json)
-            | selectattr(
-                'mount_point', 'search', nextcloud_aio_mount_point_name ~ '$'
-              )
-            | map(attribute='mount_id')
-            | first
-          }}
-      when: nextcloud_aio_mount_applicable_user | length > 0
-
-    # Always changed: neither docker_container_exec nor occ offers an idempotency check.
-    - name: Make the downloads mount visible to the configured account
-      community.docker.docker_container_exec:
-        container: "{{ nextcloud_aio_nextcloud_container }}"
-        user: www-data
-        argv:
-          - php
-          - occ
-          - files_external:applicable
-          - "{{ nextcloud_aio_downloads_mount_id }}"
-          - --add-user
-          - "{{ nextcloud_aio_mount_applicable_user }}"
-      when: nextcloud_aio_mount_applicable_user | length > 0
-
-    # Nextcloud's permission cache goes stale under Deluge: see the nextcloud-aio runbook.
-    - name: Rescan the downloads mount so Nextcloud's permission cache is current
-      community.docker.docker_container_exec:
-        container: "{{ nextcloud_aio_nextcloud_container }}"
-        user: www-data
-        argv:
-          - php
-          - occ
-          - files:scan
-          - --path=/{{ nextcloud_aio_mount_applicable_user }}/files/{{ nextcloud_aio_mount_point_name }}
-      when: nextcloud_aio_mount_applicable_user | length > 0
-      changed_when: false
 
 # Automates the manual network-reconnect step: see the nextcloud-aio runbook.
 - name: Create Nextcloud AIO Apache network-reconnect install directory

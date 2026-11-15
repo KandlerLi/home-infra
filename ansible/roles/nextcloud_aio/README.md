@@ -12,11 +12,7 @@ repo builds around.
   the sub-containers self-update independently of Ansible; pinning an
   old digest here risks the compatibility mismatch digest-pinning
   elsewhere is meant to prevent.
-- Data lives on `/mnt/black-hdd/nextcloud`. An optional host directory
-  mount (`nextcloud_aio_mount_dir`) can be exposed as external storage
-  to one named Nextcloud account -- off by default, since a wrong
-  `nextcloud_aio_mount_applicable_user` would grant unintended
-  visibility.
+- Data lives on `/mnt/black-hdd/nextcloud`.
 - `nextcloud_aio_reverse_proxy_enabled` switches its published ports so
   a reverse proxy can front it instead of talking to AIO's own
   built-in proxy directly.
@@ -25,8 +21,7 @@ repo builds around.
   k3s-native Traefik and `nextcloud_tools` reach AIO's Apache. AIO's
   mastercontainer accepts only one binding, so this replaced loopback
   rather than adding to it.
-- `nextcloud_aio_oidc_enabled` (off by default, same "opt-in" shape as
-  `nextcloud_aio_mount_dir` above) registers Authelia as a "Sign in
+- `nextcloud_aio_oidc_enabled` (off by default) registers Authelia as a "Sign in
   with Authelia" option on Nextcloud's own login page, via the
   official `user_oidc` app -- see `tasks/oidc.yml`. Needs
   `authelia_oidc_nextcloud_client_secret` set in the
