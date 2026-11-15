@@ -35,6 +35,14 @@ class NextcloudAioApacheBindingTests(unittest.TestCase):
         )
 
 
+class NextcloudMountTests(unittest.TestCase):
+    def test_mount_is_cleared_explicitly_not_just_left_out(self) -> None:
+        # An absent NEXTCLOUD_MOUNT keeps AIO's stored mount; only an empty one clears it.
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("'NEXTCLOUD_MOUNT': ''", tasks)
+
+
 class ApacheNetworkReconnectTests(unittest.TestCase):
     # Apache drops off the AIO Docker network after reboots, so a script reconnects it.
     def test_script_is_idempotent_and_bounded(self) -> None:
