@@ -9,18 +9,11 @@ nextcloud_aio_reverse_proxy_enabled: true
 # The homeserver's address on the k3s network, so k3s reaches Apache.
 nextcloud_aio_apache_ip_binding: 192.168.101.1
 
-# Lets the k3s-native home_agent reach home_tools_service over TCP, besides the Unix socket.
-home_agent_tools_tcp_bind_address: 192.168.101.1
-
 k3s_ingress_forward_enabled: true
 
 # Exports for k3s workloads on k3s-node-1 (192.168.101.10), nothing else under /mnt/black-hdd.
 nfs_server_enabled: true
 nfs_server_exports:
-  # Open WebUI's live SQLite data: never two writers at once.
-  - path: /var/lib/open-webui
-    client: 192.168.101.10
-    options: rw,sync,no_subtree_check,root_squash
   # Target of k3s-apps' Authelia backup CronJob: see the authelia_backup role.
   - path: /mnt/red-hdd/authelia-backup
     client: 192.168.101.10
@@ -67,9 +60,6 @@ monitoring_blocky_upstream: 192.168.101.10:4000
 # The LAN's ULA prefix, which never rotates; it is the relay's access boundary. See the role README.
 blocky_ipv6_relay_enabled: true
 blocky_ipv6_relay_lan_prefix: fd71:c3c8:f74d::/64
-
-# Daily backup of Open WebUI data: see the aux_backup role.
-aux_backup_enabled: true
 
 # Destination side only; k3s-apps' CronJob does the backup. See the authelia_backup role.
 authelia_backup_enabled: true

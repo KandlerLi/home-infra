@@ -29,10 +29,6 @@ jobs:
           # Not digest-pinned (AIO recommends :latest), so this entry drifts with :latest.
           - name: nextcloud-aio
             ref: ghcr.io/nextcloud-releases/all-in-one:latest
-          # Built here, so scanned here: a repo-scoped token can only pull this repo's private packages.
-          # Renovate keeps this and k3s-apps' argocd/home-agent/deployment.yaml on the newest build.
-          - name: home-agent
-            ref: ghcr.io/kandlerli/home-agent:main@sha256:9124434f328f51de4216d8f8aa2b69aa012c2c758678403834afb5fbdf9f9434
     uses: KandlerLi/gha-common/.github/workflows/trivy-image.yml@v0.0.17
     with:
       image_name: ${{ matrix.name }}
@@ -42,7 +38,6 @@ jobs:
       runs_on: '["ubuntu-latest"]'
     permissions:
       contents: read
-      packages: read
 
   gitleaks:
     uses: KandlerLi/gha-common/.github/workflows/gitleaks.yml@v0.0.17

@@ -8,11 +8,8 @@ services.
 - Base operating system packages
 - `/mnt/black-hdd` storage mount
 - Docker and Nextcloud AIO
-- Private homeserver health agent
-- Opt-in restricted Nextcloud file and shopping-list tools for the agent
 - Opt-in Finanzfluss Sankey budget exporter (planned for a future
   restructure away from Finanzfluss)
-- Opt-in Open WebUI chat frontend for the agent
 - Opt-in static landing page linking the other home services
 - Opt-in shared Traefik ingress fronting the services above
 - Opt-in Prometheus monitoring stack (host health, container health,
@@ -99,45 +96,13 @@ aws secretsmanager put-secret-value --secret-id home-infra/<group> --secret-stri
 rm /tmp/secret.json
 ```
 
-## Private homeserver agent, Nextcloud tools, and the chat frontend
+## Private homeserver agent and the chat frontend
 
-`home_agent` (the OpenAI-backed HTTP API), `nextcloud_tools` (restricted
-Nextcloud file/shopping-list access), and `open_webui` (the chat
-frontend) all used to run as Docker containers managed by this repo.
-As of 2026-08-30 they run as a personal, single-node k3s cluster
-instead ([`k3s-apps`](https://github.com/KandlerLi/k3s-apps), a sibling repository, Terraform-managed) --
-see [`home-infra-docs/docs/history.md`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/history.md)'s "k3s
-learning cluster" section for the full cutover history. This repo now
-only owns the host-level prerequisites those k3s Pods still depend on:
-
-- **`home_agent` role** (always applied): `home-tools`, a hardened
-  host systemd service exposing fixed, read-only JSON checks (host
-  disks, systemd units, Docker containers) over
-  `/run/home-tools/home-tools.sock` -- the one dependency that
-  couldn't move into the k3s Pod as a sidecar, since it reports this
-  homeserver's own hardware. Reached by the k3s Pod over an opt-in TCP
-  listener, scoped to only the k3s VM's isolated network address. The
-  role also keeps `home_agent`'s own Python application source
-  (`files/agent/`) as the canonical copy a self-hosted CI workflow
-  (`.github/workflows/build-home-agent.yml`) builds the k3s Pod's GHCR
-  image from -- never built on the homeserver itself.
-- **`nextcloud_tools`**: the Ansible role was retired outright, not
-  reshaped -- its only consumer (home_agent's own Docker container) is
-  gone. Its Python service source (`nextcloud_tools_service.py`) stays
-  on as the canonical original [`k3s-apps`](https://github.com/KandlerLi/k3s-apps) vendors its own Pod
-  sidecar's copy from; moved out of `ansible/roles/` to the top-level
-  `nextcloud_tools/` directory (2026-09-01) since nothing here is
-  Ansible content any more -- see that directory's own README.
-- **`open_webui` role** (always applied): a dedicated service account
-  and `open_webui_data_dir` (`/var/lib/open-webui`), holding the real
-  accounts and chat history the k3s Pod reads over a new NFS export
-  rather than starting fresh. The service account's uid is validated
-  against what [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' Deployment hardcodes.
-
-`ai.jkandler.de` is split by path between the two (`home_agent`
-answers `/healthz` and `/v1/chat`, `open_webui` gets everything else)
--- see [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own `ai_ingress.tf` for how that split is
-implemented.
+`home_agent`, `nextcloud_tools` and Open WebUI (`ai.jkandler.de`) were
+retired outright on 2026-11-16, data included: their roles, the
+`home-tools` host service, the `aux_backup` timer that only backed up
+Open WebUI, and the image build. See
+[`home-infra-docs/docs/decisions.md`](https://github.com/KandlerLi/home-infra-docs/blob/main/docs/decisions.md).
 
 ## Shared HTTPS ingress
 
@@ -230,9 +195,7 @@ exporter repo list).
 ## Backup restore drill
 
 `scripts/verify-backups.sh` checks from the laptop that every backup on
-`/mnt/red-hdd` can actually be restored: the newest Open WebUI
-tarball extracts (Open WebUI's `webui.db` passes `PRAGMA integrity_check`),
-the newest Authelia backup is a sound SQLite database that the current
+`/mnt/red-hdd` can actually be restored: the newest Authelia backup is a sound SQLite database that the current
 storage key decrypts, every Paperless export original matches its manifest
 checksum, and the Borg passphrase from `pass` (`nc/backup`, or
 `BORG_PASS_ENTRY`) opens Nextcloud AIO's repository and gets a file back out

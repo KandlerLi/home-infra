@@ -52,8 +52,5 @@
     - nfs_server
     - docker
     - nextcloud_aio
-    - home_agent
-    - open_webui
     - monitoring
     - blocky_ipv6_relay
-    - aux_backup

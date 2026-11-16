@@ -22,5 +22,3 @@ red_hdd_mode: "0755"
 # Not nfs-server: systemd's nfs generator already ties it to every exported path.
 storage_hdd_dependent_services:
   - docker.service
-  - home-tools.service
-  - aux-backup.service
