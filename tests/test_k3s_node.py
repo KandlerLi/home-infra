@@ -214,7 +214,7 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("k3s_node_root_disk: /dev/vda", defaults)
         self.assertIn("k3s_node_root_partition: 1", defaults)
 
-    def test_only_the_runner_node_gets_the_bigger_disk(self) -> None:
+    def test_each_node_sets_its_own_disk_size(self) -> None:
         k3s_playbook = (PROJECT_ROOT / "ansible/playbooks/k3s.yml").read_text(
             encoding="utf-8"
         )
@@ -222,9 +222,9 @@ class K3sNodeTests(unittest.TestCase):
         node2 = k3s_playbook[k3s_playbook.index("k3s_node_vm_name: k3s-node-2") :]
         node2 = node2[: node2.index("k3s_node_inventory_group")]
         self.assertIn("k3s_node_vm_disk_size_gb: 100", node2)
-        # node-1 keeps the default; an override there would resize a disk nobody asked to change.
+        # Changing either value resizes a live node's disk (one VM restart), so both are pinned here.
         node1 = k3s_playbook[: k3s_playbook.index("k3s_node_vm_name: k3s-node-2")]
-        self.assertNotIn("k3s_node_vm_disk_size_gb", node1)
+        self.assertIn("k3s_node_vm_disk_size_gb: 80", node1)
 
     def test_unparseable_memory_unit_fails_instead_of_rebooting_every_run(
         self,
@@ -673,6 +673,36 @@ class K3sNodeTests(unittest.TestCase):
             "'127.0.0.53' in k3s_node_resolved_stub_probe.stdout", restart_task
         )
 
+
+    def test_kubelet_prunes_images_before_the_disk_alert_fires(self) -> None:
+        # With kubelet's 85% default, k3s-node-1 sat at 84.8% on 2026-11-16: alert fired, GC never ran.
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(
+            encoding="utf-8"
+        )
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        monitoring = (
+            PROJECT_ROOT / "ansible/roles/monitoring/defaults/main.yml"
+        ).read_text(encoding="utf-8")
+
+        dropin = tasks.split("Set kubelet image garbage collection thresholds", 1)[
+            1
+        ].split("- name:", 1)[0]
+        self.assertIn("kubelet.conf.d/50-image-gc.conf", dropin)
+        self.assertIn("kind: KubeletConfiguration", dropin)
+        self.assertIn("imageGCHighThresholdPercent:", dropin)
+        self.assertIn("imageGCLowThresholdPercent:", dropin)
+
+        def value(text: str, key: str) -> int:
+            return int(text.split(f"{key}: ", 1)[1].split()[0])
+
+        high = value(defaults, "k3s_node_image_gc_high_threshold_percent")
+        low = value(defaults, "k3s_node_image_gc_low_threshold_percent")
+        alert = value(monitoring, "monitoring_alert_disk_full_percent")
+        self.assertLess(low, high)
+        self.assertLess(high, alert)
+
+        restart = tasks.split("Restart k3s when its binary, config, or unit changed", 1)[1]
+        self.assertIn("k3s_node_kubelet_image_gc_dropin.changed", restart)
 
     def test_kubelet_stops_pods_itself_at_vm_shutdown(self) -> None:
         # Without it, systemd unmounted NFS under running Pods and node-1 hung until SIGKILL.

@@ -118,3 +118,12 @@ and Open WebUI's process hung unkillable on its SQLite file, so the
 homeserver's `libvirt-guests` SIGKILLed `k3s-node-1` after 300 s
 (2026-10-25 and -26). A change to either drop-in restarts k3s; Pods keep
 running across that restart.
+
+**Image garbage collection** (both join modes): a third drop-in,
+`50-image-gc.conf`, lowers kubelet's `imageGCHighThresholdPercent` /
+`imageGCLowThresholdPercent` from its 85 / 80 defaults to 75 / 65
+(`k3s_node_image_gc_*_threshold_percent`). With the defaults kubelet
+only pruned unused images once the disk was already at the monitoring
+role's 85 % `RootDiskAlmostFull` threshold: on 2026-11-16 a batch of image
+updates left `k3s-node-1` at 84.8 % with old images kept, the alert
+fired and GC never ran. Like the shutdown drop-in, a change restarts k3s.
