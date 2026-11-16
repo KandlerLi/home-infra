@@ -190,6 +190,19 @@
     mode: "0600"
   register: k3s_node_kubelet_shutdown_dropin
 
+- name: Set kubelet image garbage collection thresholds
+  ansible.builtin.copy:
+    dest: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/50-image-gc.conf
+    content: |
+      apiVersion: kubelet.config.k8s.io/v1beta1
+      kind: KubeletConfiguration
+      imageGCHighThresholdPercent: {{ k3s_node_image_gc_high_threshold_percent }}
+      imageGCLowThresholdPercent: {{ k3s_node_image_gc_low_threshold_percent }}
+    owner: root
+    group: root
+    mode: "0600"
+  register: k3s_node_kubelet_image_gc_dropin
+
 - name: Create logind drop-in directory
   ansible.builtin.file:
     path: /etc/systemd/logind.conf.d
@@ -245,6 +258,7 @@
     or k3s_node_resolv_conf.changed
     or k3s_node_unit_file.changed
     or k3s_node_kubelet_shutdown_dropin.changed
+    or k3s_node_kubelet_image_gc_dropin.changed
     or k3s_node_logind_restart is changed
 
 - name: Ensure k3s is enabled and running
