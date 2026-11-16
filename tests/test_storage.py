@@ -53,8 +53,6 @@ class StorageRoleTests(unittest.TestCase):
 
         for service in (
             "docker.service",
-            "home-tools.service",
-            "aux-backup.service",
         ):
             self.assertIn(f"  - {service}", defaults)
         self.assertIn(

@@ -1,7 +1,7 @@
 # Opt-in. Destination side only: k3s-apps' CronJob copies Authelia's SQLite here. See the README.
 authelia_backup_enabled: false
 
-# Same disk as aux_backup, its own subdirectory.
+# On the red HDD (backups), its own subdirectory.
 authelia_backup_dir: /mnt/red-hdd/authelia-backup
 
 authelia_backup_user: authelia-backup

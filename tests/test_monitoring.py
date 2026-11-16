@@ -142,7 +142,6 @@ class MonitoringRoleTests(unittest.TestCase):
 
         for target in [
             "https://nextcloud.jkandler.de/",
-            "https://ai.jkandler.de/healthz",
             "https://argo.jkandler.de/",
             "https://www.jkandler.de/",
             "http://jkandler.de/",
@@ -218,7 +217,7 @@ class MonitoringRoleTests(unittest.TestCase):
             if job["job_name"] == "blackbox_http_authenticated"
         )
         self.assertEqual(auth_job["params"]["module"], ["http_2xx_or_401"])
-        for target in ["https://ai.jkandler.de/healthz", "https://argo.jkandler.de/"]:
+        for target in ["https://argo.jkandler.de/"]:
             with self.subTest(target=target):
                 self.assertIn(target, auth_job["static_configs"][0]["targets"])
 
@@ -346,7 +345,6 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn("> 26 * 3600", rules["BackupStale"]["expr"])
         for name in (
             "nextcloud-borg",
-            "aux-backup",
             "authelia-backup",
             "paperless-export",
             "stalwart-backup",

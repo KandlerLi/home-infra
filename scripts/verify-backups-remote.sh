@@ -33,30 +33,6 @@ sys.exit(0 if result == "ok" and tables > 0 else 1)
 EOF
 }
 
-# Open WebUI data: newest tarball, extracted, its SQLite snapshot checked.
-for name in open-webui; do
-  tarball="$(ls -1t "${red_hdd}/aux-backups/${name}"-*.tar.gz 2>/dev/null | head -1)"
-  if [ -z "${tarball}" ]; then
-    fail "${name}" "no tarball in ${red_hdd}/aux-backups"
-    continue
-  fi
-  dest="${scratch}/aux/${name}"
-  mkdir -p "${dest}"
-  if ! tar -xzf "${tarball}" -C "${dest}"; then
-    fail "${name}" "$(basename "${tarball}") doesn't extract"
-    continue
-  fi
-  files="$(find "${dest}" -type f | wc -l)"
-  detail="$(basename "${tarball}"), $(age_hours "${tarball}") h old, ${files} files"
-  dbname=webui.db
-  db="$(find "${dest}" -name "${dbname}" | head -1)"
-  if [ -n "${db}" ] && sqlite_out="$(sqlite_ok "${db}")"; then
-    pass "${name}" "${detail}, ${dbname} ${sqlite_out}"
-  else
-    fail "${name}" "${detail}, ${dbname} missing or not ok: ${sqlite_out:-}"
-  fi
-done
-
 # Authelia: newest gzipped SQLite copy; then the key check, which fails for backups made before a key rotation.
 backup="$(ls -1t "${red_hdd}"/authelia-backup/authelia-db-*.sqlite3.gz 2>/dev/null | head -1)"
 if [ -z "${backup}" ]; then

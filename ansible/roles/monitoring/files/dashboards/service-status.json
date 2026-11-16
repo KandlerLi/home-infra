@@ -68,8 +68,7 @@
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{instance=\"https://nextcloud.jkandler.de/\"}", "legendFormat": "Nextcloud", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{instance=\"https://www.jkandler.de/\"}", "legendFormat": "Website (www)", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{instance=\"http://jkandler.de/\"}", "legendFormat": "Website (root)", "refId": "C" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{instance=\"https://ai.jkandler.de/healthz\"}", "legendFormat": "AI Agent", "refId": "D" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{instance=\"http://jkandler.de/\"}", "legendFormat": "Website (root)", "refId": "C" }
       ]
     }
   ]

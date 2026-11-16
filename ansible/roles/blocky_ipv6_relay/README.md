@@ -26,8 +26,7 @@ has an IPv4 address inside the k3s VM's isolated network.
   fresh IPv4 connection sidesteps all of that -- no new libvirt
   network, no VM changes, no `k3s_ingress_forward` changes.
 - **stdlib-only Python, systemd unit, no Docker container** -- the
-  same idiom `monitoring`'s own `ntfy_relay.py` and `home_agent`'s own
-  `home_tools_service.py` already use for small, standalone bridging
+  same idiom `monitoring`'s own `ntfy_relay.py` already uses for small, standalone bridging
   logic. Two independent listeners (UDP and TCP, both DNS's own
   requirement -- DNS falls back to TCP for responses too large for a
   single UDP datagram), both bound to `::` with `IPV6_V6ONLY` set

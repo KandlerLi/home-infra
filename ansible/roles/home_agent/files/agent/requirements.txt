@@ -1,2 +1,0 @@
-anthropic==1.17.0
-httpx2==2.16.0

@@ -18,7 +18,7 @@ repo builds around.
   built-in proxy directly.
 - `nextcloud_aio_apache_ip_binding` is set to `192.168.101.1`, the
   homeserver's address on the k3s VMs' isolated network, so the
-  k3s-native Traefik and `nextcloud_tools` reach AIO's Apache. AIO's
+  k3s-native Traefik and `sankey_export` reach AIO's Apache. AIO's
   mastercontainer accepts only one binding, so this replaced loopback
   rather than adding to it.
 - `nextcloud_aio_oidc_enabled` (off by default) registers Authelia as a "Sign in
@@ -33,16 +33,14 @@ repo builds around.
   username/password form. This is a browser `/login` redirect only,
   not a protocol-level block -- it
   doesn't touch Basic Auth/app-password API or WebDAV access, so
-  `home_agent`'s own `nextcloud_tools` sidecar and the `sankey_export`
-  CronJob (both authenticate directly against the API, never through
-  this page) are unaffected. Nextcloud's own documented admin escape
+  the `sankey_export` CronJob (it authenticates directly against the
+  API, never through this page) is unaffected. Nextcloud's own documented admin escape
   hatch still works if ever needed: appending `?direct=1` to the login
   URL shows the real form again.
 
-Two clients depend on a dedicated Nextcloud account bootstrapped against
-this instance, both now running as k3s workloads rather than home-infra
-roles: `home_agent`'s own `nextcloud_tools` sidecar and the `sankey_export`
-CronJob -- see [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' `modules/home_agent/`/`modules/sankey_export/`.
+The `sankey_export` CronJob depends on a dedicated Nextcloud account
+bootstrapped against this instance; it runs in k3s, see
+[`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' `argocd/sankey-export/`.
 
 - A systemd oneshot (`nextcloud-aio-apache-network-fix.service`, runs at
   boot and on every apply) automatically reconnects

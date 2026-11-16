@@ -10,10 +10,6 @@ ansible==14.6.0
 # since that provider needs CRT signing support.
 boto3>=1.35.0
 botocore[crt]>=1.35.0
-# Only needed to run tests/test_tool_clients.py, which imports
-# ansible/roles/home_agent/files/agent/home_agent/{home_tools,nextcloud_tools}.py
-# directly. Must match agent/requirements.txt's pin.
-httpx2==2.16.0
 # Only needed to run tests/test_sankey_export.py, which imports
 # ansible/roles/sankey_export/files/finanzfluss_export.py directly. Must
 # match that role's own requirements.txt pins. plotly builds the Sankey

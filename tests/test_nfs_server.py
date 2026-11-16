@@ -84,7 +84,7 @@ class NfsServerRoleTests(unittest.TestCase):
                     "options": "rw,sync,no_subtree_check,root_squash",
                 },
                 {
-                    "path": "/var/lib/open-webui",
+                    "path": "/mnt/red-hdd/authelia-backup",
                     "client": "192.168.101.10",
                     "options": "rw,sync,no_subtree_check,root_squash",
                 },
@@ -97,7 +97,7 @@ class NfsServerRoleTests(unittest.TestCase):
             rendered,
         )
         self.assertIn(
-            "/var/lib/open-webui "
+            "/mnt/red-hdd/authelia-backup "
             "192.168.101.10(rw,sync,no_subtree_check,root_squash)",
             rendered,
         )
@@ -120,7 +120,7 @@ class NfsServerRoleTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("path: /mnt/black-hdd/paperless-media", group_vars)
-        self.assertIn("path: /var/lib/open-webui", group_vars)
+        self.assertIn("path: /mnt/red-hdd/authelia-backup", group_vars)
         self.assertNotIn("path: /mnt/black-hdd\n", group_vars)
         self.assertNotIn("path: /var/lib\n", group_vars)
 
