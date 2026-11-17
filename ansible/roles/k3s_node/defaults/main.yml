@@ -95,7 +95,7 @@ k3s_node_image_gc_high_threshold_percent: 75
 k3s_node_image_gc_low_threshold_percent: 65
 
 # Terraform on the VM, installed reproducibly like k3s.
-k3s_node_terraform_version: "1.16.0"
+k3s_node_terraform_version: "1.17.2"
 k3s_node_terraform_zip_url: >-
   https://releases.hashicorp.com/terraform/{{ k3s_node_terraform_version }}/terraform_{{ k3s_node_terraform_version }}_linux_amd64.zip
 k3s_node_terraform_checksum_url: >-
