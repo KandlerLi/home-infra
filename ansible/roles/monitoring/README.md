@@ -47,6 +47,20 @@ locked to `192.168.101.1` by their own validation, never `0.0.0.0`.
 are the other direction: a clean **switch**, not an addition -- see
 each variable's own comment in `defaults/main.yml`.
 
+**Log aggregation** (`monitoring_loki_enabled`, default `false`): Loki
+(single binary, filesystem storage under `monitoring_data_dir` on the root
+disk, time-based retention `monitoring_loki_retention_period`) and Grafana
+Alloy, which ships this host's systemd journal (labels `unit`, `level`,
+`syslog_identifier`, `boot_id`; `boot_id` picks out the boot before a
+crash). Both run on this host for the same reason Prometheus does: they
+have to work when the k3s VM doesn't, and the root disk keeps them readable
+when an HDD is what failed. Alloy runs as its own account in the
+`systemd-journal` group with the journal mounted read-only, never as root,
+and its UI stays on loopback. Loki has a single HTTP listener,
+`monitoring_loki_bind_address`, either loopback or `192.168.101.1` (validated),
+so k3s-apps' Alloy (pod logs) and Grafana reach it over the k3s network
+only, never the LAN. Its gRPC port stays on loopback.
+
 `monitoring_k3s_node_health_enabled` (default `false`) is the reverse
 direction of the two listeners above: this Prometheus reaching *into*
 the k3s cluster, to scrape [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' own `modules/node_exporter`

@@ -22,6 +22,10 @@
           - >-
             monitoring_ntfy_relay_k3s_bind_address | length == 0
             or monitoring_ntfy_relay_k3s_bind_address == "192.168.101.1"
+          # Loki's only listener: loopback or the k3s VM network, never the LAN.
+          - >-
+            monitoring_loki_bind_address == "127.0.0.1"
+            or monitoring_loki_bind_address == "192.168.101.1"
           # A clean switch: both Alertmanagers would double-fire.
           - >-
             monitoring_alertmanager_upstream == "127.0.0.1:9093"
@@ -542,3 +546,189 @@
       delay: 2
       until: monitoring_prometheus_ready.status == 200
       when: not ansible_check_mode
+
+    - name: Configure log aggregation
+      when: monitoring_loki_enabled | bool
+      block:
+        - name: Create Loki and Alloy service accounts
+          ansible.builtin.user:
+            name: "{{ item }}"
+            system: true
+            create_home: false
+            shell: /usr/sbin/nologin
+          loop:
+            - "{{ monitoring_loki_container_user }}"
+            - "{{ monitoring_alloy_container_user }}"
+
+        # Separate lookups: getent replaces, not accumulates, looped keys.
+        - name: Read Loki service account
+          ansible.builtin.getent:
+            database: passwd
+            key: "{{ monitoring_loki_container_user }}"
+
+        - name: Record Loki runtime identity
+          ansible.builtin.set_fact:
+            monitoring_loki_uid: >-
+              {{ ansible_facts.getent_passwd[monitoring_loki_container_user][1] }}
+
+        - name: Read Alloy service account
+          ansible.builtin.getent:
+            database: passwd
+            key: "{{ monitoring_alloy_container_user }}"
+
+        - name: Record Alloy runtime identity
+          ansible.builtin.set_fact:
+            monitoring_alloy_uid: >-
+              {{ ansible_facts.getent_passwd[monitoring_alloy_container_user][1] }}
+
+        # Alloy reads the journal through this group only, not as root.
+        - name: Read systemd-journal group
+          ansible.builtin.getent:
+            database: group
+            key: systemd-journal
+
+        - name: Record systemd-journal group id
+          ansible.builtin.set_fact:
+            monitoring_journal_gid: >-
+              {{ ansible_facts.getent_group['systemd-journal'][1] }}
+
+        - name: Create Loki and Alloy directories
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: directory
+            owner: "{{ item.owner }}"
+            group: "{{ item.owner }}"
+            mode: "0750"
+          loop:
+            - path: "{{ monitoring_data_dir }}/loki"
+              owner: "{{ monitoring_loki_container_user }}"
+            - path: "{{ monitoring_data_dir }}/alloy"
+              owner: "{{ monitoring_alloy_container_user }}"
+          loop_control:
+            label: "{{ item.path }}"
+
+        - name: Install Loki configuration
+          ansible.builtin.template:
+            src: loki.yml.j2
+            dest: "{{ monitoring_config_dir }}/loki.yml"
+            owner: root
+            group: root
+            mode: "0644"
+          register: monitoring_loki_config
+
+        - name: Install Alloy configuration
+          ansible.builtin.template:
+            src: alloy.alloy.j2
+            dest: "{{ monitoring_config_dir }}/config.alloy"
+            owner: root
+            group: root
+            mode: "0644"
+          register: monitoring_alloy_config
+
+        - name: Pull pinned log aggregation images
+          community.docker.docker_image:
+            name: "{{ item.name }}@{{ item.digest }}"
+            source: pull
+            state: present
+          loop:
+            - name: "{{ monitoring_loki_image_name }}"
+              digest: "{{ monitoring_loki_image_digest }}"
+            - name: "{{ monitoring_alloy_image_name }}"
+              digest: "{{ monitoring_alloy_image_digest }}"
+          loop_control:
+            label: "{{ item.name }}@{{ item.digest }}"
+
+        - name: Ensure Loki container is running
+          community.docker.docker_container:
+            name: "{{ monitoring_loki_container_name }}"
+            image: "{{ monitoring_loki_image }}"
+            state: started
+            recreate: "{{ monitoring_loki_config.changed }}"
+            restart_policy: "{{ monitoring_restart_policy }}"
+            network_mode: host
+            user: "{{ monitoring_loki_uid }}:0"
+            read_only: true
+            cap_drop:
+              - ALL
+            security_opts:
+              - no-new-privileges:true
+            memory: "{{ monitoring_loki_memory_limit }}"
+            cpus: "{{ monitoring_loki_cpu_limit }}"
+            pids_limit: "{{ monitoring_loki_pids_limit }}"
+            volumes:
+              - "{{ monitoring_config_dir }}/loki.yml:/etc/loki/loki.yml:ro"
+              - "{{ monitoring_data_dir }}/loki:/loki"
+            tmpfs:
+              - /tmp:rw,noexec,nosuid,nodev,size=32m
+            comparisons:
+              volumes: strict
+            command:
+              - -config.file=/etc/loki/loki.yml
+            log_driver: json-file
+            log_options: "{{ monitoring_docker_log_options }}"
+
+        - name: Verify Loki is ready
+          ansible.builtin.uri:
+            url: "http://{{ monitoring_loki_bind_address }}:{{ monitoring_loki_port }}/ready"
+            method: GET
+            status_code: 200
+          register: monitoring_loki_ready
+          retries: 60
+          delay: 2
+          until: monitoring_loki_ready.status == 200
+          when: not ansible_check_mode
+
+        - name: Ensure Alloy container is running
+          community.docker.docker_container:
+            name: "{{ monitoring_alloy_container_name }}"
+            image: "{{ monitoring_alloy_image }}"
+            state: started
+            recreate: "{{ monitoring_alloy_config.changed }}"
+            restart_policy: "{{ monitoring_restart_policy }}"
+            network_mode: host
+            user: "{{ monitoring_alloy_uid }}:{{ monitoring_journal_gid }}"
+            read_only: true
+            cap_drop:
+              - ALL
+            security_opts:
+              - no-new-privileges:true
+            memory: "{{ monitoring_alloy_memory_limit }}"
+            cpus: "{{ monitoring_alloy_cpu_limit }}"
+            pids_limit: "{{ monitoring_alloy_pids_limit }}"
+            volumes:
+              - "{{ monitoring_config_dir }}/config.alloy:/etc/alloy/config.alloy:ro"
+              - "{{ monitoring_data_dir }}/alloy:/var/lib/alloy/data"
+              - /var/log/journal:/var/log/journal:ro
+              - /etc/machine-id:/etc/machine-id:ro
+            tmpfs:
+              - /tmp:rw,noexec,nosuid,nodev,size=32m
+            comparisons:
+              volumes: strict
+            command:
+              - run
+              - --server.http.listen-addr=127.0.0.1:{{ monitoring_alloy_port }}
+              - --storage.path=/var/lib/alloy/data
+              - --disable-reporting
+              - /etc/alloy/config.alloy
+            log_driver: json-file
+            log_options: "{{ monitoring_docker_log_options }}"
+
+        - name: Verify Alloy is ready on host loopback
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:{{ monitoring_alloy_port }}/-/ready"
+            method: GET
+            status_code: 200
+          register: monitoring_alloy_ready
+          retries: 30
+          delay: 2
+          until: monitoring_alloy_ready.status == 200
+          when: not ansible_check_mode
+
+    - name: Remove log aggregation containers when disabled
+      community.docker.docker_container:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ monitoring_loki_container_name }}"
+        - "{{ monitoring_alloy_container_name }}"
+      when: not monitoring_loki_enabled | bool
