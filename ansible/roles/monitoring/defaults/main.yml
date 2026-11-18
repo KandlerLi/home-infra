@@ -90,6 +90,41 @@ monitoring_prometheus_container_user: monitoring-prometheus
 # Additional listener for the k3s-native Grafana; only 192.168.101.1 passes validation.
 monitoring_prometheus_k3s_bind_address: ""
 
+# Log aggregation: Loki stores, Alloy ships this host's journal; k3s-apps' Alloy pushes pod logs.
+monitoring_loki_enabled: false
+monitoring_loki_container_name: loki
+monitoring_loki_image_name: grafana/loki
+monitoring_loki_image_tag: 3.7.10
+monitoring_loki_image_digest: >-
+  sha256:b43c257ccfc925d4a50b8717cac61a3b51df8c48d01847936057e5c4075a24a7
+monitoring_loki_image: >-
+  {{ monitoring_loki_image_name }}:{{ monitoring_loki_image_tag }}@{{ monitoring_loki_image_digest }}
+# Loki has one HTTP listener: 192.168.101.1 when k3s pushes to it, else loopback.
+monitoring_loki_bind_address: 127.0.0.1
+monitoring_loki_port: 3100
+monitoring_loki_grpc_port: 9095
+monitoring_loki_memory_limit: 512M
+monitoring_loki_cpu_limit: 1.0
+monitoring_loki_pids_limit: 256
+# Root disk like Prometheus: readable even when an HDD is the thing that failed. Time-based only.
+monitoring_loki_retention_period: 720h
+monitoring_loki_container_user: monitoring-loki
+
+monitoring_alloy_container_name: alloy
+monitoring_alloy_image_name: grafana/alloy
+monitoring_alloy_image_tag: v1.22.0
+monitoring_alloy_image_digest: >-
+  sha256:9acc2529bc1edb7f5b2bd801dd8334ebc80c158e3a9e5526ecd7c9a273d43189
+monitoring_alloy_image: >-
+  {{ monitoring_alloy_image_name }}:{{ monitoring_alloy_image_tag }}@{{ monitoring_alloy_image_digest }}
+monitoring_alloy_port: 12345
+monitoring_alloy_memory_limit: 256M
+monitoring_alloy_cpu_limit: 0.5
+monitoring_alloy_pids_limit: 128
+monitoring_alloy_container_user: monitoring-alloy
+# How far back Alloy reads on its very first start; afterwards it resumes from its saved position.
+monitoring_alloy_journal_max_age: 168h
+
 # A clean switch: listing both Alertmanagers would double-fire every notification.
 monitoring_alertmanager_upstream: 127.0.0.1:9093
 
