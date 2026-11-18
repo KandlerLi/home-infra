@@ -94,6 +94,9 @@ k3s_node_logind_inhibit_delay_max_sec: 75
 k3s_node_image_gc_high_threshold_percent: 75
 k3s_node_image_gc_low_threshold_percent: 65
 
+# Per uid: kubelet, containerd and every root container share root's budget.
+k3s_node_inotify_max_user_instances: 1024
+
 # Terraform on the VM, installed reproducibly like k3s.
 k3s_node_terraform_version: "1.16.0"
 k3s_node_terraform_zip_url: >-
