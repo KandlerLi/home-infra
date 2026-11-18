@@ -168,6 +168,14 @@
     daemon_reload: true
   when: k3s_node_unit_file.changed
 
+# kubelet opens one inotify instance per followed log stream (k3s-apps' Alloy); Debian's 128 runs out.
+- name: Raise the inotify instance limit
+  ansible.posix.sysctl:
+    name: fs.inotify.max_user_instances
+    value: "{{ k3s_node_inotify_max_user_instances }}"
+    sysctl_file: /etc/sysctl.d/60-inotify.conf
+    reload: true
+
 # k3s starts kubelet with --config-dir here and only rewrites its own 00-k3s-defaults.conf.
 - name: Create kubelet config drop-in directory
   ansible.builtin.file:
