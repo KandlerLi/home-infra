@@ -1,0 +1,38 @@
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  rule {
+    source_labels = ["__journal_syslog_identifier"]
+    target_label  = "syslog_identifier"
+  }
+
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+
+  // One value per boot: selects "the boot before the crash" directly.
+  rule {
+    source_labels = ["__journal__boot_id"]
+    target_label  = "boot_id"
+  }
+}
+
+loki.source.journal "host" {
+  path          = "/var/log/journal"
+  max_age       = "{{ monitoring_alloy_journal_max_age }}"
+  relabel_rules = loki.relabel.journal.rules
+  labels        = {job = "host-journal", host = "{{ inventory_hostname }}"}
+  forward_to    = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://{{ monitoring_loki_bind_address }}:{{ monitoring_loki_port }}/loki/api/v1/push"
+  }
+}

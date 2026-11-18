@@ -801,3 +801,15 @@ class K3sNodeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class K3sNodeInotifyTests(unittest.TestCase):
+    def test_inotify_instance_limit_is_raised_persistently(self) -> None:
+        # Alloy's log streams exhausted Debian's default of 128 on k3s-node-1 (2026-11-18).
+        root = Path(__file__).resolve().parents[1] / "ansible/roles/k3s_node"
+        defaults = (root / "defaults/main.yml").read_text(encoding="utf-8")
+        tasks = (root / "tasks/configure_guest.yml").read_text(encoding="utf-8")
+
+        self.assertIn("k3s_node_inotify_max_user_instances: 1024", defaults)
+        self.assertIn("name: fs.inotify.max_user_instances", tasks)
+        self.assertIn("sysctl_file: /etc/sysctl.d/60-inotify.conf", tasks)
