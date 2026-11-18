@@ -697,7 +697,8 @@
             pids_limit: "{{ monitoring_alloy_pids_limit }}"
             volumes:
               - "{{ monitoring_config_dir }}/config.alloy:/etc/alloy/config.alloy:ro"
-              - "{{ monitoring_data_dir }}/alloy:/var/lib/alloy/data"
+              # Not under /var/lib/alloy: the image keeps it 0770 alloy, which our uid can't traverse.
+              - "{{ monitoring_data_dir }}/alloy:/alloy-data"
               - /var/log/journal:/var/log/journal:ro
               - /etc/machine-id:/etc/machine-id:ro
             tmpfs:
@@ -707,7 +708,7 @@
             command:
               - run
               - --server.http.listen-addr=127.0.0.1:{{ monitoring_alloy_port }}
-              - --storage.path=/var/lib/alloy/data
+              - --storage.path=/alloy-data
               - --disable-reporting
               - /etc/alloy/config.alloy
             log_driver: json-file
