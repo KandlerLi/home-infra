@@ -110,5 +110,8 @@ k3s_node_terraform_binary_path: /usr/local/bin/terraform
 # hostPath PV directories pre-created with their workload's uid, so no Pod needs root to chown them.
 k3s_node_host_path_dirs: []
 
+# Above the CronJobs' own history (5 x up to 6 Pods), so only node-shutdown leftovers get collected.
+k3s_node_terminated_pod_gc_threshold: 50
+
 # Public OIDC issuer for AWS federation (terraform-state output k3s_oidc_issuer); empty keeps k3s' in-cluster issuer only.
 k3s_node_service_account_issuer: ""
