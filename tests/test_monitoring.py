@@ -53,8 +53,8 @@ class MonitoringRoleTests(unittest.TestCase):
         # Mixed networking breaks scrapes: 127.0.0.1 in a bridge container is its own loopback.
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
-        # Every container this role still runs.
-        self.assertEqual(tasks.count("        network_mode: host"), 4)
+        # Every container this role still runs, Loki and Alloy included.
+        self.assertEqual(tasks.count("        network_mode: host"), 6)
         self.assertNotIn("published_ports:", tasks)
 
     def test_cadvisor_port_does_not_collide_with_nextcloud_aio_admin_ui(
@@ -110,6 +110,65 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn(
             "'--web.listen-address=' + monitoring_prometheus_k3s_bind_address",
             tasks,
+        )
+
+    def test_loki_is_opt_in_and_listens_on_loopback_or_k3s_network_only(self) -> None:
+        defaults = (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("monitoring_loki_enabled: false", defaults)
+        self.assertIn("monitoring_loki_bind_address: 127.0.0.1", defaults)
+        self.assertIn(
+            'monitoring_loki_bind_address == "127.0.0.1"\n'
+            '            or monitoring_loki_bind_address == "192.168.101.1"',
+            tasks,
+        )
+
+    def test_loki_config_binds_grpc_to_loopback_and_enforces_retention(self) -> None:
+        rendered = yaml.safe_load(
+            render("loki.yml.j2", monitoring_loki_bind_address="192.168.101.1")
+        )
+
+        self.assertEqual(rendered["server"]["http_listen_address"], "192.168.101.1")
+        self.assertEqual(rendered["server"]["grpc_listen_address"], "127.0.0.1")
+        self.assertEqual(rendered["common"]["ring"]["kvstore"]["store"], "inmemory")
+        self.assertEqual(rendered["limits_config"]["retention_period"], "720h")
+        self.assertTrue(rendered["compactor"]["retention_enabled"])
+        self.assertFalse(rendered["analytics"]["reporting_enabled"])
+
+    def test_loki_data_lives_on_root_disk(self) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn('"{{ monitoring_data_dir }}/loki:/loki"', tasks)
+
+    def test_alloy_reads_the_journal_read_only_as_the_journal_group_not_root(
+        self,
+    ) -> None:
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        alloy_task = tasks.split("Ensure Alloy container is running", 1)[1].split(
+            "- name:", 1
+        )[0]
+
+        self.assertIn(
+            'user: "{{ monitoring_alloy_uid }}:{{ monitoring_journal_gid }}"',
+            alloy_task,
+        )
+        self.assertIn("/var/log/journal:/var/log/journal:ro", alloy_task)
+        self.assertIn("--server.http.listen-addr=127.0.0.1:", alloy_task)
+        self.assertNotIn("docker.sock", alloy_task)
+
+    def test_alloy_pushes_the_journal_to_loki(self) -> None:
+        rendered = render(
+            "alloy.alloy.j2",
+            inventory_hostname="homeserver",
+            monitoring_loki_bind_address="192.168.101.1",
+        )
+
+        self.assertIn('loki.source.journal "host"', rendered)
+        self.assertIn('job = "host-journal", host = "homeserver"', rendered)
+        self.assertIn('target_label  = "boot_id"', rendered)
+        self.assertIn(
+            'url = "http://192.168.101.1:3100/loki/api/v1/push"', rendered
         )
 
     def test_ntfy_relay_k3s_bind_address_defaults_to_disabled(self) -> None:
