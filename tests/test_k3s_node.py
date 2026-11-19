@@ -357,7 +357,10 @@ class K3sNodeTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("k3s_node_version: v1.36.4+k3s1", defaults)
+        # Any exact release, so Renovate bumps pass without editing this test.
+        self.assertRegex(
+            defaults, r"(?m)^k3s_node_version: v\d+\.\d+\.\d+\+k3s\d+$"
+        )
         self.assertIn(
             'checksum: "sha256:{{ k3s_node_release_base_url }}'
             '/sha256sum-amd64.txt"',
@@ -468,7 +471,9 @@ class K3sNodeTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('k3s_node_terraform_version: "1.16.0"', defaults)
+        self.assertRegex(
+            defaults, r'(?m)^k3s_node_terraform_version: "\d+\.\d+\.\d+"$'
+        )
         self.assertIn(
             'checksum: "sha256:{{ k3s_node_terraform_checksum_url }}"',
             tasks,
@@ -813,3 +818,16 @@ class K3sNodeInotifyTests(unittest.TestCase):
         self.assertIn("k3s_node_inotify_max_user_instances: 1024", defaults)
         self.assertIn("name: fs.inotify.max_user_instances", tasks)
         self.assertIn("sysctl_file: /etc/sysctl.d/60-inotify.conf", tasks)
+
+    def test_terminated_pods_are_garbage_collected_above_a_small_threshold(self) -> None:
+        # 288 Pods from graceful node shutdowns piled up under the default of 12500 (tracker #65).
+        root = Path(__file__).resolve().parents[1] / "ansible/roles/k3s_node"
+        config = (root / "templates/k3s-config.yaml.j2").read_text(encoding="utf-8")
+        defaults = (root / "defaults/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn(
+            '- "terminated-pod-gc-threshold={{ k3s_node_terminated_pod_gc_threshold }}"',
+            config,
+        )
+        self.assertIn("k3s_node_terminated_pod_gc_threshold: 50", defaults)
+
