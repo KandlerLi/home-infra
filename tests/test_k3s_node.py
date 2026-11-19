@@ -357,7 +357,10 @@ class K3sNodeTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("k3s_node_version: v1.36.4+k3s1", defaults)
+        # Any exact release, so Renovate bumps pass without editing this test.
+        self.assertRegex(
+            defaults, r"(?m)^k3s_node_version: v\d+\.\d+\.\d+\+k3s\d+$"
+        )
         self.assertIn(
             'checksum: "sha256:{{ k3s_node_release_base_url }}'
             '/sha256sum-amd64.txt"',
@@ -468,7 +471,9 @@ class K3sNodeTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('k3s_node_terraform_version: "1.16.0"', defaults)
+        self.assertRegex(
+            defaults, r'(?m)^k3s_node_terraform_version: "\d+\.\d+\.\d+"$'
+        )
         self.assertIn(
             'checksum: "sha256:{{ k3s_node_terraform_checksum_url }}"',
             tasks,
