@@ -3,6 +3,9 @@ write-kubeconfig-mode: "{{ k3s_node_kubeconfig_mode }}"
 resolv-conf: "{{ k3s_node_resolv_conf_path }}"
 disable:
   - traefik
+# Graceful node shutdown leaves its Pods Failed/Succeeded, and the default (12500) never collects them.
+kube-controller-manager-arg:
+  - "terminated-pod-gc-threshold={{ k3s_node_terminated_pod_gc_threshold }}"
 {% if k3s_node_service_account_issuer %}
 # The public issuer signs new tokens; the in-cluster one stays accepted, and the audiences stay k3s' defaults (ADR 0032).
 kube-apiserver-arg:

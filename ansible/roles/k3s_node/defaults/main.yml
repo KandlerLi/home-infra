@@ -67,7 +67,7 @@ k3s_node_admin_ssh_public_key_path: >-
 k3s_node_ssh_host_key_alias: k3s-node-1-via-homeserver
 
 # Pinned release from k3s's stable channel, checksum-verified.
-k3s_node_version: v1.36.4+k3s1
+k3s_node_version: v1.37.2+k3s1
 k3s_node_release_url_tag: "{{ k3s_node_version | replace('+', '%2B') }}"
 k3s_node_release_base_url: >-
   https://github.com/k3s-io/k3s/releases/download/{{ k3s_node_release_url_tag }}
@@ -109,6 +109,9 @@ k3s_node_terraform_binary_path: /usr/local/bin/terraform
 
 # hostPath PV directories pre-created with their workload's uid, so no Pod needs root to chown them.
 k3s_node_host_path_dirs: []
+
+# Above the CronJobs' own history (5 x up to 6 Pods), so only node-shutdown leftovers get collected.
+k3s_node_terminated_pod_gc_threshold: 50
 
 # Public OIDC issuer for AWS federation (terraform-state output k3s_oidc_issuer); empty keeps k3s' in-cluster issuer only.
 k3s_node_service_account_issuer: ""
