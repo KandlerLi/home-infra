@@ -4,3 +4,24 @@ nextcloud_storage_enabled: false
 
 # Empty data directory for the parallel test instance (migration step 2), never the live one.
 nextcloud_storage_test_data_dir: /mnt/black-hdd/nextcloud-k3s-test
+
+# Write target of k3s-apps' nextcloud-backup CronJob (pg_dump + config.php).
+nextcloud_storage_backup_dir: /mnt/red-hdd/nextcloud-backup
+
+# restic backs up the files on this host. Needs home-infra/nextcloud-backup in Secrets Manager: see the README.
+nextcloud_storage_restic_enabled: false
+nextcloud_storage_restic_repository: /mnt/red-hdd/nextcloud-restic
+nextcloud_storage_restic_password_file: /etc/nextcloud-restic/password
+# The test data directory until the cutover, then /mnt/black-hdd/nextcloud.
+nextcloud_storage_restic_paths:
+  - "{{ nextcloud_storage_test_data_dir }}"
+  - "{{ nextcloud_storage_backup_dir }}"
+# Previews are regenerated on demand.
+nextcloud_storage_restic_excludes:
+  - "{{ nextcloud_storage_test_data_dir }}/appdata_*/preview"
+# UTC, so DST never moves it before the 03:30 UTC database dump.
+nextcloud_storage_restic_on_calendar: "*-*-* 03:45:00 UTC"
+# Same retention as AIO's Borg.
+nextcloud_storage_restic_keep: --keep-daily 7 --keep-weekly 4 --keep-monthly 6
+# Only touched after backup, forget and check all succeeded; the monitoring role watches its mtime.
+nextcloud_storage_restic_marker: /var/lib/nextcloud-restic/last-success

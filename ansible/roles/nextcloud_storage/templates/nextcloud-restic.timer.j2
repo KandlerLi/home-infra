@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly restic backup of Nextcloud's files
+
+[Timer]
+OnCalendar={{ nextcloud_storage_restic_on_calendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

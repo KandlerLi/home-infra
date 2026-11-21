@@ -10,3 +10,109 @@
         owner: www-data
         group: www-data
         mode: "0750"
+
+    - name: Create Nextcloud database backup directory
+      ansible.builtin.file:
+        path: "{{ nextcloud_storage_backup_dir }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0700"
+
+    - name: Back up Nextcloud's files with restic
+      when: nextcloud_storage_restic_enabled | bool
+      block:
+        - name: Validate the restic repository password
+          ansible.builtin.assert:
+            that:
+              - nextcloud_storage_restic_password | default('') | trim | length >= 32
+            fail_msg: >-
+              nextcloud_storage_restic_password is unset or short -- set
+              restic_password in the home-infra/nextcloud-backup secret
+              (see secrets-manager's runbooks/home-infra/nextcloud-backup.md).
+          no_log: true
+
+        - name: Install restic
+          ansible.builtin.apt:
+            name: restic
+            state: present
+
+        - name: Create restic repository directory
+          ansible.builtin.file:
+            path: "{{ nextcloud_storage_restic_repository }}"
+            state: directory
+            owner: www-data
+            group: www-data
+            mode: "0700"
+
+        - name: Create restic password directory
+          ansible.builtin.file:
+            path: "{{ nextcloud_storage_restic_password_file | dirname }}"
+            state: directory
+            owner: root
+            group: www-data
+            mode: "0750"
+
+        - name: Install restic repository password
+          ansible.builtin.copy:
+            content: "{{ nextcloud_storage_restic_password | trim }}"
+            dest: "{{ nextcloud_storage_restic_password_file }}"
+            owner: www-data
+            group: www-data
+            mode: "0400"
+          no_log: true
+
+        # runuser instead of become_user: an unprivileged become needs ACL tooling for its temp files.
+        - name: Check whether the restic repository exists
+          ansible.builtin.command:
+            argv: [runuser, -u, www-data, --, restic, cat, config]
+          environment: &restic_env
+            RESTIC_REPOSITORY: "{{ nextcloud_storage_restic_repository }}"
+            RESTIC_PASSWORD_FILE: "{{ nextcloud_storage_restic_password_file }}"
+            RESTIC_CACHE_DIR: /var/cache/nextcloud-restic
+          register: nextcloud_storage_restic_config
+          changed_when: false
+          failed_when: nextcloud_storage_restic_config.rc not in [0, 10]
+
+        # Exit code 10 is "repository does not exist"; a wrong password (12) must fail above, never re-init.
+        - name: Initialise the restic repository
+          ansible.builtin.command:
+            argv: [runuser, -u, www-data, --, restic, init]
+          environment: *restic_env
+          when: nextcloud_storage_restic_config.rc == 10
+          changed_when: true
+
+        - name: Install restic systemd units
+          ansible.builtin.template:
+            src: "{{ item }}.j2"
+            dest: "/etc/systemd/system/{{ item }}"
+            owner: root
+            group: root
+            mode: "0644"
+          loop:
+            - nextcloud-restic.service
+            - nextcloud-restic.timer
+          register: nextcloud_storage_restic_units
+
+        - name: Reload systemd for the restic units
+          ansible.builtin.systemd_service:
+            daemon_reload: true
+          when: nextcloud_storage_restic_units.changed
+
+        - name: Ensure the restic timer is enabled and running
+          ansible.builtin.systemd_service:
+            name: nextcloud-restic.timer
+            enabled: true
+            state: started
+
+        - name: Check for a successful restic run
+          ansible.builtin.stat:
+            path: "{{ nextcloud_storage_restic_marker }}"
+          register: nextcloud_storage_restic_marker_stat
+
+        # Otherwise BackupMissing fires until the first nightly run; blocks until the oneshot finishes.
+        - name: Run the first restic backup
+          ansible.builtin.systemd_service:
+            name: nextcloud-restic.service
+            state: started
+          when: not nextcloud_storage_restic_marker_stat.stat.exists

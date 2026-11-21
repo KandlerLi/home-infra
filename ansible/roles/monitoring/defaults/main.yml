@@ -202,8 +202,12 @@ monitoring_backup_markers:
   # Borg rewrites index.N on every committed transaction only.
   - name: nextcloud-borg
     path: /mnt/red-hdd/borg/index.*
+  # The nextcloud_storage role's restic unit touches it after backup, forget and check.
+  - name: nextcloud-restic
+    path: /var/lib/nextcloud-restic/last-success
 monitoring_backup_k3s_cronjobs:
   - authelia-backup
+  - nextcloud-backup
   - paperless-export
   - stalwart-backup
   - vaultwarden-backup
