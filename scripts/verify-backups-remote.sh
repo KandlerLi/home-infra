@@ -7,6 +7,9 @@ set -uo pipefail
 red_hdd=/mnt/red-hdd
 borg_image=ghcr.io/nextcloud-releases/aio-borgbackup:latest
 authelia_image=ghcr.io/authelia/authelia:4.39.28@sha256:bd97cff4fcbf715b5ff1f9ae286afbe6033afce385302520b0368122d43a6f54
+# Same image as k3s-apps' nextcloud-backup CronJob.
+postgres_image=postgres:18-alpine@sha256:ff64c9e3bdf8e2120107d3559de8db314e8305f7e38c5105903c6295876738ff
+nextcloud_data_dir=/mnt/black-hdd/nextcloud
 
 IFS= read -r BORG_PASSPHRASE || BORG_PASSPHRASE=""
 IFS= read -r AUTHELIA_STORAGE_ENCRYPTION_KEY || AUTHELIA_STORAGE_ENCRYPTION_KEY=""
@@ -128,8 +131,54 @@ else
   fi
 fi
 
+pg_dump_ok() {
+  docker run --rm --network none -v "$(dirname "$1"):/in:ro" --entrypoint pg_restore "${postgres_image}" \
+    -l "/in/$(basename "$1")" 2>/dev/null | grep -c 'TABLE DATA'
+}
+
+# Nextcloud database: k3s-apps' nightly pg_dump (ADR 0033), readable by pg_restore.
+dump="$(ls -1t "${red_hdd}"/nextcloud-backup/nextcloud-db-*.dump 2>/dev/null | head -1)"
+if [ -z "${dump}" ]; then
+  fail nextcloud-db "no dump in ${red_hdd}/nextcloud-backup"
+elif tables="$(pg_dump_ok "${dump}")" && [ "${tables}" -gt 0 ]; then
+  pass nextcloud-db "${dump##*/}, $(age_hours "${dump}") h old, ${tables} tables"
+else
+  fail nextcloud-db "${dump##*/} is not readable by pg_restore"
+fi
+
+# Nextcloud files: the restic repository opens with its password file, the newest snapshot holds the data directory,
+# and the newest database dump comes back out of it intact. As www-data, the repository's owner.
+restic_www() {
+  runuser -u www-data -- env RESTIC_REPOSITORY="${red_hdd}/nextcloud-restic" \
+    RESTIC_PASSWORD_FILE=/etc/nextcloud-restic/password RESTIC_CACHE_DIR=/var/cache/nextcloud-restic restic "$@"
+}
+if [ ! -d "${red_hdd}/nextcloud-restic" ]; then
+  skip nextcloud-restic "no repository at ${red_hdd}/nextcloud-restic"
+elif ! snap="$(restic_www snapshots --latest 1 --json 2>"${scratch}/restic.err" \
+    | python3 -c 'import json,sys; s=json.load(sys.stdin)[-1]; print(s["short_id"], s["time"][:19], " ".join(s["paths"]))')"; then
+  fail nextcloud-restic "can't open the repository: $(tail -1 "${scratch}/restic.err")"
+else
+  read -r snap_id snap_time snap_paths <<<"${snap}"
+  snap_age=$(( ($(date +%s) - $(date -d "${snap_time}" +%s)) / 3600 ))
+  inner="$(restic_www ls "${snap_id}" "${red_hdd}/nextcloud-backup" 2>/dev/null | grep '/nextcloud-db-.*\.dump$' | sort | tail -1)"
+  mkdir -p "${scratch}/restic" && chown www-data: "${scratch}/restic"
+  if [[ " ${snap_paths} " != *" ${nextcloud_data_dir} "* ]]; then
+    fail nextcloud-restic "newest snapshot ${snap_id} doesn't cover ${nextcloud_data_dir}"
+  elif [ "${snap_age}" -ge 26 ]; then
+    fail nextcloud-restic "newest snapshot ${snap_id} is ${snap_age} h old"
+  elif [ -z "${inner}" ] || ! restic_www dump "${snap_id}" "${inner}" > "${scratch}/restic/dump" 2>/dev/null; then
+    fail nextcloud-restic "snapshot ${snap_id} (${snap_age} h old): no database dump came back out"
+  elif tables="$(pg_dump_ok "${scratch}/restic/dump")" && [ "${tables}" -gt 0 ]; then
+    pass nextcloud-restic "snapshot ${snap_id}, ${snap_age} h old, covers ${nextcloud_data_dir}; ${inner##*/} restored, ${tables} tables"
+  else
+    fail nextcloud-restic "snapshot ${snap_id}: restored ${inner##*/} is not readable by pg_restore"
+  fi
+fi
+
 # Nextcloud AIO Borg: the passphrase opens the repo, and one small file comes back out of the newest archive.
-if [ -z "${BORG_PASSPHRASE}" ]; then
+if [ ! -d "${red_hdd}/borg" ]; then
+  skip borg "no repository (AIO removed)"
+elif [ -z "${BORG_PASSPHRASE}" ]; then
   skip borg "no passphrase given"
 else
   mkdir -p "${scratch}/borg"
