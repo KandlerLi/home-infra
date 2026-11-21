@@ -128,21 +128,19 @@
 - name: Stop AIO's application containers while parked
   when: nextcloud_aio_parked | bool
   block:
-    - name: Read AIO application container states
-      community.docker.docker_container_info:
-        name: "{{ item }}"
-      loop: "{{ nextcloud_aio_app_containers }}"
-      register: nextcloud_aio_app_info
+    # docker stop, not docker_container: the module recreated nextcloud-aio-nextcloud without AIO's volumes
+    # (2026-11-21). Only running ones; AIO's own unless-stopped keeps them down across reboots.
+    - name: List running AIO application containers
+      ansible.builtin.command:
+        argv: [docker, ps, --format, "{{ '{{' }}.Names{{ '}}' }}"]
+      register: nextcloud_aio_running
+      changed_when: false
 
-    # Only existing ones: state stopped would try to create a missing container. AIO gives them unless-stopped, so
-    # they stay stopped across reboots and come back with AIO's own start on a rollback.
     - name: Stop running AIO application containers
-      community.docker.docker_container:
-        name: "{{ item.item }}"
-        state: stopped
-      loop: "{{ nextcloud_aio_app_info.results | selectattr('exists') | list }}"
-      loop_control:
-        label: "{{ item.item }}"
+      ansible.builtin.command:
+        argv: [docker, stop, "{{ item }}"]
+      loop: "{{ nextcloud_aio_app_containers | intersect(nextcloud_aio_running.stdout_lines) }}"
+      changed_when: true
 
     - name: Disable the Apache network-reconnect check while parked
       ansible.builtin.systemd_service:

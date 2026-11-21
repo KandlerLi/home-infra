@@ -142,9 +142,12 @@ class NextcloudAioParkedTests(unittest.TestCase):
         self.assertIn("state: \"{{ nextcloud_aio_parked | ternary('stopped', 'started') }}\"", tasks)
         self.assertIn("ternary('no', nextcloud_aio_restart_policy)", tasks)
         self.assertIn("when: nextcloud_aio_oidc_enabled | bool and not nextcloud_aio_parked | bool", tasks)
-        # Children keep AIO's unless-stopped, so a rollback brings them back after a reboot.
-        stop = tasks.split("Stop running AIO application containers", 1)[1].split("- name:", 1)[0]
-        self.assertNotIn("restart_policy", stop)
+        # docker stop only: docker_container recreated a child without AIO's volumes (2026-11-21).
+        stop = tasks.split("- name: Stop running AIO application containers", 1)[1].split("- name:", 1)[0]
+        self.assertIn("argv: [docker, stop,", stop)
+        self.assertIn("intersect(nextcloud_aio_running.stdout_lines)", stop)
+        parked = tasks.split("Stop AIO's application containers while parked", 1)[1].split("Install the Apache network-reconnect check", 1)[0]
+        self.assertNotIn("community.docker.docker_container:", parked)
 
 
 if __name__ == "__main__":
