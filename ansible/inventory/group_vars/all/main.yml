@@ -37,6 +37,9 @@ nfs_server_exports:
   - path: /mnt/black-hdd/nextcloud-k3s-test
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
+  - path: /mnt/red-hdd/nextcloud-backup
+    client: 192.168.101.10
+    options: rw,sync,no_subtree_check,root_squash
 
 # Needs authelia_oidc_nextcloud_client_secret in Secrets Manager: see the nextcloud_aio README.
 nextcloud_aio_oidc_enabled: true
@@ -83,3 +86,5 @@ paperless_storage_enabled: true
 
 # Host side of Nextcloud on k3s (ADR 0033): see the nextcloud_storage role.
 nextcloud_storage_enabled: true
+# Needs home-infra/nextcloud-backup in Secrets Manager: see the nextcloud_storage README.
+nextcloud_storage_restic_enabled: true

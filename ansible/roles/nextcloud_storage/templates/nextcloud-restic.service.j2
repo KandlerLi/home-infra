@@ -1,0 +1,41 @@
+[Unit]
+Description=restic backup of Nextcloud's files (ADR 0033)
+RequiresMountsFor={{ nextcloud_storage_restic_repository }} {{ nextcloud_storage_restic_paths | join(' ') }}
+
+[Service]
+Type=oneshot
+# The files are www-data's, so is the repository: no root needed.
+User=www-data
+Group=www-data
+Environment=RESTIC_REPOSITORY={{ nextcloud_storage_restic_repository }}
+Environment=RESTIC_PASSWORD_FILE={{ nextcloud_storage_restic_password_file }}
+Environment=RESTIC_CACHE_DIR=/var/cache/nextcloud-restic
+CacheDirectory=nextcloud-restic
+StateDirectory=nextcloud-restic
+# Exit code 3 (some files unreadable) fails the unit too, so an incomplete snapshot never counts as success.
+ExecStart=/usr/bin/restic backup --one-file-system --no-scan{% for exclude in nextcloud_storage_restic_excludes %} --exclude={{ exclude }}{% endfor %} {{ nextcloud_storage_restic_paths | join(' ') }}
+ExecStart=/usr/bin/restic forget --prune {{ nextcloud_storage_restic_keep }}
+ExecStart=/usr/bin/restic check
+ExecStartPost=/usr/bin/touch {{ nextcloud_storage_restic_marker }}
+Nice=10
+IOSchedulingClass=idle
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+# Local repository; an off-site target would need this off.
+PrivateNetwork=true
+ProtectSystem=strict
+ReadWritePaths={{ nextcloud_storage_restic_repository }}
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native

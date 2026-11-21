@@ -7,7 +7,7 @@
   pre_tasks:
     # The only Secrets Manager values Ansible consumes directly; everything else flows through k3s-apps' Terraform.
     - name: Load Ansible-consumed secrets from AWS Secrets Manager
-      when: monitoring_enabled | bool or nextcloud_aio_oidc_enabled | bool
+      when: monitoring_enabled | bool or nextcloud_aio_oidc_enabled | bool or nextcloud_storage_restic_enabled | bool
       block:
         - name: Fetch the home-infra/monitoring secret group
           ansible.builtin.set_fact:
@@ -24,6 +24,19 @@
           ansible.builtin.set_fact:
             _aws_secrets_nextcloud: "{{ lookup('amazon.aws.secretsmanager_secret', 'home-infra/nextcloud', region='eu-central-1') | from_json }}"
           when: nextcloud_aio_oidc_enabled | bool
+
+        # Ansible-only: k3s-eso-apps' home-infra/nextcloud-?????? doesn't match this name.
+        - name: Fetch the home-infra/nextcloud-backup secret group
+          ansible.builtin.set_fact:
+            _aws_secrets_nextcloud_backup: "{{ lookup('amazon.aws.secretsmanager_secret', 'home-infra/nextcloud-backup', region='eu-central-1') | from_json }}"
+          when: nextcloud_storage_restic_enabled | bool
+          no_log: true
+
+        - name: Expose the restic repository password
+          ansible.builtin.set_fact:
+            nextcloud_storage_restic_password: "{{ _aws_secrets_nextcloud_backup.restic_password | default('') }}"
+          when: nextcloud_storage_restic_enabled | bool
+          no_log: true
 
         - name: Expose the individual secret values under their existing variable names
           ansible.builtin.set_fact:
