@@ -63,8 +63,8 @@ class NextcloudStorageRoleTests(unittest.TestCase):
         self.assertIn("User=www-data", unit)
         self.assertIn("ExecStartPost=/usr/bin/touch /var/lib/nextcloud-restic/last-success", unit)
         self.assertIn("ReadWritePaths=/mnt/red-hdd/nextcloud-restic", unit)
-        self.assertIn("--exclude=/mnt/black-hdd/nextcloud-k3s-test/appdata_*/preview", unit)
-        self.assertIn(" /mnt/black-hdd/nextcloud-k3s-test /mnt/red-hdd/nextcloud-backup", unit)
+        self.assertIn("--exclude=/mnt/black-hdd/nextcloud/appdata_*/preview", unit)
+        self.assertIn(" /mnt/black-hdd/nextcloud /mnt/red-hdd/nextcloud-backup", unit)
         self.assertIn("OnCalendar=*-*-* 03:45:00 UTC", timer)
 
     def test_monitoring_watches_both_backups(self) -> None:
