@@ -83,12 +83,12 @@
     name: "{{ nextcloud_aio_config_volume }}"
     state: present
 
-- name: Ensure Nextcloud AIO master container is running
+- name: Ensure Nextcloud AIO master container is running, or stopped while parked
   community.docker.docker_container:
     name: "{{ nextcloud_aio_container_name }}"
     image: "{{ nextcloud_aio_image }}"
-    state: started
-    restart_policy: "{{ nextcloud_aio_restart_policy }}"
+    state: "{{ nextcloud_aio_parked | ternary('stopped', 'started') }}"
+    restart_policy: "{{ nextcloud_aio_parked | ternary('no', nextcloud_aio_restart_policy) }}"
     init: true
     network_mode: bridge
     published_ports: >-
@@ -125,44 +125,73 @@
                )
            ) }}
 
+- name: Stop AIO's application containers while parked
+  when: nextcloud_aio_parked | bool
+  block:
+    - name: Read AIO application container states
+      community.docker.docker_container_info:
+        name: "{{ item }}"
+      loop: "{{ nextcloud_aio_app_containers }}"
+      register: nextcloud_aio_app_info
+
+    # Only existing ones: state stopped would try to create a missing container. AIO gives them unless-stopped, so
+    # they stay stopped across reboots and come back with AIO's own start on a rollback.
+    - name: Stop running AIO application containers
+      community.docker.docker_container:
+        name: "{{ item.item }}"
+        state: stopped
+      loop: "{{ nextcloud_aio_app_info.results | selectattr('exists') | list }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Disable the Apache network-reconnect check while parked
+      ansible.builtin.systemd_service:
+        name: nextcloud-aio-apache-network-fix.service
+        enabled: false
+        state: stopped
+      failed_when: false
+
 # Automates the manual network-reconnect step: see the nextcloud-aio runbook.
-- name: Create Nextcloud AIO Apache network-reconnect install directory
-  ansible.builtin.file:
-    path: "{{ nextcloud_aio_apache_network_fix_install_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
+- name: Install the Apache network-reconnect check
+  when: not nextcloud_aio_parked | bool
+  block:
+    - name: Create Nextcloud AIO Apache network-reconnect install directory
+      ansible.builtin.file:
+        path: "{{ nextcloud_aio_apache_network_fix_install_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
 
-- name: Install Nextcloud AIO Apache network-reconnect script
-  ansible.builtin.copy:
-    src: reconnect_apache_network.sh
-    dest: "{{ nextcloud_aio_apache_network_fix_install_path }}"
-    owner: root
-    group: root
-    mode: "0755"
+    - name: Install Nextcloud AIO Apache network-reconnect script
+      ansible.builtin.copy:
+        src: reconnect_apache_network.sh
+        dest: "{{ nextcloud_aio_apache_network_fix_install_path }}"
+        owner: root
+        group: root
+        mode: "0755"
 
-- name: Install Nextcloud AIO Apache network-reconnect systemd unit
-  ansible.builtin.template:
-    src: nextcloud-aio-apache-network-fix.service.j2
-    dest: /etc/systemd/system/nextcloud-aio-apache-network-fix.service
-    owner: root
-    group: root
-    mode: "0644"
-  register: nextcloud_aio_apache_network_fix_unit
+    - name: Install Nextcloud AIO Apache network-reconnect systemd unit
+      ansible.builtin.template:
+        src: nextcloud-aio-apache-network-fix.service.j2
+        dest: /etc/systemd/system/nextcloud-aio-apache-network-fix.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: nextcloud_aio_apache_network_fix_unit
 
-- name: Reload systemd for the Apache network-reconnect unit
-  ansible.builtin.systemd_service:
-    daemon_reload: true
-  when: nextcloud_aio_apache_network_fix_unit.changed
+    - name: Reload systemd for the Apache network-reconnect unit
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: nextcloud_aio_apache_network_fix_unit.changed
 
-# restarted, not started: started is a no-op on an exited oneshot.
-- name: Run the Apache network-reconnect check
-  ansible.builtin.systemd_service:
-    name: nextcloud-aio-apache-network-fix.service
-    enabled: true
-    state: restarted
+    # restarted, not started: started is a no-op on an exited oneshot.
+    - name: Run the Apache network-reconnect check
+      ansible.builtin.systemd_service:
+        name: nextcloud-aio-apache-network-fix.service
+        enabled: true
+        state: restarted
 
 - name: Register Authelia as an OIDC login option
   ansible.builtin.include_tasks: oidc.yml
-  when: nextcloud_aio_oidc_enabled | bool
+  when: nextcloud_aio_oidc_enabled | bool and not nextcloud_aio_parked | bool

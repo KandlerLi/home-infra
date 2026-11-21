@@ -49,3 +49,20 @@ bootstrapped against this instance; it runs in k3s, see
   ("Known issues") for the reboot bug this automates recovery from --
   the root cause is still unknown, owned by AIO's own mastercontainer,
   not this repo.
+
+## Parked (`nextcloud_aio_parked`)
+
+Since the ADR 0033 cutover Nextcloud runs on k3s. `nextcloud_aio_parked:
+true` keeps AIO for a rollback without letting it run: the master
+container is stopped with `restart_policy: no` (so a reboot can't start
+it and, through it, its children on the shared data directory), every
+existing application container in `nextcloud_aio_app_containers` is
+stopped (AIO's own `unless-stopped` keeps them down across reboots), the
+Apache network-reconnect unit is disabled and the OIDC tasks are skipped.
+Volumes, the master's configuration and `/mnt/red-hdd/borg` stay as
+they are; the monitoring role no longer watches Borg.
+
+Rollback: set it to `false` and roll out, which starts the master again;
+then start the containers in AIO's interface and take Nextcloud out of
+maintenance mode (home-infra-docs runbook `migrate-nextcloud-to-k3s.md`).
+Removing AIO for good is a separate step.
