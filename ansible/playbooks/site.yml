@@ -49,6 +49,7 @@
     - stalwart_backup
     - vaultwarden_backup
     - paperless_storage
+    - nextcloud_storage
     - nfs_server
     - docker
     - nextcloud_aio

@@ -799,9 +799,11 @@ class K3sNodeTests(unittest.TestCase):
 
         self.assertEqual(defaults["k3s_node_host_path_dirs"], [])
         self.assertEqual(dirs["/var/lib/k3s-sankey-export"]["owner"], 10010)
-        for name in ("blocky-postgres", "paperless-postgres"):
+        for name in ("blocky-postgres", "paperless-postgres", "nextcloud-postgres"):
             d = dirs[f"/var/lib/k3s-apps-data/{name}"]
             self.assertEqual((d["owner"], d["group"], d["mode"]), (70, 70, "0700"))
+        html = dirs["/var/lib/k3s-apps-data/nextcloud-html"]
+        self.assertEqual((html["owner"], html["group"]), (33, 33))
 
 
 if __name__ == "__main__":

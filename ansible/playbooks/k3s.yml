@@ -57,6 +57,8 @@
         - { path: /var/lib/k3s-sankey-export, owner: 10010, group: 10010, mode: "0750" }
         - { path: /var/lib/k3s-apps-data/blocky-postgres, owner: 70, group: 70, mode: "0700" }
         - { path: /var/lib/k3s-apps-data/paperless-postgres, owner: 70, group: 70, mode: "0700" }
+        - { path: /var/lib/k3s-apps-data/nextcloud-html, owner: 33, group: 33, mode: "0750" }
+        - { path: /var/lib/k3s-apps-data/nextcloud-postgres, owner: 70, group: 70, mode: "0700" }
 
 # Read off node-1 into a hostvar, never written to disk.
 - name: Retrieve k3s cluster join token

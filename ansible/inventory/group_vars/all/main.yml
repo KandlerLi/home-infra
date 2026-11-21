@@ -33,6 +33,10 @@ nfs_server_exports:
   - path: /mnt/red-hdd/paperless-export
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
+  # Nextcloud on k3s (ADR 0033), the test instance's empty data directory: see the nextcloud_storage role.
+  - path: /mnt/black-hdd/nextcloud-k3s-test
+    client: 192.168.101.10
+    options: rw,sync,no_subtree_check,root_squash
 
 # Needs authelia_oidc_nextcloud_client_secret in Secrets Manager: see the nextcloud_aio README.
 nextcloud_aio_oidc_enabled: true
@@ -76,3 +80,6 @@ vaultwarden_backup_enabled: true
 
 # Host side of Paperless-ngx (ADR 0023): see the paperless_storage role.
 paperless_storage_enabled: true
+
+# Host side of Nextcloud on k3s (ADR 0033): see the nextcloud_storage role.
+nextcloud_storage_enabled: true
