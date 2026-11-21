@@ -132,5 +132,20 @@ class ApacheNetworkReconnectTests(unittest.TestCase):
         )
 
 
+class NextcloudAioParkedTests(unittest.TestCase):
+    def test_parked_stops_master_without_restart_and_skips_oidc(self) -> None:
+        root = Path(__file__).resolve().parents[1] / "ansible/roles/nextcloud_aio"
+        defaults = (root / "defaults/main.yml").read_text(encoding="utf-8")
+        tasks = (root / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("nextcloud_aio_parked: false", defaults)
+        self.assertIn("state: \"{{ nextcloud_aio_parked | ternary('stopped', 'started') }}\"", tasks)
+        self.assertIn("ternary('no', nextcloud_aio_restart_policy)", tasks)
+        self.assertIn("when: nextcloud_aio_oidc_enabled | bool and not nextcloud_aio_parked | bool", tasks)
+        # Children keep AIO's unless-stopped, so a rollback brings them back after a reboot.
+        stop = tasks.split("Stop running AIO application containers", 1)[1].split("- name:", 1)[0]
+        self.assertNotIn("restart_policy", stop)
+
+
 if __name__ == "__main__":
     unittest.main()

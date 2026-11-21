@@ -403,7 +403,6 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn('cronjob=~"authelia-backup|nextcloud-backup|paperless-export|stalwart-backup|vaultwarden-backup"', recorded)
         self.assertIn("> 26 * 3600", rules["BackupStale"]["expr"])
         for name in (
-            "nextcloud-borg",
             "nextcloud-restic",
             "authelia-backup",
             "nextcloud-backup",
@@ -432,8 +431,8 @@ class MonitoringRoleTests(unittest.TestCase):
         )
         self.assertIn("set -euo pipefail", script)
         self.assertIn('mv "$TMP" "$OUT"', script)
-        self.assertIn('backup=\\"nextcloud-borg\\"', script)
-        self.assertIn("stat -c %Y /mnt/red-hdd/borg/index.*", script)
+        self.assertIn('backup=\\"nextcloud-restic\\"', script)
+        self.assertIn("stat -c %Y /var/lib/nextcloud-restic/last-success", script)
 
         unit = render(
             "backup-freshness.service.j2",

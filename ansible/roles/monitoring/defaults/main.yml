@@ -199,9 +199,6 @@ monitoring_k3s_kubelet_dir: "{{ monitoring_data_dir }}/prometheus-k3s"
 
 # Backup freshness: each marker file is only written on success. See backup-freshness.sh.j2.
 monitoring_backup_markers:
-  # Borg rewrites index.N on every committed transaction only.
-  - name: nextcloud-borg
-    path: /mnt/red-hdd/borg/index.*
   # The nextcloud_storage role's restic unit touches it after backup, forget and check.
   - name: nextcloud-restic
     path: /var/lib/nextcloud-restic/last-success

@@ -36,3 +36,18 @@ nextcloud_aio_oidc_enabled: false
 nextcloud_aio_oidc_provider_name: Authelia
 nextcloud_aio_oidc_client_id: nextcloud
 nextcloud_aio_oidc_discovery_uri: https://auth.jkandler.de/.well-known/openid-configuration
+
+# After the ADR 0033 cutover: AIO stopped and kept for rollback (volumes, config, Borg untouched). See the README.
+nextcloud_aio_parked: false
+# Stopped while parked, so a reboot or AIO's own schedule can't start them on the shared data directory.
+nextcloud_aio_app_containers:
+  - nextcloud-aio-apache
+  - nextcloud-aio-nextcloud
+  - nextcloud-aio-notify-push
+  - nextcloud-aio-imaginary
+  - nextcloud-aio-eurooffice
+  - nextcloud-aio-talk
+  - nextcloud-aio-whiteboard
+  - nextcloud-aio-redis
+  - nextcloud-aio-database
+  - nextcloud-aio-borgbackup
