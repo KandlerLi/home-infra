@@ -42,6 +42,27 @@
       k3s_node_ssh_host_key_alias: k3s-node-2-via-homeserver
       k3s_node_inventory_group: k3s_agent_nodes
 
+# Minecraft node (ADR 0036): tainted so only the public game server runs here, off node-1's kernel.
+- name: Provision k3s Minecraft node
+  hosts: home_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: k3s_node
+      k3s_node_vm_name: k3s-node-3
+      # Minecraft's 4 GiB limit plus the k3s agent; 3 + 4 + 2 vCPUs slightly overcommit the 8 threads.
+      k3s_node_vm_vcpus: 2
+      k3s_node_vm_memory_mb: 6144
+      k3s_node_vm_disk_size_gb: 30
+      k3s_node_storage_mount: /
+      k3s_node_vm_storage_dir: /var/lib/libvirt/k3s
+      k3s_node_vm_disk_path: /var/lib/libvirt/k3s/k3s-node-3.qcow2
+      k3s_node_vm_ip: 192.168.101.12
+      k3s_node_vm_mac: "52:54:00:00:00:22"
+      k3s_node_ssh_host_key_alias: k3s-node-3-via-homeserver
+      k3s_node_inventory_group: k3s_minecraft_nodes
+
 - name: Install k3s on the learning node
   hosts: k3s_nodes
   become: true
@@ -102,9 +123,26 @@
         path: /var/lib/k3s-github-runner-cache
         state: absent
 
+- name: Install k3s on the Minecraft node
+  hosts: k3s_minecraft_nodes
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: k3s_node
+      k3s_node_role_mode: configure_guest
+      k3s_node_join_mode: agent
+      k3s_node_join_server_url: "https://192.168.101.10:6443"
+      k3s_node_join_token: "{{ hostvars['k3s-node-1'].k3s_node_join_token }}"
+      k3s_node_agent_node_taint: "workload=minecraft:NoSchedule"
+      k3s_node_agent_node_label: "role=minecraft"
+      k3s_node_host_path_dirs:
+        # The homeserver's minecraft-backup ids, which the Pod runs as for its NFS backup writes.
+        - { path: /var/lib/k3s-apps-data/minecraft, owner: 980, group: 975, mode: "0750" }
+
 # The VMs exist as hosts only after the provision plays above added them.
 - name: Security updates on the k3s nodes
-  hosts: k3s_nodes:k3s_agent_nodes
+  hosts: k3s_nodes:k3s_agent_nodes:k3s_minecraft_nodes
   become: true
   gather_facts: true
 

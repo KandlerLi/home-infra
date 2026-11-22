@@ -808,6 +808,23 @@ class K3sNodeTests(unittest.TestCase):
         world = dirs["/var/lib/k3s-apps-data/minecraft"]
         self.assertEqual((world["owner"], world["group"]), (980, 975))
 
+    def test_minecraft_node3_is_tainted_and_owns_the_world_dir(self) -> None:
+        # ADR 0036: only Minecraft runs there, off node-1's kernel.
+        plays = yaml.safe_load((PROJECT_ROOT / "ansible/playbooks/k3s.yml").read_text(encoding="utf-8"))
+        provision = next(p for p in plays if p["name"] == "Provision k3s Minecraft node")
+        install = next(p for p in plays if p["name"] == "Install k3s on the Minecraft node")
+        vm = provision["roles"][0]
+        guest = install["roles"][0]
+        updates = next(p for p in plays if p["name"] == "Security updates on the k3s nodes")
+
+        self.assertEqual((vm["k3s_node_vm_name"], vm["k3s_node_vm_ip"]), ("k3s-node-3", "192.168.101.12"))
+        self.assertEqual(vm["k3s_node_inventory_group"], "k3s_minecraft_nodes")
+        self.assertEqual(install["hosts"], "k3s_minecraft_nodes")
+        self.assertEqual(guest["k3s_node_agent_node_taint"], "workload=minecraft:NoSchedule")
+        world = {d["path"]: d for d in guest["k3s_node_host_path_dirs"]}["/var/lib/k3s-apps-data/minecraft"]
+        self.assertEqual((world["owner"], world["group"]), (980, 975))
+        self.assertIn("k3s_minecraft_nodes", updates["hosts"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -43,7 +43,8 @@ Two modes, run as two separate plays in `ansible/playbooks/k3s.yml`:
   `k3s_node_vm_name`/`_disk_path`/`_ip`/`_mac`/`_ssh_host_key_alias`
   and `k3s_node_inventory_group: k3s_agent_nodes`, so it lands in a
   distinct inventory group from `k3s-node-1` rather than a generic
-  loop over both.
+  loop over both. `k3s-node-3` (Minecraft, ADR 0036) does the same with
+  `k3s_minecraft_nodes`, so its agent play can set its own taint.
 - `k3s_node_role_mode: configure_guest` -- runs *inside* the VM
   (`hosts: k3s_nodes` for the server, `hosts: k3s_agent_nodes` for the
   agent). Downloads a specific, checksum-verified k3s release binary

@@ -34,6 +34,14 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: {{ monitoring_alloy_journal_max_age }}
 
+{% if monitoring_loki_minecraft_alerts_enabled | bool %}
+# Rules are read from common's rules_directory, per tenant ("fake" without auth).
+ruler:
+  alertmanager_url: http://{{ monitoring_alertmanager_upstream }}
+  rule_path: /loki/rules-temp
+  enable_api: false
+
+{% endif %}
 compactor:
   working_directory: /loki/compactor
   retention_enabled: true
