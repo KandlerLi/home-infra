@@ -2,9 +2,6 @@
 # Opt-in. Host side of Nextcloud on k3s (ADR 0033): see the README.
 nextcloud_storage_enabled: false
 
-# Empty data directory for the parallel test instance (migration step 2), never the live one.
-nextcloud_storage_test_data_dir: /mnt/black-hdd/nextcloud-k3s-test
-
 # The live data directory (AIO's until the cutover, then the k3s Pod's), exported to k3s-node-1.
 nextcloud_storage_data_dir: /mnt/black-hdd/nextcloud
 

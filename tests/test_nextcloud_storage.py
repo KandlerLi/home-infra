@@ -15,14 +15,18 @@ class NextcloudStorageRoleTests(unittest.TestCase):
 
         self.assertIn("nextcloud_storage_enabled: false", defaults)
 
-    def test_test_dir_is_not_the_live_data_dir(self) -> None:
-        defaults = yaml.safe_load(
-            (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+    def test_removes_only_the_test_dir(self) -> None:
+        tasks = yaml.safe_load(
+            (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
         )
+        removed = [
+            t["ansible.builtin.file"]["path"]
+            for block in tasks
+            for t in block.get("block", [block])
+            if t.get("ansible.builtin.file", {}).get("state") == "absent"
+        ]
 
-        test_dir = defaults["nextcloud_storage_test_data_dir"]
-        self.assertTrue(test_dir.startswith("/mnt/black-hdd/"))
-        self.assertNotEqual(test_dir.rstrip("/"), "/mnt/black-hdd/nextcloud")
+        self.assertEqual(removed, ["/mnt/black-hdd/nextcloud-k3s-test"])
 
     def test_runs_before_nfs_server(self) -> None:
         # exportfs -ra fails on an export whose directory doesn't exist.
