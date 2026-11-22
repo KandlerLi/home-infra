@@ -435,7 +435,7 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn('backup=\\"nextcloud-restic\\"', script)
         self.assertIn("stat -c %Y /var/lib/nextcloud-restic/last-success", script)
         # Unquoted, so the glob picks the newest world tarball.
-        self.assertIn("stat -c %Y /mnt/red-hdd/minecraft-backup/*.tgz 2>", script)
+        self.assertIn("stat -c %Y /mnt/red-hdd/minecraft-backup/*.tar.gz 2>", script)
 
         unit = render(
             "backup-freshness.service.j2",

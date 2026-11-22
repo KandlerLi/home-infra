@@ -99,11 +99,12 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         )
         rules = defaults["k3s_ingress_forward_rules"]
 
-        for port, protocol in ((25565, "tcp"), (19132, "udp")):
-            matching = [r for r in rules if r["public_port"] == port]
-            self.assertEqual(len(matching), 1, port)
+        for port, protocol in ((25565, "tcp"), (19132, "udp"), (19132, "tcp")):
+            matching = [
+                r for r in rules if r["public_port"] == port and r["protocol"] == protocol
+            ]
+            self.assertEqual(len(matching), 1, (port, protocol))
             self.assertEqual(matching[0]["target_port"], port)
-            self.assertEqual(matching[0]["protocol"], protocol)
         self.assertNotIn(25575, {r["public_port"] for r in rules})
 
     def test_forward_accept_rule_is_inserted_ahead_of_docker_and_libvirt(
