@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+import yaml
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ROLE_ROOT = PROJECT_ROOT / "ansible/roles/nfs_server"
 
@@ -123,6 +125,21 @@ class NfsServerRoleTests(unittest.TestCase):
         self.assertIn("path: /mnt/red-hdd/authelia-backup", group_vars)
         self.assertNotIn("path: /mnt/black-hdd\n", group_vars)
         self.assertNotIn("path: /var/lib\n", group_vars)
+
+
+
+class NfsServerInventoryTests(unittest.TestCase):
+    def test_minecraft_backup_is_exported_to_node3_only(self) -> None:
+        # The Minecraft Pod runs on its own node (ADR 0036); node-1 no longer needs the share.
+        group_vars = yaml.safe_load(
+            (PROJECT_ROOT / "ansible/inventory/group_vars/all/main.yml").read_text(encoding="utf-8")
+        )
+        clients = [
+            e["client"] for e in group_vars["nfs_server_exports"]
+            if e["path"] == "/mnt/red-hdd/minecraft-backup"
+        ]
+
+        self.assertEqual(clients, ["192.168.101.12"])
 
 
 if __name__ == "__main__":
