@@ -93,6 +93,19 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         forwarded = {r["public_port"] for r in rules}
         self.assertFalse(forwarded & {143, 587})
 
+    def test_default_rules_forward_minecraft_but_never_rcon(self) -> None:
+        defaults = yaml.safe_load(
+            (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        )
+        rules = defaults["k3s_ingress_forward_rules"]
+
+        for port, protocol in ((25565, "tcp"), (19132, "udp")):
+            matching = [r for r in rules if r["public_port"] == port]
+            self.assertEqual(len(matching), 1, port)
+            self.assertEqual(matching[0]["target_port"], port)
+            self.assertEqual(matching[0]["protocol"], protocol)
+        self.assertNotIn(25575, {r["public_port"] for r in rules})
+
     def test_forward_accept_rule_is_inserted_ahead_of_docker_and_libvirt(
         self,
     ) -> None:

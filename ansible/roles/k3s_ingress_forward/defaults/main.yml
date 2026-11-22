@@ -31,3 +31,10 @@ k3s_ingress_forward_rules:
   - public_port: 465
     target_port: 465
     protocol: tcp
+  # Minecraft: Java on tcp, Bedrock through Geyser on udp (ADR 0036). RCON 25575 is never forwarded.
+  - public_port: 25565
+    target_port: 25565
+    protocol: tcp
+  - public_port: 19132
+    target_port: 19132
+    protocol: udp

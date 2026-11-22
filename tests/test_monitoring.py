@@ -404,6 +404,7 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn("> 26 * 3600", rules["BackupStale"]["expr"])
         for name in (
             "nextcloud-restic",
+            "minecraft-backup",
             "authelia-backup",
             "nextcloud-backup",
             "paperless-export",
@@ -433,6 +434,8 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn('mv "$TMP" "$OUT"', script)
         self.assertIn('backup=\\"nextcloud-restic\\"', script)
         self.assertIn("stat -c %Y /var/lib/nextcloud-restic/last-success", script)
+        # Unquoted, so the glob picks the newest world tarball.
+        self.assertIn("stat -c %Y /mnt/red-hdd/minecraft-backup/*.tgz 2>", script)
 
         unit = render(
             "backup-freshness.service.j2",

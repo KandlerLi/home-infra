@@ -1,0 +1,9 @@
+# Opt-in. Destination side only: k3s-apps' Minecraft backup sidecar tars the world here. See the README.
+minecraft_backup_enabled: false
+
+minecraft_backup_dir: /mnt/red-hdd/minecraft-backup
+
+minecraft_backup_user: minecraft-backup
+# Fixed, since k3s-apps' Minecraft Pod runs as exactly these: root_squash writes need the directory owner's ids.
+minecraft_backup_uid: 980
+minecraft_backup_gid: 975

@@ -202,6 +202,9 @@ monitoring_backup_markers:
   # The nextcloud_storage role's restic unit touches it after backup, forget and check.
   - name: nextcloud-restic
     path: /var/lib/nextcloud-restic/last-success
+  # The newest world tarball from k3s-apps' Minecraft backup sidecar (minecraft_backup role).
+  - name: minecraft-backup
+    path: /mnt/red-hdd/minecraft-backup/*.tgz
 monitoring_backup_k3s_cronjobs:
   - authelia-backup
   - nextcloud-backup

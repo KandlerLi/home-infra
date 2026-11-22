@@ -804,6 +804,9 @@ class K3sNodeTests(unittest.TestCase):
             self.assertEqual((d["owner"], d["group"], d["mode"]), (70, 70, "0700"))
         html = dirs["/var/lib/k3s-apps-data/nextcloud-html"]
         self.assertEqual((html["owner"], html["group"]), (33, 33))
+        # The minecraft_backup role's ids, for the Pod's NFS backup writes.
+        world = dirs["/var/lib/k3s-apps-data/minecraft"]
+        self.assertEqual((world["owner"], world["group"]), (980, 975))
 
 
 if __name__ == "__main__":
