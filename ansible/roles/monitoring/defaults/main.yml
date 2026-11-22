@@ -108,6 +108,8 @@ monitoring_loki_cpu_limit: 1.0
 monitoring_loki_pids_limit: 256
 # Root disk like Prometheus: readable even when an HDD is the thing that failed. Time-based only.
 monitoring_loki_retention_period: 720h
+# Log-based alert rules (files/loki-rules), sent to monitoring_alertmanager_upstream; opt-in per rule file.
+monitoring_loki_minecraft_alerts_enabled: false
 monitoring_loki_container_user: monitoring-loki
 
 monitoring_alloy_container_name: alloy
@@ -184,6 +186,8 @@ monitoring_k3s_node_exporter_targets:
     node: k3s-node-1
   - address: 192.168.101.11:9100
     node: k3s-node-2
+  - address: 192.168.101.12:9100
+    node: k3s-node-3
 monitoring_k3s_kube_state_metrics_upstream: 192.168.101.10:8080
 
 # Per-Pod CPU/memory from each kubelet's cAdvisor; the token comes from Secrets Manager.
@@ -194,6 +198,8 @@ monitoring_k3s_kubelet_targets:
     node: k3s-node-1
   - address: 192.168.101.11:10250
     node: k3s-node-2
+  - address: 192.168.101.12:10250
+    node: k3s-node-3
 # Token and k3s server CA, mounted read-only into Prometheus.
 monitoring_k3s_kubelet_dir: "{{ monitoring_data_dir }}/prometheus-k3s"
 

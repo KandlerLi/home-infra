@@ -51,6 +51,16 @@ Service), so it lives in that role instead of here.
   manual and out-of-band, IPv4 only, targeting the homeserver's LAN IP
   -- redo it from a runbook if the router is ever reset. Only 25 is
   exposed publicly; submission and IMAP are not.
+- **Each rule may set its own `target_ip`**, defaulting to node-1
+  (`k3s_ingress_forward_target_ip`). Only the addresses in
+  `k3s_ingress_forward_allowed_target_ips` pass the assert: node-1, and
+  node-3 for Minecraft (ADR 0036), whose rules DNAT to that node's fixed
+  NodePorts, since k3s' servicelb doesn't run on the tainted node.
+- **A rule removed from the list goes into
+  `k3s_ingress_forward_retired_rules`**, in its exact old shape, so the
+  role deletes it: it only touches listed rules, and a stale DNAT earlier
+  in `PREROUTING` would keep matching first. An entry can go once the
+  rule is gone everywhere.
 - **Each rule has its own `protocol`**, defaulting to `tcp` (every
   rule needed only tcp until DNS) -- DNS needs both `tcp` and `udp`
   forwarded to the same port, so Blocky's own entry is two rules, not

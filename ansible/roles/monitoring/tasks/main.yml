@@ -607,6 +607,31 @@
           loop_control:
             label: "{{ item.path }}"
 
+        - name: Create Loki's rule directory for the default tenant
+          ansible.builtin.file:
+            path: "{{ monitoring_data_dir }}/loki/rules/fake"
+            state: directory
+            owner: "{{ monitoring_loki_container_user }}"
+            group: "{{ monitoring_loki_container_user }}"
+            mode: "0750"
+          when: monitoring_loki_minecraft_alerts_enabled | bool
+
+        - name: Install the Minecraft login alert rules
+          ansible.builtin.copy:
+            src: loki-rules/minecraft.yml
+            dest: "{{ monitoring_data_dir }}/loki/rules/fake/minecraft.yml"
+            # Loki runs as this uid with gid 0, so only owner permissions count.
+            owner: "{{ monitoring_loki_container_user }}"
+            group: "{{ monitoring_loki_container_user }}"
+            mode: "0640"
+          when: monitoring_loki_minecraft_alerts_enabled | bool
+
+        - name: Remove the Minecraft login alert rules when disabled
+          ansible.builtin.file:
+            path: "{{ monitoring_data_dir }}/loki/rules/fake/minecraft.yml"
+            state: absent
+          when: not (monitoring_loki_minecraft_alerts_enabled | bool)
+
         - name: Install Loki configuration
           ansible.builtin.template:
             src: loki.yml.j2

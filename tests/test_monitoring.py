@@ -136,6 +136,39 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertTrue(rendered["compactor"]["retention_enabled"])
         self.assertFalse(rendered["analytics"]["reporting_enabled"])
 
+    def test_loki_ruler_sends_minecraft_alerts_only_when_enabled(self) -> None:
+        off = yaml.safe_load(render("loki.yml.j2"))
+        on = yaml.safe_load(
+            render(
+                "loki.yml.j2",
+                monitoring_loki_minecraft_alerts_enabled=True,
+                monitoring_alertmanager_upstream="192.168.101.10:9093",
+            )
+        )
+
+        self.assertNotIn("ruler", off)
+        self.assertEqual(on["ruler"]["alertmanager_url"], "http://192.168.101.10:9093")
+        self.assertFalse(on["ruler"]["enable_api"])
+        # The root filesystem is read-only; only /loki is writable.
+        self.assertTrue(on["ruler"]["rule_path"].startswith("/loki/"))
+        self.assertEqual(on["common"]["storage"]["filesystem"]["rules_directory"], "/loki/rules")
+        group_vars = (PROJECT_ROOT / "ansible/inventory/group_vars/all/main.yml").read_text()
+        self.assertIn("monitoring_loki_minecraft_alerts_enabled: true", group_vars)
+
+    def test_minecraft_alert_rules_name_players_never_ips(self) -> None:
+        rules = yaml.safe_load((ROLE_ROOT / "files/loki-rules/minecraft.yml").read_text())
+        by_name = {r["alert"]: r for g in rules["groups"] for r in g["rules"]}
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertEqual(set(by_name), {"MinecraftLoginRejected", "MinecraftPlayerJoined"})
+        self.assertEqual(by_name["MinecraftLoginRejected"]["labels"]["severity"], "warning")
+        self.assertEqual(by_name["MinecraftPlayerJoined"]["labels"]["severity"], "info")
+        for rule in by_name.values():
+            self.assertIn("sum by (player", rule["expr"])
+            self.assertNotIn("ip", rule["annotations"]["summary"].lower().split())
+        # Loki reads it as tenant "fake" (auth disabled), as its own uid with gid 0.
+        self.assertIn('loki/rules/fake/minecraft.yml"', tasks)
+
     def test_loki_data_lives_on_root_disk(self) -> None:
         tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
 
@@ -772,7 +805,7 @@ class K3sKubeletMetricsTests(unittest.TestCase):
         self.assertEqual(job["tls_config"]["ca_file"], "/etc/prometheus/k3s/server-ca.crt")
         self.assertNotIn("insecure_skip_verify", job["tls_config"])
         self.assertEqual(
-            [c["labels"]["node"] for c in job["static_configs"]], ["k3s-node-1", "k3s-node-2"]
+            [c["labels"]["node"] for c in job["static_configs"]], ["k3s-node-1", "k3s-node-2", "k3s-node-3"]
         )
 
     def test_allowlist_keeps_container_last_seen_out(self) -> None:

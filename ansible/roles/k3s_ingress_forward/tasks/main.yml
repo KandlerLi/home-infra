@@ -3,11 +3,18 @@
   ansible.builtin.assert:
     that:
       - k3s_ingress_forward_target_ip == "192.168.101.10"
+      - k3s_ingress_forward_allowed_target_ips == ["192.168.101.10", "192.168.101.12"]
       - k3s_ingress_forward_rules | length > 0
+      - >-
+        k3s_ingress_forward_rules
+        | map(attribute='target_ip', default=k3s_ingress_forward_target_ip)
+        | difference(k3s_ingress_forward_allowed_target_ips)
+        | length == 0
     fail_msg: >-
       k3s_ingress_forward_target_ip must stay pinned to k3s-node-1's own
-      static address -- this role forwards real public traffic, so a
-      silent typo here would relay it to the wrong place entirely.
+      static address, and every rule must target node-1 or node-3 -- this
+      role forwards real public traffic, so a silent typo here would relay
+      it to the wrong place entirely.
 
 # Avoids iptables-persistent's interactive install prompt.
 - name: Preseed iptables-persistent to skip its install-time prompts
@@ -33,7 +40,7 @@
     action: insert
     rule_num: 1
     chain: FORWARD
-    destination: "{{ k3s_ingress_forward_target_ip }}"
+    destination: "{{ item.target_ip | default(k3s_ingress_forward_target_ip) }}"
     protocol: "{{ item.protocol | default('tcp') }}"
     destination_port: "{{ item.target_port }}"
     ctstate:
@@ -43,7 +50,7 @@
     jump: ACCEPT
     comment: >-
       k3s_ingress_forward: allow {{ item.protocol | default('tcp') }} ->
-      {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
+      {{ item.target_ip | default(k3s_ingress_forward_target_ip) }}:{{ item.target_port }}
   loop: "{{ k3s_ingress_forward_rules }}"
   loop_control:
     label: >-
@@ -132,17 +139,61 @@
     protocol: "{{ item.protocol | default('tcp') }}"
     destination_port: "{{ item.public_port }}"
     jump: DNAT
-    to_destination: "{{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}"
+    to_destination: "{{ item.target_ip | default(k3s_ingress_forward_target_ip) }}:{{ item.target_port }}"
     comment: >-
       k3s_ingress_forward: {{ item.protocol | default('tcp') }}
       {{ item.public_port }} ->
-      {{ k3s_ingress_forward_target_ip }}:{{ item.target_port }}
+      {{ item.target_ip | default(k3s_ingress_forward_target_ip) }}:{{ item.target_port }}
   loop: "{{ k3s_ingress_forward_rules }}"
   loop_control:
     label: >-
       {{ item.protocol | default('tcp') }}
-      {{ item.public_port }} -> {{ item.target_port }}
+      {{ item.public_port }} -> {{ item.target_ip | default(k3s_ingress_forward_target_ip) }}:{{ item.target_port }}
   register: k3s_ingress_forward_dnat_result
+
+- name: Remove retired FORWARD accept rules
+  ansible.builtin.iptables:
+    state: absent
+    chain: FORWARD
+    destination: "{{ item.target_ip | default(k3s_ingress_forward_target_ip) }}"
+    protocol: "{{ item.protocol | default('tcp') }}"
+    destination_port: "{{ item.target_port }}"
+    ctstate:
+      - NEW
+      - ESTABLISHED
+      - RELATED
+    jump: ACCEPT
+    comment: >-
+      k3s_ingress_forward: allow {{ item.protocol | default('tcp') }} ->
+      {{ item.target_ip | default(k3s_ingress_forward_target_ip) }}:{{ item.target_port }}
+  loop: "{{ k3s_ingress_forward_retired_rules }}"
+  loop_control:
+    label: >-
+      {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} -> {{ item.target_port }}
+  register: k3s_ingress_forward_retired_accept_result
+
+- name: Remove retired DNAT rules
+  ansible.builtin.iptables:
+    state: absent
+    table: nat
+    chain: PREROUTING
+    in_interface: "!{{ k3s_ingress_forward_target_bridge }}"
+    destination: "{{ ansible_host }}"
+    protocol: "{{ item.protocol | default('tcp') }}"
+    destination_port: "{{ item.public_port }}"
+    jump: DNAT
+    to_destination: "{{ item.target_ip | default(k3s_ingress_forward_target_ip) }}:{{ item.target_port }}"
+    comment: >-
+      k3s_ingress_forward: {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} ->
+      {{ item.target_ip | default(k3s_ingress_forward_target_ip) }}:{{ item.target_port }}
+  loop: "{{ k3s_ingress_forward_retired_rules }}"
+  loop_control:
+    label: >-
+      {{ item.protocol | default('tcp') }}
+      {{ item.public_port }} -> {{ item.target_port }}
+  register: k3s_ingress_forward_retired_dnat_result
 
 - name: Persist iptables rules across reboots
   ansible.builtin.command:
@@ -156,3 +207,5 @@
     or k3s_ingress_forward_reconcile_result is changed
     or k3s_ingress_forward_dnat_reconcile_result is changed
     or k3s_ingress_forward_dnat_result is changed
+    or k3s_ingress_forward_retired_accept_result is changed
+    or k3s_ingress_forward_retired_dnat_result is changed

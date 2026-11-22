@@ -1,0 +1,35 @@
+# Login alerts for k3s-apps' Minecraft server (ADR 0036), on its Pod log; patterns from real log lines of 2026-11-22.
+groups:
+  - name: minecraft
+    rules:
+      # Bedrock names come from Geyser's line; Java names from Paper's "<name> (/<ip>) lost connection", never the IP.
+      - alert: MinecraftLoginRejected
+        expr: |
+          sum by (player, edition) (
+            count_over_time({namespace="apps", app="minecraft", container="minecraft"}
+              |~ "has disconnected from the Java server because of .*You are not whitelisted"
+              | regexp "\\[Geyser-Spigot\\] (?P<player>\\S+) has disconnected"
+              | label_format edition="bedrock" [5m])
+          ) > 0
+          or
+          sum by (player, edition) (
+            count_over_time({namespace="apps", app="minecraft", container="minecraft"}
+              |~ "\\) lost connection: You are not whitelisted"
+              | regexp "INFO\\]: (?P<player>[A-Za-z0-9_]{1,16}) \\(/"
+              | label_format edition="java" [5m])
+          ) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Minecraft: {{ $labels.player }} ({{ $labels.edition }}) was turned away, not whitelisted"
+      - alert: MinecraftPlayerJoined
+        expr: |
+          sum by (player) (
+            count_over_time({namespace="apps", app="minecraft", container="minecraft"}
+              |~ "System chat: \\S+ joined the game"
+              | regexp "System chat: (?P<player>\\S+) joined the game" [5m])
+          ) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "Minecraft: {{ $labels.player }} joined (a leading dot means Bedrock)"

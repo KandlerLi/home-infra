@@ -99,13 +99,54 @@ class K3sIngressForwardRoleTests(unittest.TestCase):
         )
         rules = defaults["k3s_ingress_forward_rules"]
 
-        for port, protocol in ((25565, "tcp"), (19132, "udp"), (19132, "tcp")):
+        # On k3s-node-3's node ports, matching k3s-apps' minecraft-svc (ADR 0036).
+        for port, protocol, node_port in (
+            (25565, "tcp", 30565),
+            (19132, "udp", 31932),
+            (19132, "tcp", 31933),
+        ):
             matching = [
                 r for r in rules if r["public_port"] == port and r["protocol"] == protocol
             ]
             self.assertEqual(len(matching), 1, (port, protocol))
-            self.assertEqual(matching[0]["target_port"], port)
+            self.assertEqual(matching[0]["target_port"], node_port)
+            self.assertEqual(matching[0]["target_ip"], "192.168.101.12")
         self.assertNotIn(25575, {r["public_port"] for r in rules})
+
+    def test_only_minecraft_rules_leave_node1(self) -> None:
+        defaults = yaml.safe_load(
+            (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        )
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+
+        self.assertEqual(
+            defaults["k3s_ingress_forward_allowed_target_ips"],
+            ["192.168.101.10", "192.168.101.12"],
+        )
+        self.assertIn("difference(k3s_ingress_forward_allowed_target_ips)", tasks)
+        off_node1 = {
+            r["public_port"]
+            for r in defaults["k3s_ingress_forward_rules"]
+            if r.get("target_ip", "192.168.101.10") != "192.168.101.10"
+        }
+        self.assertEqual(off_node1, {25565, 19132})
+
+    def test_retired_minecraft_rules_on_node1_are_removed(self) -> None:
+        # The role only touches listed rules; the old node-1 DNATs would keep matching first.
+        defaults = yaml.safe_load(
+            (ROLE_ROOT / "defaults/main.yml").read_text(encoding="utf-8")
+        )
+        tasks = (ROLE_ROOT / "tasks/main.yml").read_text(encoding="utf-8")
+        retired = {
+            (r["public_port"], r["protocol"], r["target_port"])
+            for r in defaults["k3s_ingress_forward_retired_rules"]
+        }
+
+        self.assertEqual(
+            retired, {(25565, "tcp", 25565), (19132, "udp", 19132), (19132, "tcp", 19132)}
+        )
+        self.assertIn('loop: "{{ k3s_ingress_forward_retired_rules }}"', tasks)
+        self.assertIn("k3s_ingress_forward_retired_dnat_result is changed", tasks)
 
     def test_forward_accept_rule_is_inserted_ahead_of_docker_and_libvirt(
         self,

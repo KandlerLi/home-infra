@@ -1,13 +1,17 @@
 # Opt-in L4 DNAT relay from the homeserver's ports to k3s Services. See the README.
 k3s_ingress_forward_enabled: false
 
-# k3s-node-1's static address.
+# k3s-node-1's static address, every rule's target unless it sets target_ip.
 k3s_ingress_forward_target_ip: 192.168.101.10
+# The only addresses a rule may target: node-1, and node-3 for Minecraft only (ADR 0036).
+k3s_ingress_forward_allowed_target_ips:
+  - 192.168.101.10
+  - 192.168.101.12
 
 # Excluded from the DNAT match, or the VM's own outbound traffic gets hairpinned.
 k3s_ingress_forward_target_bridge: virbr11
 
-# public_port on the homeserver, target_port on the k3s Service, protocol per rule.
+# public_port on the homeserver, target_port on the k3s Service (or node port), protocol and target_ip per rule.
 k3s_ingress_forward_rules:
   - public_port: 80
     target_port: 80
@@ -31,7 +35,23 @@ k3s_ingress_forward_rules:
   - public_port: 465
     target_port: 465
     protocol: tcp
-  # Minecraft: Java on tcp; Bedrock through Geyser signals on 19132/tcp and plays on 19132/udp (ADR 0036). RCON 25575 is never forwarded.
+  # Minecraft on k3s-node-3's fixed node ports: Java tcp, Bedrock udp, Geyser signaling tcp (ADR 0036). RCON 25575 is never forwarded.
+  - public_port: 25565
+    target_port: 30565
+    protocol: tcp
+    target_ip: 192.168.101.12
+  - public_port: 19132
+    target_port: 31932
+    protocol: udp
+    target_ip: 192.168.101.12
+  - public_port: 19132
+    target_port: 31933
+    protocol: tcp
+    target_ip: 192.168.101.12
+
+# Rules removed from the list above, deleted actively: the role only touches listed rules, so a stale DNAT would keep matching first.
+k3s_ingress_forward_retired_rules:
+  # Minecraft on k3s-node-1's servicelb, before its own node.
   - public_port: 25565
     target_port: 25565
     protocol: tcp
