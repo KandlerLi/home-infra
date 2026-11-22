@@ -11,8 +11,8 @@
     - role: k3s_node
       # node-1 runs everything except the CI runners and needed the CPU headroom.
       k3s_node_vm_vcpus: 3
-      # Sized for Paperless-ngx OCR peaks (ADR 0023).
-      k3s_node_vm_memory_mb: 10240
+      # Paperless-ngx OCR peaks (ADR 0023) plus the Minecraft server's 4 GiB (ADR 0036).
+      k3s_node_vm_memory_mb: 14336
       # Every app image lives here; 40 GiB hit the 85% disk alert on 2026-11-16. The qcow2 is sparse.
       k3s_node_vm_disk_size_gb: 80
       # On the SSD (tracker #40).
@@ -59,6 +59,8 @@
         - { path: /var/lib/k3s-apps-data/paperless-postgres, owner: 70, group: 70, mode: "0700" }
         - { path: /var/lib/k3s-apps-data/nextcloud-html, owner: 33, group: 33, mode: "0750" }
         - { path: /var/lib/k3s-apps-data/nextcloud-postgres, owner: 70, group: 70, mode: "0700" }
+        # The homeserver's minecraft-backup ids, which the Pod runs as for its NFS backup writes.
+        - { path: /var/lib/k3s-apps-data/minecraft, owner: 980, group: 975, mode: "0750" }
 
 # Read off node-1 into a hostvar, never written to disk.
 - name: Retrieve k3s cluster join token

@@ -61,6 +61,7 @@
     - authelia_backup
     - stalwart_backup
     - vaultwarden_backup
+    - minecraft_backup
     - paperless_storage
     - nextcloud_storage
     - nfs_server
