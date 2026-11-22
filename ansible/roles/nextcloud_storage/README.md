@@ -9,8 +9,6 @@ Directories, NFS-exported to `k3s-node-1`
 - `/mnt/black-hdd/nextcloud` -- the live data directory. AIO uses it
   locally until the cutover; the export is in place beforehand so the k3s
   Pod can mount it in the maintenance window.
-- `/mnt/black-hdd/nextcloud-k3s-test` -- empty data directory of the
-  parallel test instance (migration step 2), removed after the cutover.
 - `/mnt/red-hdd/nextcloud-backup` -- write target of `k3s-apps`'
   `nextcloud-backup` CronJob: nightly `pg_dump` and `config.php`.
 

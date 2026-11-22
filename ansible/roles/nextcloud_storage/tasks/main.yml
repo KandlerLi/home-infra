@@ -2,15 +2,13 @@
 - name: Configure Nextcloud-on-k3s storage
   when: nextcloud_storage_enabled | bool
   block:
-    # www-data (33) is Debian's fixed uid/gid, the same one the k3s Pod runs as and that owns the live data directory.
-    - name: Create Nextcloud test data directory
+    # The test instance's data directory (migration step 2). Drop this task together with AIO's removal.
+    - name: Remove Nextcloud test data directory
       ansible.builtin.file:
-        path: "{{ nextcloud_storage_test_data_dir }}"
-        state: directory
-        owner: www-data
-        group: www-data
-        mode: "0750"
+        path: /mnt/black-hdd/nextcloud-k3s-test
+        state: absent
 
+    # www-data (33) is Debian's fixed uid/gid, the same one the k3s Pod runs as and that owns the live data directory.
     - name: Create Nextcloud database backup directory
       ansible.builtin.file:
         path: "{{ nextcloud_storage_backup_dir }}"

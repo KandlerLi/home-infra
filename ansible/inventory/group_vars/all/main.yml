@@ -37,10 +37,6 @@ nfs_server_exports:
   - path: /mnt/black-hdd/nextcloud
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
-  # Nextcloud on k3s (ADR 0033), the test instance's empty data directory: see the nextcloud_storage role.
-  - path: /mnt/black-hdd/nextcloud-k3s-test
-    client: 192.168.101.10
-    options: rw,sync,no_subtree_check,root_squash
   - path: /mnt/red-hdd/nextcloud-backup
     client: 192.168.101.10
     options: rw,sync,no_subtree_check,root_squash
