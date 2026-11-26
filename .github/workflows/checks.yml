@@ -10,7 +10,7 @@ permissions:
 jobs:
   build-image:
     name: Build CI image
-    runs-on: [self-hosted, home, debian]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
@@ -60,7 +60,7 @@ jobs:
   validate:
     name: Validate
     needs: build-image
-    runs-on: [self-hosted, home, debian]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
