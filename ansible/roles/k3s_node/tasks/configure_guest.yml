@@ -104,6 +104,14 @@
     group: root
     mode: "0755"
 
+# Generated once on the node and never leaves it except as the agents' K3S_TOKEN.
+- name: Generate the agent join secret
+  ansible.builtin.shell:
+    cmd: umask 077 && head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > {{ k3s_node_agent_token_path }}
+    creates: "{{ k3s_node_agent_token_path }}"
+  no_log: true
+  when: k3s_node_join_mode == "server"
+
 - name: Install the upstream resolv.conf k3s hands to CoreDNS
   ansible.builtin.copy:
     dest: "{{ k3s_node_resolv_conf_path }}"
@@ -134,6 +142,8 @@
     owner: root
     group: root
     mode: "0600"
+  # --diff would print K3S_TOKEN.
+  diff: false
   register: k3s_node_agent_env_file
   when: k3s_node_join_mode == "agent"
 

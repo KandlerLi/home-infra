@@ -435,6 +435,18 @@ class K3sNodeTests(unittest.TestCase):
         self.assertIn("k3s_node_service_account_issuer: https://", server_play)
         self.assertEqual(playbook.count("k3s_node_service_account_issuer:"), 1)
 
+    def test_agents_join_with_the_agent_token_not_the_server_token(self) -> None:
+        # The server token unlocks the bootstrap data (CA keys): root on an agent must not mean cluster-admin.
+        config = (ROLE_ROOT / "templates/k3s-config.yaml.j2").read_text(encoding="utf-8")
+        tasks = (ROLE_ROOT / "tasks/configure_guest.yml").read_text(encoding="utf-8")
+        playbook = (PROJECT_ROOT / "ansible/playbooks/k3s.yml").read_text(encoding="utf-8")
+
+        self.assertIn('agent-token-file: "{{ k3s_node_agent_token_path }}"', config)
+        self.assertIn('creates: "{{ k3s_node_agent_token_path }}"', tasks)
+        self.assertIn("src: /var/lib/rancher/k3s/server/agent-token", playbook)
+        self.assertNotIn("server/node-token", playbook)
+        self.assertNotIn("server/token", playbook)
+
     def test_bundled_traefik_is_disabled_in_favor_of_k3s_apps_ingress(
         self,
     ) -> None:
@@ -543,7 +555,7 @@ class K3sNodeTests(unittest.TestCase):
         )[1].split("- name:", 1)[0]
         self.assertIn('mode: "0600"', install_task)
 
-    def test_node_token_is_never_logged(self) -> None:
+    def test_join_token_is_never_logged(self) -> None:
         playbook = (
             PROJECT_ROOT / "ansible/playbooks/k3s.yml"
         ).read_text(encoding="utf-8")
@@ -553,7 +565,7 @@ class K3sNodeTests(unittest.TestCase):
         )[1].split("- name: Install k3s on the runner node", 1)[0]
         self.assertIn("no_log: true", token_play)
         self.assertIn(
-            "/var/lib/rancher/k3s/server/node-token", token_play
+            "/var/lib/rancher/k3s/server/agent-token", token_play
         )
 
     def test_agent_node_lands_in_its_own_inventory_group(self) -> None:

@@ -76,6 +76,8 @@ k3s_node_kubectl_symlink: /usr/local/bin/kubectl
 k3s_node_config_dir: /etc/rancher/k3s
 # CoreDNS's upstreams: public resolvers, so cluster DNS never loops through the FRITZ!Box to Blocky in k3s.
 k3s_node_resolv_conf_path: "{{ k3s_node_config_dir }}/resolv.conf"
+# The server's agent join secret: agents join with it, never with the server token (which unlocks the CA keys).
+k3s_node_agent_token_path: "{{ k3s_node_config_dir }}/agent-token"
 k3s_node_upstream_dns_servers:
   - 9.9.9.9
   - 149.112.112.112
