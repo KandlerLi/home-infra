@@ -19,10 +19,14 @@ net-update ... --live --config` when a second node provisions
 (`provision_vm.yml`), never a full redefine -- that would only touch
 libvirt's persistent config, not the already-running dnsmasq instance,
 and could otherwise interrupt `k3s-node-1`'s own active connections.
-`k3s-node-2`'s own join token is read live off `k3s-node-1`'s
-`/var/lib/rancher/k3s/server/node-token` in `ansible/playbooks/k3s.yml`
-itself (`no_log: true` throughout) -- never written to the controller's
-disk or committed anywhere.
+The agents (`k3s-node-2`, `k3s-node-3`) join with the **agent token**,
+never the server token: the server token can also fetch the cluster's
+bootstrap data (CA keys), so root on an agent would mean cluster-admin.
+`k3s-node-1` generates the agent secret once into
+`/etc/rancher/k3s/agent-token` (0600, `agent-token-file` in its config),
+and `ansible/playbooks/k3s.yml` reads the secure-format token k3s writes
+to `/var/lib/rancher/k3s/server/agent-token` (`no_log: true` throughout).
+It is never written to the controller's disk or committed anywhere.
 
 Two modes, run as two separate plays in `ansible/playbooks/k3s.yml`:
 

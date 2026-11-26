@@ -1,6 +1,7 @@
 # k3s server config (https://docs.k3s.io/cli/server); everything else stays at k3s's defaults.
 write-kubeconfig-mode: "{{ k3s_node_kubeconfig_mode }}"
 resolv-conf: "{{ k3s_node_resolv_conf_path }}"
+agent-token-file: "{{ k3s_node_agent_token_path }}"
 disable:
   - traefik
 # Graceful node shutdown leaves its Pods Failed/Succeeded, and the default (12500) never collects them.

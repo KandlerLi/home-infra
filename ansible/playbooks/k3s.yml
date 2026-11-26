@@ -90,15 +90,32 @@
   gather_facts: false
 
   tasks:
-    - name: Read k3s server node-token
+    # k3s writes it in secure format (CA hash included) once agent-token-file is set.
+    - name: Wait for the k3s agent token
+      ansible.builtin.wait_for:
+        path: /var/lib/rancher/k3s/server/agent-token
+        timeout: 120
+      when: not ansible_check_mode
+
+    # A dry run before the first apply finds none yet: the agents then get a placeholder diff.
+    - name: Check for the k3s agent token
+      ansible.builtin.stat:
+        path: /var/lib/rancher/k3s/server/agent-token
+      register: k3s_node_agent_token_stat
+
+    # Never node-token: that is the server token, and agents' root would hold the cluster's CA keys.
+    - name: Read the k3s agent token
       ansible.builtin.slurp:
-        src: /var/lib/rancher/k3s/server/node-token
+        src: /var/lib/rancher/k3s/server/agent-token
       register: k3s_node_token_file
       no_log: true
+      when: k3s_node_agent_token_stat.stat.exists
 
-    - name: Expose k3s node-token as a fact
+    - name: Expose the k3s agent token as a fact
       ansible.builtin.set_fact:
-        k3s_node_join_token: "{{ k3s_node_token_file.content | b64decode | trim }}"
+        k3s_node_join_token: >-
+          {{ (k3s_node_token_file.content | b64decode | trim)
+             if k3s_node_agent_token_stat.stat.exists else 'written-by-the-first-apply' }}
       no_log: true
 
 - name: Install k3s on the runner node
