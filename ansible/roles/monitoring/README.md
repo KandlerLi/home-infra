@@ -32,9 +32,8 @@ Prometheus and the exporters stay on this host permanently -- they
 report *this physical host's* own hardware/Docker daemon, so moving them
 into the k3s VM would monitor the wrong thing entirely. (Blocky moved to
 k3s on 2026-09-01 after all; Prometheus scrapes it over
-`monitoring_blocky_upstream`.) `files/dashboards/*.json` stay here as the canonical
-source [`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' `argocd/grafana/dashboards` vendors a synced copy
-from, even though nothing here installs them any more. See
+`monitoring_blocky_upstream`.) The dashboards live only in
+[`k3s-apps`](https://github.com/KandlerLi/k3s-apps)' `argocd/grafana/dashboards`. See
 [`home-infra-docs`](https://github.com/KandlerLi/home-infra-docs)' history.md ("k3s learning
 cluster") for the full cutover history.
 

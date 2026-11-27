@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import unittest
 from pathlib import Path
 
@@ -479,29 +478,6 @@ class MonitoringRoleTests(unittest.TestCase):
         self.assertIn("ReadWritePaths=/var/lib/monitoring/node-exporter-textfile", unit)
         self.assertIn("PrivateNetwork=true", unit)
 
-    def test_dashboards_are_valid_json_and_reference_the_prometheus_datasource(
-        self,
-    ) -> None:
-        # Canonical dashboard sources, vendored by k3s-apps' grafana module.
-        dashboards_dir = ROLE_ROOT / "files/dashboards"
-        expected = {
-            "host-health.json",
-            "container-health.json",
-            "service-reachability.json",
-            "service-status.json",
-            "backups.json",
-            "github-runners.json",
-            "overview.json",
-        }
-
-        for name in expected:
-            with self.subTest(dashboard=name):
-                data = json.loads((dashboards_dir / name).read_text(encoding="utf-8"))
-                self.assertTrue(data["panels"])
-                for panel in data["panels"]:
-                    for target in panel.get("targets", []):
-                        self.assertEqual(target["datasource"]["uid"], "prometheus")
-
 class BlockyIntegrationTests(unittest.TestCase):
     def test_scrape_job_only_appears_when_blocky_is_enabled(self) -> None:
         prometheus_off = yaml.safe_load(render("prometheus.yml.j2"))
@@ -576,45 +552,6 @@ class BlockyIntegrationTests(unittest.TestCase):
             '            or monitoring_blocky_upstream == "192.168.101.10:" ~ monitoring_blocky_http_port',
             tasks,
         )
-
-    def test_dashboards_are_valid_json_with_the_right_datasource_uids(self) -> None:
-        dashboards_dir = ROLE_ROOT / "files/dashboards"
-
-        metrics = json.loads((dashboards_dir / "blocky.json").read_text())
-        self.assertTrue(metrics["panels"])
-        for panel in metrics["panels"]:
-            for target in panel.get("targets", []):
-                datasource = target.get("datasource")
-                if datasource and datasource.get("type") == "prometheus":
-                    self.assertEqual(datasource["uid"], "prometheus")
-
-        query_log = json.loads((dashboards_dir / "blocky-postgres.json").read_text())
-        self.assertTrue(query_log["panels"])
-        for panel in query_log["panels"]:
-            for target in panel.get("targets", []):
-                datasource = target.get("datasource")
-                if datasource and datasource.get("type") == "grafana-postgresql-datasource":
-                    self.assertEqual(datasource["uid"], "blocky-postgres")
-
-        # File-provisioned with fixed values, so no import placeholders.
-        for path in (dashboards_dir / "blocky.json", dashboards_dir / "blocky-postgres.json"):
-            with self.subTest(path=path.name):
-                raw = path.read_text()
-                self.assertNotIn("${DS_", raw)
-                self.assertNotIn("${VAR_", raw)
-
-    def test_query_variables_refresh_on_dashboard_load(self) -> None:
-        # Query variables must refresh on load, or the filters start empty.
-        dashboards_dir = ROLE_ROOT / "files/dashboards"
-        query_log = json.loads((dashboards_dir / "blocky-postgres.json").read_text())
-
-        query_vars = [
-            v for v in query_log["templating"]["list"] if v.get("type") == "query"
-        ]
-        self.assertTrue(query_vars)
-        for variable in query_vars:
-            with self.subTest(variable=variable["name"]):
-                self.assertEqual(variable["refresh"], 1)
 
 
 class GrafanaK3sMigrationTests(unittest.TestCase):
@@ -829,14 +766,9 @@ class K3sKubeletMetricsTests(unittest.TestCase):
     def test_homeserver_container_queries_filter_on_their_own_job(self) -> None:
         # Both cAdvisor jobs share metric names.
         alerts = render("alert_rules.yml.j2")
-        dashboard = (ROLE_ROOT / "files/dashboards/container-health.json").read_text(
-            encoding="utf-8"
-        )
 
         self.assertNotIn("container_last_seen{name", alerts)
         self.assertEqual(alerts.count('container_last_seen{job="cadvisor", '), 4)
-        self.assertNotIn('container_cpu_usage_seconds_total{name', dashboard)
-        self.assertNotIn('container_memory_working_set_bytes{name', dashboard)
 
 
 class GithubRunnerExporterRoleTests(unittest.TestCase):
