@@ -816,9 +816,10 @@ class K3sNodeTests(unittest.TestCase):
             self.assertEqual((d["owner"], d["group"], d["mode"]), (70, 70, "0700"))
         html = dirs["/var/lib/k3s-apps-data/nextcloud-html"]
         self.assertEqual((html["owner"], html["group"]), (33, 33))
-        # The minecraft_backup role's ids, for the Pod's NFS backup writes.
-        world = dirs["/var/lib/k3s-apps-data/minecraft"]
-        self.assertEqual((world["owner"], world["group"]), (980, 975))
+        # The world lives on k3s-node-3 since tracker #78; node-1 removes its old copy.
+        self.assertNotIn("/var/lib/k3s-apps-data/minecraft", dirs)
+        cleanup = [t for t in node1["post_tasks"] if t["name"] == "Remove the retired Minecraft world copy"]
+        self.assertEqual(cleanup[0]["ansible.builtin.file"], {"path": "/var/lib/k3s-apps-data/minecraft", "state": "absent"})
 
     def test_minecraft_node3_is_tainted_and_owns_the_world_dir(self) -> None:
         # ADR 0036: only Minecraft runs there, off node-1's kernel.
