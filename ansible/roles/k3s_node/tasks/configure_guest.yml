@@ -105,6 +105,7 @@
     mode: "0755"
 
 # Generated once on the node and never leaves it except as the agents' K3S_TOKEN.
+# Changing it later breaks k3s' next start: home-infra-docs runbook rotate-k3s-server-token, "cred/passwd newer than datastore".
 - name: Generate the agent join secret
   ansible.builtin.shell:
     cmd: umask 077 && head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > {{ k3s_node_agent_token_path }}
