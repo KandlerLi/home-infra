@@ -7,11 +7,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-import json
+import tempfile
 
 import yaml
 
-from sync_github_runner_repositories import render_group_vars, render_tfvars, runner_repositories
+from sync_github_runner_repositories import render_group_vars, render_overlay, runner_repositories, sync_scale_sets
 
 
 class RunnerRepositoriesTests(unittest.TestCase):
@@ -43,20 +43,41 @@ class RunnerRepositoriesTests(unittest.TestCase):
 
         self.assertEqual(runner_repositories(config), [])
 
-    def test_render_tfvars_produces_valid_json_the_module_can_for_each_over(
-        self,
-    ) -> None:
-        repositories = [
-            {"id": "dyndns", "repository": "dyndns"},
-            {"id": "website", "repository": "website"},
-        ]
+    def test_overlay_sets_release_name_and_github_url(self) -> None:
+        overlay = yaml.safe_load(render_overlay({"id": "stalwart-config", "repository": "stalwart-config"}))
 
-        text = render_tfvars(repositories)
-        parsed = json.loads(text)
-
-        self.assertEqual(
-            parsed, {"github_runner_repositories": repositories}
+        self.assertEqual(overlay["resources"], ["../base"])
+        self.assertEqual(overlay["nameSuffix"], "-stalwart-config")
+        ops = yaml.safe_load(overlay["patches"][0]["patch"])
+        self.assertIn({"op": "replace", "path": "/spec/source/helm/releaseName", "value": "stalwart-config"}, ops)
+        self.assertIn(
+            {
+                "op": "replace",
+                "path": "/spec/source/helm/valuesObject/githubConfigUrl",
+                "value": "https://github.com/KandlerLi/stalwart-config",
+            },
+            ops,
         )
+
+    def test_sync_creates_missing_deletes_obsolete_and_keeps_hand_edits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "base").mkdir()
+            (root / "kept").mkdir()
+            (root / "kept" / "kustomization.yaml").write_text("# hand edited\n")
+            (root / "gone").mkdir()
+            (root / "gone" / "kustomization.yaml").write_text("x\n")
+
+            created, deleted = sync_scale_sets(
+                root, [{"id": "kept", "repository": "kept"}, {"id": "new", "repository": "new"}]
+            )
+
+            self.assertEqual((created, deleted), (["new"], ["gone"]))
+            self.assertEqual((root / "kept" / "kustomization.yaml").read_text(), "# hand edited\n")
+            self.assertTrue((root / "new" / "kustomization.yaml").exists())
+            self.assertTrue((root / "base").is_dir())
+            listing = yaml.safe_load((root / "kustomization.yaml").read_text())
+            self.assertEqual(listing["resources"], ["kept", "new"])
 
     def test_group_vars_list_repository_names_for_the_exporter(self) -> None:
         rendered = render_group_vars(runner_repositories({"zeta": {"runner": True}, "alpha": {"runner": True}}))
